@@ -5,7 +5,7 @@ import { EmptyState, Skeleton } from "../../ui";
 import { ChallengeCard } from "../../challenges/ChallengeCard";
 import { ClockBanners } from "../../challenges/Banners";
 import { QueryError } from "../../challenges/QueryError";
-import { asBoardChallenge, type BoardChallenge } from "../../challenges/types";
+import type { BoardChallenge } from "../../challenges/types";
 import "../../challenges/challenges.css";
 
 export const Route = createFileRoute("/_auth/challenges")({
@@ -41,7 +41,7 @@ function Board() {
 
       {board.isError && <QueryError error={board.error} onRetry={() => void board.refetch()} />}
 
-      {board.isSuccess && <Categories challenges={(board.data.challenges ?? []).map(asBoardChallenge)} />}
+      {board.isSuccess && <Categories challenges={board.data.challenges ?? []} />}
     </>
   );
 }

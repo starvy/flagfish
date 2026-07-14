@@ -741,7 +741,7 @@ function EditFlagDialog({
   onClose: () => void;
   onSave: (body: FlagEdit) => Promise<string | null>;
 }) {
-  const [type, setType] = useState<FlagType>(flag.type);
+  const [type, setType] = useState<FlagType>(flag.type as FlagType);
   const [content, setContent] = useState(flag.content);
   const [insensitive, setInsensitive] = useState(flag.case_insensitive);
   const [errors, setErrors] = useState<FieldErrors>({});

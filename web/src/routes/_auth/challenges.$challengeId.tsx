@@ -9,7 +9,7 @@ import { HintList } from "../../challenges/HintList";
 import { QueryError } from "../../challenges/QueryError";
 import { SolvesTab } from "../../challenges/SolvesTab";
 import { useClock } from "../../challenges/clock";
-import { asChallenge, solveCountLabel, type Challenge } from "../../challenges/types";
+import { solveCountLabel, type Challenge } from "../../challenges/types";
 import "../../challenges/challenges.css";
 
 export const Route = createFileRoute("/_auth/challenges/$challengeId")({
@@ -36,7 +36,7 @@ function ChallengePage() {
     );
   }
 
-  const challenge = asChallenge(detail.data);
+  const challenge: Challenge = detail.data;
 
   return (
     <>

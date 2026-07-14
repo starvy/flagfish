@@ -18,7 +18,6 @@ import {
   ConfirmDestructive,
   DataTable,
   EmptyState,
-  Skeleton,
   useToast,
   type Column,
 } from "../../../ui";
@@ -273,8 +272,6 @@ function AdminChallengesPage() {
           }
         />
       </Card>
-
-      {board.isPending && <Skeleton lines={2} />}
 
       <ConfirmDestructive
         open={target !== null}
