@@ -55,7 +55,7 @@ function RegisterPage() {
   }, [error, nameError, emailError, passwordError]);
 
   // `already-authed` carries a Location and PolicyGate follows it back to the board; a closed
-  // registration is a 404 and stays here, said plainly.
+  // registration is a 404 with nowhere to go, and stays here, said plainly.
   if (denial !== null) {
     return (
       <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
@@ -80,60 +80,58 @@ function RegisterPage() {
   return (
     <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
       <Card title="Create an account">
-        <Form onSubmit={submit}>
+        <Form
+          onSubmit={submit}
+          footer={
+            <Button type="submit" variant="primary" fullWidth loading={register.isPending}>
+              Create account
+            </Button>
+          }
+        >
           <Field
+            name="name"
             label="Name"
-            htmlFor="register-name"
             required
             error={nameError}
             hint="The name the scoreboard shows."
           >
             <Input
-              id="register-name"
               ref={nameRef}
-              name="name"
               autoComplete="nickname"
-              required
               maxLength={128}
+              invalid={nameError !== undefined}
               value={name}
-              aria-invalid={nameError !== undefined}
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
 
-          <Field label="Email" htmlFor="register-email" required error={emailError}>
+          <Field name="email" label="Email" required error={emailError}>
             <Input
-              id="register-email"
               ref={emailRef}
               type="email"
-              name="email"
               autoComplete="email"
-              required
               maxLength={255}
+              invalid={emailError !== undefined}
               value={email}
-              aria-invalid={emailError !== undefined}
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
 
           <Field
+            name="password"
             label="Password"
-            htmlFor="register-password"
             required
             error={passwordError}
             hint="At least 8 characters."
           >
             <Input
-              id="register-password"
               ref={passwordRef}
               type="password"
-              name="password"
               autoComplete="new-password"
-              required
               minLength={8}
               maxLength={128}
+              invalid={passwordError !== undefined}
               value={password}
-              aria-invalid={passwordError !== undefined}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
@@ -145,12 +143,6 @@ function RegisterPage() {
               </Alert>
             </div>
           )}
-
-          <div className="ff-form__footer">
-            <Button type="submit" variant="primary" block loading={register.isPending}>
-              Create account
-            </Button>
-          </div>
         </Form>
 
         <p aria-live="polite" role="status" className="ff-sr-only">

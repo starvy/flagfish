@@ -1,15 +1,84 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
-import type { ChallengeListItem } from "../../api/client";
+import { useQuery } from "@tanstack/react-query";
+import { Outlet, createFileRoute, useChildMatches } from "@tanstack/react-router";
 import { challengesQuery } from "../../queries";
+import { EmptyState, Skeleton } from "../../ui";
+import { ChallengeCard } from "../../challenges/ChallengeCard";
+import { ClockBanners } from "../../challenges/Banners";
+import { QueryError } from "../../challenges/QueryError";
+import { asBoardChallenge, type BoardChallenge } from "../../challenges/types";
+import "../../challenges/challenges.css";
 
 export const Route = createFileRoute("/_auth/challenges")({
-  loader: ({ context }) => context.queryClient.ensureQueryData(challengesQuery),
-  component: BoardPage,
+  component: ChallengesRoute,
 });
 
-function groupByCategory(items: ChallengeListItem[]): Map<string, ChallengeListItem[]> {
-  const groups = new Map<string, ChallengeListItem[]>();
+// `/challenges/$id` nests under this route in the file tree, but it is a page of its own, not a
+// panel inside the board. When a child matches, the board steps out of its way.
+function ChallengesRoute() {
+  const children = useChildMatches();
+  return children.length > 0 ? <Outlet /> : <Board />;
+}
+
+/**
+ * The board.
+ *
+ * There is deliberately no route loader: a denial (unverified, teamless, not started) must reach
+ * <PolicyGate>, which knows the reason vocabulary, rather than the router's error boundary, which
+ * would render a stack trace where a countdown belongs.
+ */
+function Board() {
+  const board = useQuery(challengesQuery);
+
+  return (
+    <>
+      <div className="page-head">
+        <h1>challenges</h1>
+      </div>
+
+      <ClockBanners />
+
+      {board.isPending && <BoardSkeleton />}
+
+      {board.isError && <QueryError error={board.error} onRetry={() => void board.refetch()} />}
+
+      {board.isSuccess && <Categories challenges={(board.data.challenges ?? []).map(asBoardChallenge)} />}
+    </>
+  );
+}
+
+function Categories({ challenges }: { challenges: BoardChallenge[] }) {
+  if (challenges.length === 0) {
+    return (
+      <EmptyState
+        title="no challenges yet"
+        description="the organisers have not published any. they appear here the moment they do."
+      />
+    );
+  }
+
+  return (
+    <>
+      {[...groupByCategory(challenges)].map(([category, items]) => (
+        <section className="board__category" key={category}>
+          <div className="board__category-head">
+            <h2 className="board__category-name">{category}</h2>
+            <span className="muted">
+              {items.filter((c) => c.solved).length}/{items.length}
+            </span>
+          </div>
+          <div className="board__grid">
+            {items.map((challenge) => (
+              <ChallengeCard key={challenge.id} challenge={challenge} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function groupByCategory(items: BoardChallenge[]): Map<string, BoardChallenge[]> {
+  const groups = new Map<string, BoardChallenge[]>();
   for (const c of items) {
     const list = groups.get(c.category) ?? [];
     list.push(c);
@@ -18,38 +87,30 @@ function groupByCategory(items: ChallengeListItem[]): Map<string, ChallengeListI
   for (const list of groups.values()) {
     list.sort((a, b) => a.value - b.value || a.name.localeCompare(b.name));
   }
-  return new Map([...groups.entries()].sort(([a], [b]) => a.localeCompare(b)));
+  return new Map([...groups].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-function BoardPage() {
-  const { data } = useSuspenseQuery(challengesQuery);
-  const groups = groupByCategory(data.challenges ?? []);
-
+// A skeleton in the shape of the board, not a spinner on white: the page that arrives should be
+// the page that was promised.
+function BoardSkeleton() {
   return (
     <>
-      {groups.size === 0 && <div className="center">no challenges yet — check back soon</div>}
-      {[...groups.entries()].map(([category, items]) => (
-        <section className="category" key={category}>
-          <h2>{category}</h2>
-          <div className="card-grid">
-            {items.map((c) => (
-              <Link
-                key={c.id}
-                to="/challenges/$challengeId"
-                params={{ challengeId: c.id }}
-                className={c.solved ? "chal-card solved" : "chal-card"}
-              >
-                <span className="name">{c.name}</span>
-                <span className="meta">
-                  <span className="points">{c.value} pts</span>
-                  <span>{c.solve_count} solves</span>
-                </span>
-              </Link>
+      {[0, 1].map((section) => (
+        <section className="board__category" key={section}>
+          <div className="board__category-head">
+            <Skeleton width="8rem" height="1.25rem" />
+          </div>
+          <div className="board__grid">
+            {[0, 1, 2, 3].map((card) => (
+              <div className="ff-card chal-card" key={card}>
+                <Skeleton height="1.25rem" />
+                <Skeleton width="60%" height="0.875rem" />
+              </div>
             ))}
           </div>
         </section>
       ))}
-      <Outlet />
     </>
   );
 }
+</content>

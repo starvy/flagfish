@@ -11,9 +11,12 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/starvy/flagfish/internal/accounts"
 	"github.com/starvy/flagfish/internal/domain/policy"
@@ -330,13 +333,14 @@ func safeMethod(m string) bool {
 
 // rateLimit keys on the account when we know it, and on the client IP when we do
 // not — so an anonymous flood is limited per-source and an authenticated one
-// per-account, which is what you want when a single team is behind one NAT.
+// per-account, which is what you want when a single team is behind one NAT. The other half of the
+// key is the route (see bucketRoute), never the raw path.
 //
 // The IP is the one realIP resolved, which is the client's only if a proxy in front of us is
 // trusted. Untrusted, every request behind that proxy keys on the proxy's own address and the
 // anonymous bucket becomes global — one stranger can then rate-limit /login for everyone. That
 // misconfiguration is warned about loudly at boot and on the first forwarded request.
-func rateLimit(l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
+func rateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			pr := AuthOf(r.Context()).Principal
@@ -346,7 +350,7 @@ func rateLimit(l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
 				key = fmt.Sprintf("account:%d", pr.AccountID)
 			}
 
-			ok, err := l.Allow(r.Context(), key+":"+r.Method+":"+r.URL.Path)
+			ok, err := l.Allow(r.Context(), key+":"+bucketRoute(routes, r))
 			if err != nil {
 				// A limiter that cannot answer must not become an open door.
 				log.ErrorContext(r.Context(), "rate limiter failed", "error", err)
@@ -360,6 +364,59 @@ func rateLimit(l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// bucketRoute names the route a request is limited against: the matched route pattern, plus its
+// path parameters in the canonical form the handler will see.
+//
+// The raw URL path cannot be the key. chi matches any segment against {id} and Huma parses it with
+// strconv.ParseInt, so /challenges/7/attempt, /challenges/007/attempt and /challenges/+7/attempt all
+// reach challenge 7 — but as three different strings they are three separate buckets, each with a
+// full budget, and the padding space has no end. Since max_attempts defaults to unlimited, on most
+// challenges the limiter is the only thing standing between a script and the flag.
+//
+// The pattern is not available from the request's own RouteContext here: this middleware runs on the
+// group, where chi has routed no further than the /api/v1/* mount. So the router is asked to resolve
+// the route itself, which is the same radix lookup it is about to do anyway.
+//
+// A path that matches no route shares one bucket per caller. Otherwise every request to a made-up
+// path mints a rate_limits row that nothing will ever read again.
+func bucketRoute(routes chi.Routes, r *http.Request) string {
+	path := r.URL.RawPath // chi routes on RawPath when the path had escapes; match it exactly
+	if path == "" {
+		path = r.URL.Path
+	}
+
+	rctx := chi.NewRouteContext()
+	if !routes.Match(rctx, r.Method, path) {
+		return r.Method + ":<unrouted>"
+	}
+
+	var b strings.Builder
+	b.WriteString(r.Method)
+	b.WriteByte(':')
+	b.WriteString(rctx.RoutePattern())
+	for i, k := range rctx.URLParams.Keys {
+		if k == "*" || i >= len(rctx.URLParams.Values) {
+			continue // the mount's wildcard is the rest of the path, which the pattern already says
+		}
+		b.WriteByte(':')
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(canonicalParam(rctx.URLParams.Values[i]))
+	}
+	return b.String()
+}
+
+// canonicalParam reduces a path parameter to the value the handler resolves it to, so that every
+// spelling of one id shares one budget. A parameter that is not an integer gets a single bucket for
+// the whole route rather than one per spelling: it names no row, and it must not be able to mint an
+// unbounded number of buckets by varying.
+func canonicalParam(v string) string {
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return strconv.FormatInt(n, 10)
+	}
+	return "*"
 }
 
 // WithClass declares a route's policy class. A route without one is denied by

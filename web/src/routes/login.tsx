@@ -75,7 +75,7 @@ function LoginPage() {
     else alertRef.current?.focus();
   }, [error, emailError, passwordError]);
 
-  // A pre-setup instance denies login itself, with a Location; PolicyGate follows it.
+  // An instance that is not set up denies login itself, with a Location; PolicyGate follows it.
   if (denial !== null) return <PolicyGate error={error} />;
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -94,32 +94,33 @@ function LoginPage() {
   return (
     <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
       <Card title="Sign in">
-        <Form onSubmit={submit}>
-          <Field label="Email" htmlFor="login-email" required error={emailError}>
+        <Form
+          onSubmit={submit}
+          footer={
+            <Button type="submit" variant="primary" fullWidth loading={login.isPending}>
+              Sign in
+            </Button>
+          }
+        >
+          <Field name="email" label="Email" required error={emailError}>
             <Input
-              id="login-email"
               ref={emailRef}
               type="email"
-              name="email"
               autoComplete="username"
-              required
               maxLength={255}
+              invalid={emailError !== undefined}
               value={email}
-              aria-invalid={emailError !== undefined}
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
 
-          <Field label="Password" htmlFor="login-password" required error={passwordError}>
+          <Field name="password" label="Password" required error={passwordError}>
             <Input
-              id="login-password"
               ref={passwordRef}
               type="password"
-              name="password"
               autoComplete="current-password"
-              required
+              invalid={passwordError !== undefined}
               value={password}
-              aria-invalid={passwordError !== undefined}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
@@ -131,12 +132,6 @@ function LoginPage() {
               </Alert>
             </div>
           )}
-
-          <div className="ff-form__footer">
-            <Button type="submit" variant="primary" block loading={login.isPending}>
-              Sign in
-            </Button>
-          </div>
         </Form>
 
         <p aria-live="polite" role="status" className="ff-sr-only">

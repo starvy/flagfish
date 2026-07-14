@@ -17,8 +17,7 @@ function fieldErrorOf(error: unknown, field: string): string | undefined {
   return error.fieldErrors.find((e) => e.location === `body.${field}`)?.message;
 }
 
-// A dead link is a 400 and it is a state, not a crash: the player needs a new one, not a stack
-// trace. A 422 and a rate limit are likewise the form's to render.
+// A dead link is a 400, and it is a state, not a crash: what the player needs is a new link.
 const INLINE_STATUSES = new Set([400, 422, 429]);
 
 function ResetPasswordPage() {
@@ -27,7 +26,7 @@ function ResetPasswordPage() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  // Only set once the player has tried: nagging about a mismatch mid-typing is noise.
+  // Only raised on submit: nagging about a mismatch while the second field is half-typed is noise.
   const [mismatch, setMismatch] = useState(false);
 
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -46,7 +45,7 @@ function ResetPasswordPage() {
     error === null || denial !== null
       ? null
       : isApiError(error)
-        ? error.detail
+        ? (tokenError ?? error.detail)
         : "The server could not be reached.";
 
   useEffect(() => {
@@ -61,7 +60,7 @@ function ResetPasswordPage() {
 
   if (denial !== null) return <PolicyGate error={error} />;
 
-  // No token at all: the player typed the URL, or a mail client mangled the link.
+  // No token at all — a typed-in URL, or a mail client that ate the query string.
   if (token === undefined) {
     return (
       <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
@@ -83,14 +82,14 @@ function ResetPasswordPage() {
         <Card title="Password changed">
           <div ref={doneRef} tabIndex={-1}>
             <Alert tone="success" title="Your password is set">
-              Sign in with the new one. Any other sessions on this account still stand.
+              Sign in with the new one.
             </Alert>
           </div>
-          <div className="ff-form__footer">
-            <Link to="/login">
-              <Button variant="primary">Sign in</Button>
+          <p>
+            <Link to="/login" className="ff-btn ff-btn--primary">
+              Sign in
             </Link>
-          </div>
+          </p>
         </Card>
         <p aria-live="polite" role="status" className="ff-sr-only">
           Your password has been changed.
@@ -113,46 +112,47 @@ function ResetPasswordPage() {
   return (
     <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
       <Card title="Set a new password">
-        <Form onSubmit={submit}>
+        <Form
+          onSubmit={submit}
+          footer={
+            <Button type="submit" variant="primary" fullWidth loading={apply.isPending}>
+              Set password
+            </Button>
+          }
+        >
           <Field
+            name="password"
             label="New password"
-            htmlFor="reset-password"
             required
             error={passwordError}
             hint="At least 8 characters."
           >
             <Input
-              id="reset-password"
               ref={passwordRef}
               type="password"
-              name="password"
               autoComplete="new-password"
-              required
               minLength={8}
               maxLength={128}
+              invalid={passwordError !== undefined}
               value={password}
-              aria-invalid={passwordError !== undefined}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
 
           <Field
+            name="password_confirm"
             label="Confirm new password"
-            htmlFor="reset-confirm"
             required
             error={mismatch ? "The two passwords do not match." : undefined}
           >
             <Input
-              id="reset-confirm"
               ref={confirmRef}
               type="password"
-              name="password_confirm"
               autoComplete="new-password"
-              required
               minLength={8}
               maxLength={128}
+              invalid={mismatch}
               value={confirm}
-              aria-invalid={mismatch}
               onChange={(e) => {
                 setConfirm(e.target.value);
                 if (mismatch) setMismatch(false);
@@ -166,7 +166,7 @@ function ResetPasswordPage() {
                 tone={deadLink ? "warn" : "danger"}
                 title={deadLink ? "That link is no longer good" : "Could not set your password"}
               >
-                {tokenError ?? message}
+                {message}
                 {deadLink && (
                   <>
                     {" "}
@@ -176,12 +176,6 @@ function ResetPasswordPage() {
               </Alert>
             </div>
           )}
-
-          <div className="ff-form__footer">
-            <Button type="submit" variant="primary" block loading={apply.isPending}>
-              Set password
-            </Button>
-          </div>
         </Form>
 
         <p aria-live="polite" role="status" className="ff-sr-only">

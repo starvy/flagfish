@@ -24,10 +24,10 @@ export const Route = createFileRoute("/_auth/notifications")({
 });
 
 /**
- * The archive. The drawer shows the live feed; this pages through everything behind it.
+ * The archive. The drawer carries the live feed; this pages through everything behind it.
  *
- * Deliberately not merged with the stream: a page 3 that grows a row at the top whenever an
- * announcement lands would shuffle the rows under the reader. The drawer is where live belongs.
+ * Deliberately not merged with the stream: a page 3 that grew a row at the top whenever an
+ * announcement landed would shuffle rows under the reader. Live belongs in the drawer.
  */
 function NotificationsPage() {
   const { page } = Route.useSearch();
@@ -36,9 +36,14 @@ function NotificationsPage() {
 
   const query = useQuery(notificationsQuery({ page, per_page: PER_PAGE }));
   const items = query.data?.notifications ?? [];
+  const total = query.data?.total ?? 0;
   const newest = newestId(items);
 
-  // Reading the archive is reading them: the bell must not keep claiming they are new.
+  // The cursor as it stood on arrival: the effect below moves it, and the rows the player came
+  // here to read must not lose their mark the instant they land.
+  const unreadFrom = useRef(readThrough).current;
+
+  // Reading the archive is reading them; the bell must not go on claiming they are new.
   useEffect(() => {
     if (page === 1 && newest > 0) markReadThrough(newest);
   }, [page, newest]);
@@ -47,9 +52,7 @@ function NotificationsPage() {
     <div className="ff-notif-page">
       <div className="page-head">
         <h1>notifications</h1>
-        {query.data !== undefined && (
-          <span className="ff-notif-page__status">{query.data.total} in total</span>
-        )}
+        {query.isSuccess && <span className="ff-notif-page__status">{total} in total</span>}
       </div>
 
       {query.isPending ? (
@@ -60,11 +63,11 @@ function NotificationsPage() {
         <NotificationsEmpty />
       ) : (
         <>
-          <NotificationList items={items} readThrough={readThrough} />
+          <NotificationList items={items} readThrough={unreadFrom} />
           <Pagination
             page={page}
             perPage={PER_PAGE}
-            total={query.data.total}
+            total={total}
             onPageChange={(next) => void navigate({ search: { page: next } })}
           />
         </>

@@ -48,8 +48,8 @@ function ForgotPasswordPage() {
 
   if (denial !== null) return <PolicyGate error={error} />;
 
-  // The server answers 200 for an address it has never seen, and so do we: telling the caller
-  // which addresses have accounts is an oracle, and the confirmation is the same either way.
+  // The server answers 200 for an address it has never seen, and so does this screen: branching
+  // on whether the account exists would turn the form into an account-enumeration oracle.
   if (request.isSuccess) {
     return (
       <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
@@ -81,18 +81,23 @@ function ForgotPasswordPage() {
         <p className="ff-muted">
           Give us the address on the account and we will send a link to set a new password.
         </p>
-        <Form onSubmit={submit}>
-          <Field label="Email" htmlFor="forgot-email" required error={emailError}>
+
+        <Form
+          onSubmit={submit}
+          footer={
+            <Button type="submit" variant="primary" fullWidth loading={request.isPending}>
+              Send the reset link
+            </Button>
+          }
+        >
+          <Field name="email" label="Email" required error={emailError}>
             <Input
-              id="forgot-email"
               ref={emailRef}
               type="email"
-              name="email"
               autoComplete="email"
-              required
               maxLength={255}
+              invalid={emailError !== undefined}
               value={email}
-              aria-invalid={emailError !== undefined}
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
@@ -104,12 +109,6 @@ function ForgotPasswordPage() {
               </Alert>
             </div>
           )}
-
-          <div className="ff-form__footer">
-            <Button type="submit" variant="primary" block loading={request.isPending}>
-              Send the reset link
-            </Button>
-          </div>
         </Form>
 
         <p aria-live="polite" role="status" className="ff-sr-only">

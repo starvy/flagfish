@@ -49,6 +49,21 @@ func (s *Service) UnlockHint(ctx context.Context, challengeID, hintID int64, act
 		return Unlock{}, fmt.Errorf("gameplay: unlock hint: get hint %d: %w", hintID, err)
 	}
 
+	// The challenge's own gate comes first: a hint belongs to a challenge, and a challenge whose
+	// prerequisites are unsolved shows no hints at all — so for this account the hint does not
+	// exist, and it answers exactly as a nonexistent one does. Anything else is an oracle for the
+	// half of the board the prerequisites are hiding.
+	chReqs, err := prereq.Parse(hint.ChallengeRequirements)
+	if err != nil {
+		return Unlock{}, fmt.Errorf("gameplay: unlock hint: parse requirements (challenge %d): %w", challengeID, err)
+	}
+	if met, metErr := s.challengePrereqsMet(ctx, q, actor, chReqs); metErr != nil {
+		return Unlock{}, fmt.Errorf("gameplay: unlock hint %d: %w", hintID, metErr)
+	} else if !met {
+		return Unlock{}, fmt.Errorf("gameplay: unlock hint: %w: id=%d challenge=%d (prerequisites unmet)",
+			ErrHintNotFound, hintID, challengeID)
+	}
+
 	// Prerequisite gate: a hint whose prerequisite hints this account has not all unlocked cannot
 	// be purchased. Checked before the account lock and the charge — rejecting a locked hint must
 	// not spend a point.
@@ -154,7 +169,7 @@ func (s *Service) lockAccount(ctx context.Context, q *db.Queries, actor Actor, i
 }
 
 // awards.name is NOT NULL and hints.title is not, so fall back to something stable.
-func hintName(h db.Hint) string {
+func hintName(h db.GetHintRow) string {
 	if h.Title != nil && *h.Title != "" {
 		return "Hint: " + *h.Title
 	}

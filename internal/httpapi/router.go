@@ -142,7 +142,9 @@ func New(opts Options) *Server {
 		gated.Use(authenticate(opts.Auth, opts.Log))
 		gated.Use(banWall()) // covers cookie and token. See PolicyBanCoversTokenAuth.
 		gated.Use(csrf())
-		gated.Use(rateLimit(opts.Limiter, opts.Log))
+		// The root router is handed to the limiter so it can resolve which route a request matches:
+		// the bucket is keyed on the pattern and the parsed id, and the raw path is neither.
+		gated.Use(rateLimit(r, opts.Limiter, opts.Log))
 
 		s.gated = gated
 		s.Public = s.newAPI(gated, "/api/v1", "flagfish", policy.SurfacePublic)
