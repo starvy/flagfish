@@ -1,0 +1,18 @@
+# E2E override for deploy/compose.yaml. Layer it with:
+#   docker compose -f deploy/compose.yaml -f deploy/compose.e2e.yaml up -d
+#
+# It publishes Postgres to the host so the black-box suite can do the one thing it is
+# allowed to do out of band: mark the instance set up and promote the first admin —
+# there is no self-serve setup or admin-bootstrap endpoint to do it through the API.
+# Everything the suite ASSERTS still goes over HTTP.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${E2E_PG_PORT:-55432}:5432"
+
+  # Keep the app's start gate short so `task e2e` reaches green quickly.
+  flagfish:
+    healthcheck:
+      interval: 3s
+      start_period: 5s

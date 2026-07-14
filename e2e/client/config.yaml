@@ -1,0 +1,11 @@
+# oapi-codegen configuration for the black-box E2E client.
+#
+# Regenerate with `task e2e-gen` (it redirects stdout to client.gen.go). The client
+# is generated from the repo-root openapi.yaml — the same contract the binary emits —
+# so it stays in lockstep with the public API by construction.
+package: client
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true

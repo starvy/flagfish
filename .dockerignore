@@ -1,0 +1,38 @@
+# Keep the build context small and, more importantly, keep host state OUT of it.
+# A stale ./bin or web/node_modules in the context is a source of "works on my
+# machine" images.
+
+.git/
+.github/
+.claude/
+
+# Host-built artifacts. The image builds its own.
+bin/
+tmp/
+dist/
+web/dist/
+web/node_modules/
+node_modules/
+
+# Secrets must never enter a build context — they end up in an image layer.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dev-only tooling: not needed to compile the binary, and tools/go.mod would
+# otherwise invalidate the `go mod download` cache layer on every tool bump.
+tools/
+Taskfile.yml
+compose.yaml
+.golangci.yml
+.air.toml
+.editorconfig
+
+# Docs and spec
+docs/
+*.md
+
+coverage.out
+*.test

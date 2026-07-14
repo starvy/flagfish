@@ -1,0 +1,57 @@
+# --- pinned dev tools + build output ---------------------------------------
+# Reproduced by `task tools` from tools/go.mod. Never committed.
+/bin/
+/tmp/
+/dist/
+coverage.out
+coverage.html
+*.test
+*.out
+*.prof
+
+# --- secrets ----------------------------------------------------------------
+# .env.example is committed; .env is not, ever.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- frontend ---------------------------------------------------------------
+node_modules/
+web/dist/
+web/node_modules/
+web/.vite/
+web/src/routeTree.gen.ts
+*.tsbuildinfo
+
+# The built SPA is staged here for go:embed by `task web-build`. Only the
+# placeholder is tracked, so a backend-only `go build` still compiles.
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+
+# --- editors / OS -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+*~
+
+# VS Code: share the workspace settings, ignore the personal ones.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# --- local scratch ----------------------------------------------------------
+# Real CTFd export.zip archives used by the importer goldens are large and often
+# contain real user data. Fixtures live in test/golden/testdata/ and are curated.
+/scratch/
+*.local.*
+
+# go-task fingerprint cache
+.task/
+
+# e2e: the 3.0-downgraded spec is a build-time intermediate for oapi-codegen; the
+# committed client.gen.go is what matters. Regenerate both with `task e2e-gen`.
+/e2e/client/openapi.gen.yaml

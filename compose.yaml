@@ -1,0 +1,134 @@
+name: flagfish
+
+# Compose v5 — no `version:` key (it has been ignored since Compose v2 and is an
+# error in v5). Postgres 17 only (CLAUDE.md: "the stack — do not relitigate").
+#
+# Two databases on purpose:
+#   postgres      :5432  dev database. `task up` + `task migrate` + `task run`.
+#   postgres-test :5433  the suite's database. Torn down and recreated by the
+#                        integration/concurrency tests, which are DESTRUCTIVE.
+#                        Mocks are banned (CLAUDE.md "Testing") — the invariants
+#                        live in the CONSTRAINTS, so the tests need a real server.
+#
+# Keeping them separate means `task test-concurrency` can DROP SCHEMA at will
+# without nuking the database you were poking at in adminer.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: flagfish-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flagfish
+      POSTGRES_PASSWORD: flagfish
+      POSTGRES_DB: flagfish
+      # Deterministic collation. A locale change silently reorders every
+      # text index; pin it rather than inherit the host's.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # -U/-d are required: without them pg_isready checks the *root* role and
+      # reports healthy while the app database is still initialising.
+      test: ["CMD-SHELL", "pg_isready -U flagfish -d flagfish -q"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    command:
+      - postgres
+      # The concurrency suite runs N goroutines per case, each holding
+      # a real connection. The default 100 is not enough headroom.
+      - -c
+      - max_connections=200
+      # Loud beats silent (CLAUDE.md #4): log anything that blocks for a second,
+      # so a lock-ordering regression on the submit hot path shows up
+      # in `docker compose logs` instead of only in a p99 chart.
+      - -c
+      - log_lock_waits=on
+      - -c
+      - deadlock_timeout=1s
+      - -c
+      - log_min_duration_statement=500
+
+  # Same server, different port, no volume: the test database is CATTLE.
+  # tmpfs + fsync=off is not a micro-optimisation, it is what makes a suite that
+  # truncates every table between cases tolerable to run on every save.
+  # Durability is irrelevant here by construction — the data lives for one test.
+  postgres-test:
+    image: postgres:17-alpine
+    container_name: flagfish-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flagfish
+      POSTGRES_PASSWORD: flagfish
+      POSTGRES_DB: flagfish_test
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flagfish -d flagfish_test -q"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - max_connections=300
+      - -c
+      - log_lock_waits=on
+      - -c
+      - deadlock_timeout=1s
+
+  # Object storage for the test suite. Same "cattle" posture as postgres-test: no volume, tmpfs
+  # data, torn down freely. The integration tests exercise the real S3-compatible backend against
+  # this, so "S3-ready" is actually proven rather than mocked. Production points at a real bucket.
+  minio-test:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: flagfish-minio-test
+    restart: unless-stopped
+    command: server /data --address ":9000"
+    environment:
+      MINIO_ROOT_USER: flagfishtest
+      MINIO_ROOT_PASSWORD: flagfishtest123
+    ports:
+      - "127.0.0.1:9002:9000"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+  # Optional. `task up` does not start it; `docker compose --profile tools up -d`
+  # (or `task db-ui`) does. Keeps the default dev loop to two containers.
+  adminer:
+    image: adminer:5
+    container_name: flagfish-adminer
+    profiles: [tools]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

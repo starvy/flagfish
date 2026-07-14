@@ -1,0 +1,165 @@
+name: flagfish-deploy
+
+# Production-shaped deployment: the single static binary, Postgres 17, and MinIO
+# for challenge files. It is what a competition would run on one host behind a TLS
+# reverse proxy.
+#
+# The topology mirrors the boot contract:
+#   migrate     one-shot `flagfish migrate` (advisory-locked), runs to completion FIRST.
+#   minio-init  one-shot `mc mb`, creates the bucket the app expects, then exits.
+#   flagfish      `serve --with-worker` — the default one-container topology.
+#
+# Migrations run in a SINGLE one-shot job, never in every replica. `flagfish migrate`
+# takes a pg_advisory_lock so it is safe with N replicas, but a job that runs once and
+# must exit 0 before the app starts is the honest expression of "migrate, then serve":
+# scale `flagfish` freely, `migrate` stays a job.
+#
+# Secrets come from .env (see .env.example), never from this file and never baked into
+# an image layer. Copy .env.example to .env and fill it in before the first run.
+#
+# First run is not complete until the instance is marked set up and an admin exists —
+# there is no self-serve setup endpoint. See docs/ops/deploy.md.
+
+x-flagfish-build: &flagfish-build
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    args:
+      VERSION: ${FLAGFISH_VERSION:-dev}
+
+# Every service that talks to Postgres shares the same derived DSN, written once.
+# sslmode=disable is safe here because Postgres is not published off the compose
+# network; require TLS if you point the app at a managed database instead.
+x-database-url: &database-url
+  DATABASE_URL: postgres://${POSTGRES_USER:-flagfish}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-flagfish}?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flagfish}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-flagfish}
+      # Deterministic collation: a locale change silently reorders every text index.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published: the app reaches it over the compose network. One fewer attack surface.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flagfish} -d ${POSTGRES_DB:-flagfish} -q"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - miniodata:/data
+    # Not published: the app writes over the compose network. Reach the console with
+    # `docker compose port minio 9001` if you need it for debugging.
+    healthcheck:
+      # mc ships in the server image; the health endpoint needs no extra tooling.
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # Creates the bucket the app writes challenge files to, then exits. Idempotent:
+  # --ignore-existing makes a re-run a no-op, so `deploy-up` is safe to repeat.
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      FLAGFISH_S3_BUCKET: ${FLAGFISH_S3_BUCKET:-flagfish-files}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$FLAGFISH_S3_BUCKET"
+        echo "bucket local/$$FLAGFISH_S3_BUCKET ready"
+    restart: "no"
+
+  # One-shot schema migration. Runs to a successful exit before the app is allowed to
+  # start; a failed migration therefore blocks the rollout instead of a half-migrated
+  # app taking traffic.
+  migrate:
+    <<: *flagfish-build
+    image: ${FLAGFISH_IMAGE:-flagfish:latest}
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *database-url
+    restart: "no"
+
+  flagfish:
+    <<: *flagfish-build
+    image: ${FLAGFISH_IMAGE:-flagfish:latest}
+    restart: unless-stopped
+    # serve --with-worker is the image default (one container: API + job worker).
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *database-url
+      FLAGFISH_ADDR: ":8000"
+      FLAGFISH_LOG_FORMAT: ${FLAGFISH_LOG_FORMAT:-json}
+      FLAGFISH_LOG_LEVEL: ${FLAGFISH_LOG_LEVEL:-info}
+      # Behind a reverse proxy this MUST name the proxy's address, or every request —
+      # and every anti-cheat IP — is attributed to the proxy. Empty trusts the socket peer.
+      FLAGFISH_TRUSTED_PROXIES: ${FLAGFISH_TRUSTED_PROXIES:-}
+      FLAGFISH_RATE_LIMIT: ${FLAGFISH_RATE_LIMIT:-60}
+      FLAGFISH_RATE_WINDOW: ${FLAGFISH_RATE_WINDOW:-1m}
+      # Challenge file storage. Path-style + plaintext is what MinIO on the compose
+      # network wants; a real S3/R2 bucket would flip USE_SSL on and PATH_STYLE off.
+      FLAGFISH_S3_ENDPOINT: minio:9000
+      FLAGFISH_S3_BUCKET: ${FLAGFISH_S3_BUCKET:-flagfish-files}
+      FLAGFISH_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      FLAGFISH_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      FLAGFISH_S3_USE_SSL: "false"
+      FLAGFISH_S3_PATH_STYLE: "true"
+    ports:
+      # Plaintext HTTP. Terminate TLS at a reverse proxy in front of this.
+      - "${FLAGFISH_HTTP_ADDR:-8000}:8000"
+    healthcheck:
+      # distroless has no shell or curl, so the binary probes itself: `flagfish healthcheck`
+      # GETs /healthz on the local listener and exits non-zero on anything but 200.
+      test: ["CMD", "/flagfish", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+volumes:
+  pgdata:
+  miniodata:

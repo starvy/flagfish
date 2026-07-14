@@ -1,0 +1,325 @@
+{
+  "awards": [
+    {
+      "id": 1,
+      "date": "2024-01-01T12:00:00",
+      "name": "Bonus",
+      "type": "standard",
+      "value": 10,
+      "team_id": 1,
+      "user_id": 2,
+      "challenge_id": null
+    },
+    {
+      "id": 2,
+      "date": "2024-01-01T11:30:00",
+      "name": "Hint spend",
+      "type": "standard",
+      "value": -50,
+      "team_id": 1,
+      "user_id": 2,
+      "challenge_id": null
+    }
+  ],
+  "brackets": [
+    {
+      "id": 1,
+      "name": "Open",
+      "applies_to": "users",
+      "description": null
+    }
+  ],
+  "challenges": [
+    {
+      "id": 1,
+      "name": "Warmup",
+      "type": "standard",
+      "decay": null,
+      "logic": "any",
+      "state": "visible",
+      "value": 100,
+      "initial": null,
+      "minimum": null,
+      "category": "misc",
+      "function": "static",
+      "flag_mode": "static",
+      "first_blood": "none",
+      "max_attempts": 0,
+      "requirements": {}
+    },
+    {
+      "id": 2,
+      "name": "Regexy",
+      "type": "standard",
+      "decay": null,
+      "logic": "any",
+      "state": "visible",
+      "value": 200,
+      "initial": null,
+      "minimum": null,
+      "category": "misc",
+      "function": "static",
+      "flag_mode": "static",
+      "first_blood": "none",
+      "max_attempts": 0,
+      "requirements": {}
+    },
+    {
+      "id": 3,
+      "name": "Decayer",
+      "type": "dynamic",
+      "decay": 25,
+      "logic": "any",
+      "state": "visible",
+      "value": 238,
+      "initial": 500,
+      "minimum": 100,
+      "category": "pwn",
+      "function": "logarithmic",
+      "flag_mode": "static",
+      "first_blood": "none",
+      "max_attempts": 0,
+      "requirements": {
+        "prerequisites": [
+          1
+        ]
+      }
+    }
+  ],
+  "config": [
+    {
+      "key": "account_visibility",
+      "value": "public"
+    },
+    {
+      "key": "challenge_visibility",
+      "value": "private"
+    },
+    {
+      "key": "ctf_description",
+      "value": "a fixture event"
+    },
+    {
+      "key": "ctf_name",
+      "value": "Fixture CTF"
+    },
+    {
+      "key": "ctf_version",
+      "value": "3.8.6"
+    },
+    {
+      "key": "custom_plugin_setting",
+      "value": "kept-verbatim"
+    },
+    {
+      "key": "paused",
+      "value": "false"
+    },
+    {
+      "key": "registration_visibility",
+      "value": "public"
+    },
+    {
+      "key": "score_visibility",
+      "value": "public"
+    },
+    {
+      "key": "user_mode",
+      "value": "users"
+    }
+  ],
+  "files": [
+    {
+      "id": 1,
+      "sha256": "9c7920b7c690aa7956cc71c288d3b8882a0fbf9618a7e15bfb054a6a73f9a53d",
+      "location": "a1b2c3/warmup.zip",
+      "size_bytes": 22,
+      "challenge_id": 1
+    },
+    {
+      "id": 2,
+      "sha256": "c3fd7366ac9f7698ddc4d10139f2c55502fe8a115e859cd038d497c3e9473c16",
+      "location": "d4e5f6/logo.png",
+      "size_bytes": 17,
+      "challenge_id": null
+    }
+  ],
+  "flags": [
+    {
+      "id": 1,
+      "type": "static",
+      "content": "flag{warmup}",
+      "challenge_id": 1,
+      "case_insensitive": false
+    },
+    {
+      "id": 2,
+      "type": "static",
+      "content": "flag{WARMUP2}",
+      "challenge_id": 1,
+      "case_insensitive": true
+    },
+    {
+      "id": 3,
+      "type": "regex",
+      "content": "flag\\{.*\\}",
+      "challenge_id": 2,
+      "case_insensitive": true
+    },
+    {
+      "id": 4,
+      "type": "static",
+      "content": "flag{decay}",
+      "challenge_id": 3,
+      "case_insensitive": false
+    }
+  ],
+  "hints": [
+    {
+      "id": 1,
+      "cost": 50,
+      "title": "Nudge",
+      "content": "look closer",
+      "position": 0,
+      "challenge_id": 3
+    },
+    {
+      "id": 2,
+      "cost": 0,
+      "title": null,
+      "content": "look even closer",
+      "position": 0,
+      "challenge_id": 3
+    }
+  ],
+  "instance": [
+    {
+      "version": "test",
+      "user_mode": "users"
+    }
+  ],
+  "solves": [
+    {
+      "id": 1,
+      "date": "2024-01-01T10:00:00",
+      "value": 100,
+      "team_id": 1,
+      "user_id": 2,
+      "challenge_id": 1,
+      "submission_id": 1
+    },
+    {
+      "id": 3,
+      "date": "2024-01-01T11:00:00",
+      "value": 238,
+      "team_id": 1,
+      "user_id": 2,
+      "challenge_id": 3,
+      "submission_id": 3
+    }
+  ],
+  "submissions": [
+    {
+      "id": 1,
+      "ip": "10.0.0.5",
+      "date": "2024-01-01T10:00:00",
+      "type": "correct",
+      "team_id": 1,
+      "user_id": 2,
+      "provided": "flag{warmup}",
+      "challenge_id": 1,
+      "attributed_account_id": 2
+    },
+    {
+      "id": 2,
+      "ip": "10.0.0.6",
+      "date": "2024-01-01T10:05:00",
+      "type": "incorrect",
+      "team_id": 1,
+      "user_id": 3,
+      "provided": "nope",
+      "challenge_id": 1,
+      "attributed_account_id": null
+    },
+    {
+      "id": 3,
+      "ip": "10.0.0.5",
+      "date": "2024-01-01T11:00:00",
+      "type": "correct",
+      "team_id": 1,
+      "user_id": 2,
+      "provided": "flag{decay}",
+      "challenge_id": 3,
+      "attributed_account_id": 2
+    }
+  ],
+  "tags": [
+    {
+      "id": 1,
+      "value": "beginner",
+      "challenge_id": 1
+    },
+    {
+      "id": 2,
+      "value": "pwn",
+      "challenge_id": 3
+    }
+  ],
+  "teams": [
+    {
+      "id": 1,
+      "name": "Team One",
+      "email": "team1@x.ctf",
+      "banned": false,
+      "hidden": false,
+      "secret": null,
+      "bracket_id": 1,
+      "captain_id": 2,
+      "password_hash": "$2b$12$0123456789012345678901uReTUYbXNq9m0Zx1c2v3B4n5M6k7J8i"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "name": "admin",
+      "role": "admin",
+      "email": "admin@x.ctf",
+      "banned": false,
+      "hidden": false,
+      "secret": null,
+      "team_id": null,
+      "verified": true,
+      "bracket_id": null,
+      "password_hash": "$2b$12$0123456789012345678901uReTUYbXNq9m0Zx1c2v3B4n5M6k7J8i",
+      "must_change_password": false
+    },
+    {
+      "id": 2,
+      "name": "alice",
+      "role": "user",
+      "email": "alice@x.ctf",
+      "banned": false,
+      "hidden": false,
+      "secret": null,
+      "team_id": 1,
+      "verified": true,
+      "bracket_id": 1,
+      "password_hash": "$2b$12$0123456789012345678901uReTUYbXNq9m0Zx1c2v3B4n5M6k7J8i",
+      "must_change_password": false
+    },
+    {
+      "id": 3,
+      "name": "bob",
+      "role": "user",
+      "email": "bob@x.ctf",
+      "banned": false,
+      "hidden": false,
+      "secret": null,
+      "team_id": 1,
+      "verified": true,
+      "bracket_id": null,
+      "password_hash": "$2b$12$0123456789012345678901uReTUYbXNq9m0Zx1c2v3B4n5M6k7J8i",
+      "must_change_password": false
+    }
+  ]
+}

@@ -1,0 +1,1584 @@
+components:
+  schemas:
+    AttemptInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/AttemptInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        flag:
+          maxLength: 512
+          type: string
+      required:
+        - flag
+      type: object
+    AttemptOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/AttemptOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        first_blood:
+          type: boolean
+        status:
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - status
+        - first_blood
+        - value
+      type: object
+    BracketBody:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+      type: object
+    BracketsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/BracketsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        brackets:
+          items:
+            $ref: "#/components/schemas/BracketBody"
+          type:
+            - array
+            - "null"
+      required:
+        - brackets
+      type: object
+    ChallengeDetailOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ChallengeDetailOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        attribution:
+          type: string
+        category:
+          type: string
+        connection_info:
+          type: string
+        description:
+          type: string
+        files:
+          items:
+            $ref: "#/components/schemas/ChallengeFile"
+          type:
+            - array
+            - "null"
+        function:
+          type: string
+        hints:
+          items:
+            $ref: "#/components/schemas/ChallengeHint"
+          type:
+            - array
+            - "null"
+        id:
+          format: int64
+          type: integer
+        locked:
+          type: boolean
+        max_attempts:
+          format: int32
+          type: integer
+        name:
+          type: string
+        solve_count:
+          format: int64
+          type:
+            - integer
+            - "null"
+        solved:
+          type: boolean
+        state:
+          type: string
+        tags:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        type:
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - id
+        - name
+        - category
+        - description
+        - type
+        - value
+        - function
+        - max_attempts
+        - state
+        - solve_count
+        - solved
+        - locked
+        - tags
+        - files
+        - hints
+      type: object
+    ChallengeFile:
+      additionalProperties: false
+      properties:
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        size_bytes:
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - size_bytes
+      type: object
+    ChallengeHint:
+      additionalProperties: false
+      properties:
+        cost:
+          format: int32
+          type: integer
+        id:
+          format: int64
+          type: integer
+        locked:
+          type: boolean
+        title:
+          type:
+            - string
+            - "null"
+        unlocked:
+          type: boolean
+      required:
+        - id
+        - title
+        - cost
+        - unlocked
+        - locked
+      type: object
+    ChallengeListItem:
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        function:
+          type: string
+        id:
+          format: int64
+          type: integer
+        locked:
+          type: boolean
+        name:
+          type: string
+        solve_count:
+          format: int64
+          type:
+            - integer
+            - "null"
+        solved:
+          type: boolean
+        value:
+          format: int32
+          type: integer
+      required:
+        - id
+        - name
+        - category
+        - value
+        - function
+        - solve_count
+        - solved
+        - locked
+      type: object
+    ChallengeSolve:
+      additionalProperties: false
+      properties:
+        date:
+          format: date-time
+          type: string
+        name:
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - name
+        - value
+        - date
+      type: object
+    ChallengesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ChallengesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenges:
+          items:
+            $ref: "#/components/schemas/ChallengeListItem"
+          type:
+            - array
+            - "null"
+      required:
+        - challenges
+      type: object
+    ChangePasswordInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ChangePasswordInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        current_password:
+          type: string
+        new_password:
+          maxLength: 128
+          minLength: 8
+          type: string
+      required:
+        - current_password
+        - new_password
+      type: object
+    ClearedOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ClearedOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ok:
+          type: boolean
+      required:
+        - ok
+      type: object
+    ConfirmEmailInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ConfirmEmailInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        token:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - token
+      type: object
+    CreateTeamInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/CreateTeamInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+        password:
+          maxLength: 128
+          type: string
+      required:
+        - name
+      type: object
+    CreateTokenInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/CreateTokenInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          maxLength: 255
+          type: string
+        ttl_hours:
+          format: int64
+          maximum: 8760
+          minimum: 1
+          type: integer
+      type: object
+    CreateTokenOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/CreateTokenOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        token:
+          description: The plaintext token. Shown exactly once; store it now, it cannot be retrieved again.
+          type: string
+      required:
+        - id
+        - token
+        - expires_at
+      type: object
+    ErrorDetail:
+      additionalProperties: false
+      properties:
+        location:
+          description: Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
+          type: string
+        message:
+          description: Error message text
+          type: string
+        value:
+          description: The value at the given location
+      type: object
+    ErrorModel:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ErrorModel.json
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          description: A human-readable explanation specific to this occurrence of the problem.
+          examples:
+            - Property foo is required but is missing.
+          type: string
+        errors:
+          description: Optional list of individual error details
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+          type:
+            - array
+            - "null"
+        instance:
+          description: A URI reference that identifies the specific occurrence of the problem.
+          examples:
+            - https://example.com/error-log/abc123
+          format: uri
+          type: string
+        status:
+          description: HTTP status code
+          examples:
+            - 400
+          format: int64
+          type: integer
+        title:
+          description: A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+          examples:
+            - Bad Request
+          type: string
+        type:
+          default: about:blank
+          description: A URI reference to human-readable documentation for the error.
+          examples:
+            - https://example.com/errors/example
+          format: uri
+          type: string
+      type: object
+    InstanceOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/InstanceOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ctf_name:
+          type: string
+        theme:
+          type: string
+        theme_tokens:
+          additionalProperties:
+            type: string
+          type: object
+      required:
+        - ctf_name
+        - theme
+      type: object
+    JoinTeamInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/JoinTeamInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+        password:
+          maxLength: 128
+          type: string
+      required:
+        - name
+      type: object
+    LeftTeamOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/LeftTeamOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ok:
+          type: boolean
+      required:
+        - ok
+      type: object
+    ListNotificationsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ListNotificationsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        notifications:
+          items:
+            $ref: "#/components/schemas/NotificationBody"
+          type:
+            - array
+            - "null"
+        page:
+          format: int64
+          type: integer
+        per_page:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+      required:
+        - notifications
+        - total
+        - page
+        - per_page
+      type: object
+    ListTokensOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ListTokensOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        tokens:
+          items:
+            $ref: "#/components/schemas/TokenListItem"
+          type:
+            - array
+            - "null"
+      required:
+        - tokens
+      type: object
+    LoginInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/LoginInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          format: email
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+      type: object
+    MeOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/MeOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          type: string
+        is_admin:
+          type: boolean
+        name:
+          type: string
+        role:
+          type: string
+        team_id:
+          format: int64
+          type: integer
+        user_id:
+          format: int64
+          type: integer
+        verified:
+          type: boolean
+      required:
+        - user_id
+        - name
+        - email
+        - role
+        - verified
+        - is_admin
+      type: object
+    NotificationBody:
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+        date:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        title:
+          type: string
+      required:
+        - id
+        - title
+        - content
+        - date
+      type: object
+    OkOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/OkOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ok:
+          type: boolean
+      required:
+        - ok
+      type: object
+    RegisterInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/RegisterInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          format: email
+          maxLength: 255
+          type: string
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+        password:
+          maxLength: 128
+          minLength: 8
+          type: string
+      required:
+        - name
+        - email
+        - password
+      type: object
+    RequestResetInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/RequestResetInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          format: email
+          maxLength: 255
+          type: string
+      required:
+        - email
+      type: object
+    ResetPasswordInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ResetPasswordInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        password:
+          maxLength: 128
+          minLength: 8
+          type: string
+        token:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - token
+        - password
+      type: object
+    ScoreboardOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ScoreboardOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        standings:
+          items:
+            $ref: "#/components/schemas/Standing"
+          type:
+            - array
+            - "null"
+      required:
+        - standings
+      type: object
+    SessionOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/SessionOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        csrf_token:
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        user_id:
+          format: int64
+          type: integer
+      required:
+        - user_id
+        - csrf_token
+        - expires_at
+      type: object
+    SolvesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/SolvesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        solves:
+          items:
+            $ref: "#/components/schemas/ChallengeSolve"
+          type:
+            - array
+            - "null"
+      required:
+        - solves
+      type: object
+    Standing:
+      additionalProperties: false
+      properties:
+        account_id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        rank:
+          format: int64
+          type: integer
+        score:
+          format: int64
+          type: integer
+      required:
+        - rank
+        - account_id
+        - name
+        - score
+      type: object
+    TeamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/TeamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          type: string
+        country:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        is_captain:
+          type: boolean
+        members:
+          items:
+            $ref: "#/components/schemas/TeamMember"
+          type:
+            - array
+            - "null"
+        name:
+          type: string
+        score:
+          format: int64
+          type: integer
+        website:
+          type: string
+      required:
+        - id
+        - name
+        - score
+        - created_at
+        - members
+      type: object
+    TeamMember:
+      additionalProperties: false
+      properties:
+        captain:
+          type: boolean
+        name:
+          type: string
+        points:
+          format: int64
+          type: integer
+        solve_count:
+          format: int64
+          type: integer
+        user_id:
+          format: int64
+          type: integer
+      required:
+        - user_id
+        - name
+        - captain
+        - solve_count
+        - points
+      type: object
+    TokenListItem:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        description:
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+      required:
+        - id
+        - created_at
+        - expires_at
+      type: object
+    UnlockOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/UnlockOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        charged:
+          format: int32
+          type: integer
+        content:
+          type: string
+        hint_id:
+          format: int64
+          type: integer
+        score:
+          format: int64
+          type: integer
+      required:
+        - hint_id
+        - content
+        - charged
+        - score
+      type: object
+info:
+  title: flagfish
+  version: 1.0.0
+openapi: 3.1.0
+paths:
+  /brackets:
+    get:
+      operationId: brackets
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BracketsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List scoreboard brackets
+      tags:
+        - scoreboard
+  /challenges:
+    get:
+      operationId: list-challenges
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the challenge board
+      tags:
+        - challenges
+  /challenges/{id}:
+    get:
+      operationId: challenge-detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengeDetailOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get one challenge with its tags, files and hints
+      tags:
+        - challenges
+  /challenges/{id}/attempt:
+    post:
+      operationId: attempt
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttemptInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Submit a flag for a challenge
+      tags:
+        - gameplay
+  /challenges/{id}/hints/{hint_id}/unlock:
+    post:
+      operationId: unlock-hint
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: hint_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnlockOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Unlock a hint
+      tags:
+        - gameplay
+  /challenges/{id}/solves:
+    get:
+      operationId: challenge-solves
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SolvesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List who solved a challenge
+      tags:
+        - challenges
+  /files/{id}:
+    get:
+      operationId: download-file
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Download a challenge file
+      tags:
+        - challenges
+  /instance:
+    get:
+      operationId: instance
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Public instance branding and theme
+      tags:
+        - instance
+  /login:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionOutputBody"
+          description: OK
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Log in with email and password
+      tags:
+        - auth
+  /logout:
+    post:
+      operationId: logout
+      parameters:
+        - in: cookie
+          name: flagfish_session
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearedOutputBody"
+          description: OK
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Log out the current session
+      tags:
+        - auth
+  /me:
+    get:
+      operationId: me
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get the current account
+      tags:
+        - auth
+  /me/password:
+    post:
+      operationId: change-password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionOutputBody"
+          description: OK
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Change the current account's password
+      tags:
+        - auth
+  /me/team:
+    get:
+      operationId: my-team
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The caller's team
+      tags:
+        - teams
+  /me/team/leave:
+    post:
+      operationId: leave-team
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeftTeamOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Leave the caller's team
+      tags:
+        - teams
+  /notifications:
+    get:
+      operationId: list-notifications
+      parameters:
+        - explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            format: int64
+            maximum: 1000000
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListNotificationsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List notifications (paginated)
+      tags:
+        - notifications
+  /register:
+    post:
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionOutputBody"
+          description: OK
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Register a new account
+      tags:
+        - auth
+  /reset-password:
+    patch:
+      operationId: reset-apply
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set a new password with a reset token
+      tags:
+        - auth
+    post:
+      operationId: reset-request
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestResetInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Request a password reset email
+      tags:
+        - auth
+  /scoreboard:
+    get:
+      operationId: scoreboard
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+        - explode: false
+          in: query
+          name: as_of
+          schema:
+            format: date-time
+            type: string
+        - explode: false
+          in: query
+          name: preview
+          schema:
+            type: boolean
+        - explode: false
+          in: query
+          name: bracket
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreboardOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get the standings
+      tags:
+        - scoreboard
+  /teams:
+    post:
+      operationId: create-team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a team and become its captain
+      tags:
+        - teams
+  /teams/join:
+    post:
+      operationId: join-team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinTeamInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Join a team by name and password
+      tags:
+        - teams
+  /teams/{id}:
+    get:
+      operationId: team-detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A team's public profile
+      tags:
+        - teams
+  /tokens:
+    get:
+      operationId: list-tokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTokensOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the caller's API tokens
+      tags:
+        - tokens
+    post:
+      operationId: create-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTokenInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTokenOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Mint an API token
+      tags:
+        - tokens
+  /tokens/{id}:
+    delete:
+      operationId: delete-token
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke an API token
+      tags:
+        - tokens
+  /verify/confirm:
+    post:
+      operationId: verify-confirm
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmEmailInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Confirm an email address with a token
+      tags:
+        - auth
+  /verify/resend:
+    post:
+      operationId: verify-resend
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Resend the email verification link
+      tags:
+        - auth
+servers:
+  - url: /api/v1

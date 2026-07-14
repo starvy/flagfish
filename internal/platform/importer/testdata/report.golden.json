@@ -1,0 +1,150 @@
+{
+  "source_revision": "48d8250d19bd",
+  "source_ordinal": 29,
+  "source_hint": "3.8.6",
+  "rows": {
+    "awards": {
+      "read": 2,
+      "written": 2,
+      "dropped": 0
+    },
+    "brackets": {
+      "read": 1,
+      "written": 1,
+      "dropped": 0
+    },
+    "challenges": {
+      "read": 3,
+      "written": 3,
+      "dropped": 0
+    },
+    "config": {
+      "read": 11,
+      "written": 10,
+      "dropped": 0
+    },
+    "files": {
+      "read": 2,
+      "written": 2,
+      "dropped": 0
+    },
+    "flags": {
+      "read": 4,
+      "written": 4,
+      "dropped": 0
+    },
+    "hints": {
+      "read": 2,
+      "written": 2,
+      "dropped": 0
+    },
+    "solves": {
+      "read": 2,
+      "written": 2,
+      "dropped": 0
+    },
+    "submissions": {
+      "read": 3,
+      "written": 3,
+      "dropped": 0
+    },
+    "tags": {
+      "read": 3,
+      "written": 2,
+      "dropped": 1
+    },
+    "teams": {
+      "read": 1,
+      "written": 1,
+      "dropped": 0
+    },
+    "users": {
+      "read": 3,
+      "written": 3,
+      "dropped": 0
+    }
+  },
+  "findings": [
+    {
+      "severity": "warning",
+      "code": "UNMAPPED_TABLE",
+      "table": "custom_plugin_data",
+      "count": 1,
+      "detail": "no counterpart in the schema; there is no plugin system"
+    },
+    {
+      "severity": "info",
+      "code": "DEFERRED_TABLE",
+      "table": "notifications",
+      "count": 1,
+      "detail": "subsystem not modelled in this version"
+    },
+    {
+      "severity": "info",
+      "code": "TOKENS_DROPPED",
+      "table": "tokens",
+      "count": 1,
+      "detail": "plaintext credentials are never imported"
+    },
+    {
+      "severity": "info",
+      "code": "DEFERRED_TABLE",
+      "table": "tracking",
+      "count": 1,
+      "detail": "subsystem not modelled in this version"
+    },
+    {
+      "severity": "warning",
+      "code": "CONFIG_DUPLICATE",
+      "table": "config",
+      "detail": "key \"ctf_name\" appears more than once; keeping the highest id"
+    },
+    {
+      "severity": "info",
+      "code": "CONFIG_PRESERVED",
+      "table": "config",
+      "detail": "key \"ctf_version\" kept verbatim via the raw config seam"
+    },
+    {
+      "severity": "info",
+      "code": "CONFIG_PRESERVED",
+      "table": "config",
+      "detail": "key \"custom_plugin_setting\" kept verbatim via the raw config seam"
+    },
+    {
+      "severity": "info",
+      "code": "CONFIG_PRESERVED",
+      "table": "config",
+      "detail": "key \"user_mode\" kept verbatim via the raw config seam"
+    },
+    {
+      "severity": "info",
+      "code": "REQUIREMENTS_NORMALIZED",
+      "count": 1,
+      "detail": "string-encoded requirements decoded"
+    },
+    {
+      "severity": "info",
+      "code": "DEFERRED_TABLE",
+      "table": "tags",
+      "count": 1,
+      "detail": "duplicate tag \"beginner\" on challenge 1 folded"
+    },
+    {
+      "severity": "info",
+      "code": "BLOB_WITHOUT_FILE",
+      "table": "files",
+      "count": 1,
+      "detail": "uploads with no owning file row"
+    },
+    {
+      "severity": "info",
+      "code": "SOLVE_VALUE_STAMPED",
+      "table": "solves",
+      "count": 2,
+      "detail": "each solve stamped with the challenge's current value; the sum matches the source scoreboard, per-solve decay history is not reconstructed"
+    }
+  ],
+  "started_at": "0001-01-01T00:00:00Z",
+  "ended_at": "0001-01-01T00:00:00Z"
+}

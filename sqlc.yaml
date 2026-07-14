@@ -1,0 +1,42 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    # The goose migrations ARE the schema. sqlc reads the same directory, so there is exactly
+    # one source of truth and a query that outruns a migration fails at BUILD time, not at 3am.
+    schema: "internal/db/migrations"
+    queries: "internal/db/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"          # no query builder, no ORM
+        output_files_suffix: ".gen"    # internal/db/*.gen.go — DO NOT EDIT (flagfish CLAUDE.md §7)
+        emit_interface: true           # a Querier the services depend on, not a concrete struct
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        emit_prepared_queries: false
+        overrides:
+          # jsonb: challenges.requirements, hints.requirements, field_entries.value,
+          # challenge_instances.vars, audit_log.before/after. Raw JSON, decoded at the domain edge —
+          # never `any` (flagfish CLAUDE.md: no interface{} in domain code).
+          - db_type: "jsonb"
+            go_type: "encoding/json.RawMessage"
+          - db_type: "jsonb"
+            nullable: true
+            go_type: "encoding/json.RawMessage"
+          # inet: submissions.ip, tracking.ip, audit_log.ip. A host address, not a network — netip.Addr
+          # is the right type and it is comparable, so the anti-cheat detectors can key maps on it directly.
+          - db_type: "inet"
+            go_type: "net/netip.Addr"
+          - db_type: "inet"
+            nullable: true
+            go_type:
+              import: "net/netip"
+              type: "Addr"
+              pointer: true
+          # bytea: challenge_instances.value_hash (sha256 of the flag), files.sha256sum,
+          # api_tokens.token_hash. Always a digest, never a plaintext.
+          - db_type: "bytea"
+            go_type:
+              type: "byte"
+              slice: true

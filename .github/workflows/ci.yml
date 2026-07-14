@@ -1,0 +1,278 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26.5"
+  NODE_VERSION: "24"
+
+jobs:
+  # =========================================================================
+  # ⚠️  NON-NEGOTIABLE. CLAUDE.md #1: internal/domain imports NOTHING.
+  #
+  # Its own job, first in the list, so that when it fails the PR check list says
+  # "boundaries" and not "some lint thing" — without it, `domain` grows a
+  # *pgxpool.Pool within a month.
+  #
+  # This runs in ~15s with no services and no linter. There is no excuse to skip it.
+  # =========================================================================
+  boundaries:
+    name: ⚠️ import boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: Install pinned tools
+        run: go -C tools install tool
+        env:
+          GOBIN: ${{ github.workspace }}/bin
+
+      # The `go list`-based check. Independent of golangci-lint, and — unlike
+      # depguard — it cannot be silenced with a //nolint comment.
+      - name: internal/domain imports nothing
+        run: ${{ github.workspace }}/bin/task check-boundaries
+
+      # The fx dependency graph is validated WITHOUT a database: fx.ValidateApp
+      # resolves every provider and invocation for all three shipping topologies
+      # (serve, worker, serve --with-worker) without constructing anything. A
+      # missing provider or a broken interface fails here, in seconds, no Postgres
+      # required — instead of at `flagfish serve` on a customer's box.
+      - name: fx graph validates (serve / worker / with-worker)
+        run: go test ./internal/app/...
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      # golangci-lint is pinned in tools/go.mod, so CI and the laptop run the
+      # SAME version. A CI-only lint version is a config that drifts silently and
+      # then fails on someone else's PR.
+      - name: Install pinned tools
+        run: go -C tools install tool
+        env:
+          GOBIN: ${{ github.workspace }}/bin
+
+      - name: Cache golangci-lint analysis
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-${{ runner.os }}-${{ hashFiles('tools/go.sum', '.golangci.yml') }}
+          restore-keys: golangci-${{ runner.os }}-
+
+      # depguard (inside this run) is the primary enforcement of the domain
+      # boundary; the `boundaries` job above is the backstop.
+      - name: golangci-lint
+        run: ${{ github.workspace }}/bin/golangci-lint run --output.text.colors=false
+
+      - name: gofumpt / goimports are clean
+        run: |
+          ${{ github.workspace }}/bin/golangci-lint fmt --diff
+
+  # =========================================================================
+  # NilAway — ADVISORY. Uber's inter-procedural nil analysis catches panics the
+  # type system cannot, but it is young enough that a false positive should not
+  # block a merge. `continue-on-error` makes this a report, not a gate: the check
+  # shows up amber, never red. It found zero issues the day it landed; if that
+  # holds it graduates to a blocking step.
+  # =========================================================================
+  nilaway:
+    name: nilaway (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: Install pinned tools
+        run: go -C tools install tool
+        env:
+          GOBIN: ${{ github.workspace }}/bin
+
+      - name: NilAway
+        run: ${{ github.workspace }}/bin/nilaway -include-pkgs="github.com/starvy/flagfish" ./...
+
+  # =========================================================================
+  # DRIFT. The generated code and the OpenAPI document are derived artifacts: if
+  # they can go stale, drift becomes a bug report instead of a BUILD FAILURE.
+  # =========================================================================
+  drift:
+    name: drift (sqlc + openapi + generate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: Install pinned tools
+        run: go -C tools install tool
+        env:
+          GOBIN: ${{ github.workspace }}/bin
+
+      # The migrations are the schema source of truth, and sqlc verifies the
+      # hand-written SQL against them at build time. If internal/db/*.gen.go does
+      # not match what sqlc would produce from the current SQL, the checked-in
+      # code is a LIE about the database.
+      - name: sqlc diff (schema drift)
+        run: ${{ github.workspace }}/bin/task sqlc-diff
+
+      # The OpenAPI document is the public contract, and flagfishctl is its first
+      # consumer. Huma derives it from the handlers, so a handler change that
+      # alters the API surface must show up as a diff a human approved.
+      - name: generated code + openapi.yaml are current
+        run: ${{ github.workspace }}/bin/task check-generated
+
+      - name: show the drift
+        if: failure()
+        run: git --no-pager diff --stat && git --no-pager diff
+
+  # =========================================================================
+  # TESTS — against a REAL Postgres 17.
+  #
+  # "Real Postgres, never a mock — the invariants live in the CONSTRAINTS, and a
+  #  mock cannot fail the way a database can." (CLAUDE.md)
+  #
+  # The concurrency suite is the product pitch: every invariant it pins is enforced
+  # by a constraint, a lock, or an ON CONFLICT. A mocked CI would prove nothing.
+  # =========================================================================
+  test:
+    name: test (race, real postgres)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: flagfish
+          POSTGRES_PASSWORD: flagfish
+          POSTGRES_DB: flagfish_test
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U flagfish -d flagfish_test -q"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+          --tmpfs /var/lib/postgresql/data
+          --cpus 2
+
+    env:
+      # Same DSN shape the Taskfile and .env.example use, so a failing CI run is
+      # reproducible locally with `task up && task test-race` and nothing else.
+      TEST_DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
+      DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: Install pinned tools
+        run: go -C tools install tool
+        env:
+          GOBIN: ${{ github.workspace }}/bin
+
+      - name: Tune Postgres for the concurrency suite
+        run: |
+          # The service-container `options:` cannot pass `-c` server flags, so
+          # raise max_connections at runtime. The concurrency cases run N goroutines each
+          # holding a real connection; the default 100 is not enough headroom.
+          psql "$TEST_DATABASE_URL" -c "ALTER SYSTEM SET max_connections = 200;" \
+                                    -c "ALTER SYSTEM SET fsync = off;" \
+                                    -c "ALTER SYSTEM SET synchronous_commit = off;" \
+                                    -c "ALTER SYSTEM SET log_lock_waits = on;" || true
+          psql "$TEST_DATABASE_URL" -c "SELECT version();"
+
+      - name: Migrate
+        run: ${{ github.workspace }}/bin/task migrate-test
+        env:
+          TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      - name: go build
+        run: go build ./...
+
+      # -race is not optional. This project claims the hard bugs in a CTF platform are
+      # races; shipping our own would be embarrassing.
+      #
+      # -p 1: several suites OWN the database (they TRUNCATE and re-seed). Run in
+      # parallel against one Postgres they deadlock and trip each other's FK
+      # constraints. Serial package execution is the price of a shared test database.
+      - name: go test -race (layers 1 + 3 + 4)
+        run: go test -race -shuffle=on -p 1 -tags=integration -timeout=15m ./...
+
+      # ⭐ Layer 2, run separately and with -count=1 so a flaky race cannot be
+      # papered over by the test cache. -v names the failing case.
+      - name: ⭐ concurrency suite
+        run: go test -race -count=1 -p 1 -tags=integration -timeout=15m -v ./test/concurrency/...
+
+      # 🔒 The authorization suite. Same isolation rules.
+      - name: 🔒 security suite
+        run: go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/security/...
+
+      - name: Postgres logs on failure
+        if: failure()
+        run: docker logs "$(docker ps -q --filter ancestor=postgres:17-alpine)" 2>&1 | tail -100 || true
+
+  # The image is the deliverable: one static binary, embedded SPA + migrations.
+  # If it does not build, "one binary" is aspirational.
+  docker:
+    name: docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: flagfish:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.sha }}
+            COMMIT=${{ github.sha }}
+
+      # The binary must run from an EMPTY directory: no config file, no assets on
+      # disk, nothing but the process.
+      - name: Binary runs from an empty directory
+        run: docker run --rm --entrypoint /flagfish flagfish:ci --help || true

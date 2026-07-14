@@ -1,0 +1,593 @@
+version: "3"
+
+# go-task, not Make.
+#
+# Why not a Makefile: Make's unit of work is a file, and almost nothing here
+# produces one — `lint`, `test`, `migrate`, `ci` are all .PHONY, at which point
+# Make is a shell script with tab-sensitive whitespace and $$ escaping. go-task
+# gives us a real dependency graph, `deps:` that run in parallel, per-task `env:`
+# and `dotenv:`, and `sources:`/`generates:` fingerprinting where it actually
+# applies (sqlc). It is also a single Go binary, so it lives in tools/go.mod with
+# every other tool and CI gets the same version the laptop has.
+#
+# Bootstrap (chicken-and-egg: `task` is itself one of the pinned tools):
+#     go -C tools install tool && export PATH="$PWD/bin:$PATH"
+# Thereafter `task tools` keeps them current.
+
+dotenv: [".env"]
+
+vars:
+  BIN: "{{.ROOT_DIR}}/bin"
+  # Every tool is pinned in tools/go.mod and installed to ./bin. Nothing here
+  # ever runs a tool from the ambient PATH — a laptop with a different sqlc is
+  # a generated-code diff, which CI turns into a build failure.
+  SQLC: "{{.ROOT_DIR}}/bin/sqlc"
+  GOOSE: "{{.ROOT_DIR}}/bin/goose"
+  GOLANGCI: "{{.ROOT_DIR}}/bin/golangci-lint"
+  AIR: "{{.ROOT_DIR}}/bin/air"
+  GOFUMPT: "{{.ROOT_DIR}}/bin/gofumpt"
+  MIGRATIONS: "{{.ROOT_DIR}}/internal/db/migrations"
+  BINARY: "{{.ROOT_DIR}}/bin/flagfish"
+  # The production-shaped stack in deploy/ reads deploy/.env; compose.e2e.yaml is a
+  # thin overlay that publishes Postgres for the e2e suite.
+  DEPLOY_COMPOSE: "docker compose --env-file deploy/.env -f deploy/compose.yaml"
+  E2E_COMPOSE: "docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.e2e.yaml"
+
+env:
+  # Fallbacks when .env is absent. Values match compose.yaml.
+  DATABASE_URL: '{{.DATABASE_URL | default "postgres://flagfish:flagfish@localhost:5432/flagfish?sslmode=disable"}}'
+  TEST_DATABASE_URL: '{{.TEST_DATABASE_URL | default "postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable"}}'
+  # A dedicated database for the play-mode source-of-truth suite, on the same test Postgres. It
+  # seeds the instance singleton directly, so it gets its own DB rather than racing the suites that
+  # truncate the shared one.
+  MODESRC_DATABASE_URL: '{{.MODESRC_DATABASE_URL | default "postgres://flagfish:flagfish@localhost:5433/flagfish_test_modesrc?sslmode=disable"}}'
+  # Object storage for the integration suite — the MinIO in compose.yaml (minio-test). Mirrors the
+  # TEST_DATABASE_URL pattern: the tests read these and exercise the real S3-compatible backend.
+  TEST_S3_ENDPOINT: '{{.TEST_S3_ENDPOINT | default "localhost:9002"}}'
+  TEST_S3_BUCKET: '{{.TEST_S3_BUCKET | default "flagfish-test"}}'
+  TEST_S3_ACCESS_KEY: '{{.TEST_S3_ACCESS_KEY | default "flagfishtest"}}'
+  TEST_S3_SECRET_KEY: '{{.TEST_S3_SECRET_KEY | default "flagfishtest123"}}'
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  # ---------------------------------------------------------------- toolchain
+
+  tools:
+    desc: Install the pinned dev tools (sqlc, goose, golangci-lint, air, gofumpt, task, nilaway) into ./bin
+    cmds:
+      # `go install tool` installs every `tool` directive in tools/go.mod.
+      # tools/ is a SEPARATE module on purpose: its dependency tree is enormous
+      # (golangci-lint alone pulls ~250 modules) and none of it belongs in the
+      # product's go.mod or in the binary we ship.
+      - go -C tools install tool
+    generates:
+      - "{{.BIN}}/sqlc"
+      - "{{.BIN}}/goose"
+      - "{{.BIN}}/golangci-lint"
+      - "{{.BIN}}/air"
+      - "{{.BIN}}/gofumpt"
+      - "{{.BIN}}/task"
+      - "{{.BIN}}/nilaway"
+    env:
+      GOBIN: "{{.BIN}}"
+
+  tools:update:
+    desc: Bump every pinned dev tool to latest and re-pin (review the tools/go.mod diff!)
+    dir: tools
+    cmds:
+      - go get -u tool
+      - go mod tidy
+      - task: tools
+
+  # ---------------------------------------------------------------- env
+
+  env:
+    desc: Create .env from .env.example if absent, then print the resolved config
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          cp .env.example .env
+          echo "  created .env from .env.example"
+        else
+          echo "  .env already exists — leaving it alone"
+        fi
+      # Fails loudly (non-zero) if anything in the environment is wrong, listing every
+      # problem at once. Worth running before a deploy rather than after.
+      - go run ./cmd/flagfish env
+
+  # ---------------------------------------------------------------- compose
+
+  up:
+    desc: Start Postgres (dev :5432 + test :5433) and MinIO (test object storage :9002)
+    cmds:
+      - docker compose up -d --wait postgres postgres-test minio-test
+      - 'echo "  dev  {{.DATABASE_URL}}"'
+      - 'echo "  test {{.TEST_DATABASE_URL}}"'
+      - 'echo "  s3   {{.TEST_S3_ENDPOINT}} (bucket {{.TEST_S3_BUCKET}})"'
+
+  down:
+    desc: Stop the stack (keeps the dev volume)
+    cmds:
+      - docker compose down --remove-orphans
+
+  down:clean:
+    desc: Stop the stack and destroy the dev volume
+    prompt: This deletes the dev database volume. Continue?
+    cmds:
+      - docker compose down --remove-orphans --volumes
+
+  db-ui:
+    desc: Start adminer on http://localhost:8081 (server=postgres, user/pass/db=flagfish)
+    cmds:
+      - docker compose --profile tools up -d --wait adminer
+
+  psql:
+    desc: Open psql against the dev database
+    interactive: true
+    cmds:
+      - docker compose exec postgres psql -U flagfish -d flagfish
+
+  logs:
+    desc: Tail Postgres logs (lock waits and slow statements are logged — see compose.yaml)
+    cmds:
+      - docker compose logs -f postgres
+
+  # ---------------------------------------------------------------- migrations
+  #
+  # goose, plain SQL, go:embed'd. internal/db/migrations is the schema source of
+  # truth — there is no ORM and no model-derived DDL.
+
+  migrate:
+    desc: Apply all pending migrations to the dev database
+    deps: [tools]
+    cmds:
+      - task: _goose
+        vars: {DSN: "{{.DATABASE_URL}}", ARGS: "up"}
+
+  migrate-down:
+    desc: Roll back the last migration on the dev database
+    deps: [tools]
+    cmds:
+      - task: _goose
+        vars: {DSN: "{{.DATABASE_URL}}", ARGS: "down"}
+
+  migrate-status:
+    desc: Show migration status of the dev database
+    deps: [tools]
+    cmds:
+      - task: _goose
+        vars: {DSN: "{{.DATABASE_URL}}", ARGS: "status"}
+
+  migrate-reset:
+    desc: Roll every migration back off the dev database
+    deps: [tools]
+    prompt: This rolls back every migration on the dev database. Continue?
+    cmds:
+      - task: _goose
+        vars: {DSN: "{{.DATABASE_URL}}", ARGS: "reset"}
+
+  migrate-test:
+    desc: Apply all migrations to the TEST database (:5433)
+    deps: [tools]
+    cmds:
+      - task: _goose
+        vars: {DSN: "{{.TEST_DATABASE_URL}}", ARGS: "up"}
+
+  migrate-new:
+    desc: 'Create a new SQL migration — task migrate-new -- add_flag_pools'
+    deps: [tools]
+    requires:
+      vars: [CLI_ARGS]
+    cmds:
+      - '{{.GOOSE}} -dir {{.MIGRATIONS}} create {{.CLI_ARGS}} sql'
+
+  _goose:
+    internal: true
+    cmds:
+      - |
+        if [ ! -d "{{.MIGRATIONS}}" ] || [ -z "$(ls -A "{{.MIGRATIONS}}" 2>/dev/null | grep -E '\.sql$')" ]; then
+          echo "no migrations in {{.MIGRATIONS}} yet — skipping goose {{.ARGS}}"
+          exit 0
+        fi
+        exec {{.GOOSE}} -dir "{{.MIGRATIONS}}" postgres "{{.DSN}}" {{.ARGS}}
+
+  # ---------------------------------------------------------------- codegen
+
+  sqlc:
+    desc: Regenerate internal/db from the hand-written SQL in internal/db/queries
+    deps: [tools]
+    cmds:
+      - |
+        if [ ! -f sqlc.yaml ] && [ ! -f sqlc.json ]; then
+          echo "no sqlc.yaml yet — skipping (internal/db owner has not landed it)"
+          exit 0
+        fi
+        exec {{.SQLC}} generate
+    sources:
+      - sqlc.yaml
+      - internal/db/queries/**/*.sql
+      - internal/db/migrations/**/*.sql
+    generates:
+      - internal/db/*.gen.go
+
+  sqlc-diff:
+    desc: Fail if internal/db is stale w.r.t. the SQL (schema drift ⇒ build fails)
+    deps: [tools]
+    cmds:
+      - |
+        if [ ! -f sqlc.yaml ] && [ ! -f sqlc.json ]; then
+          echo "no sqlc.yaml yet — skipping drift check"
+          exit 0
+        fi
+        {{.SQLC}} vet || true
+        exec {{.SQLC}} diff
+
+  generate:
+    desc: Run every code generator (sqlc + go:generate)
+    deps: [tools]
+    cmds:
+      - task: sqlc
+      - go generate ./...
+
+  # ---------------------------------------------------------------- quality
+
+  fmt:
+    desc: Format everything (gofumpt + import grouping via golangci-lint formatters)
+    deps: [tools]
+    cmds:
+      - '{{.GOLANGCI}} fmt'
+
+  lint:
+    desc: Run golangci-lint (includes the depguard import-boundary rule)
+    deps: [tools]
+    cmds:
+      - '{{.GOLANGCI}} run'
+
+  lint-fix:
+    desc: Run golangci-lint with --fix
+    deps: [tools]
+    cmds:
+      - '{{.GOLANGCI}} run --fix'
+
+  # Non-negotiable. depguard inside golangci-lint is the primary
+  # gate, but depguard only sees packages that contain Go files and that the
+  # linter was pointed at. This is a second, independent check over the real
+  # import graph from `go list` — it cannot be silenced by a //nolint comment,
+  # and it still fires when a package is excluded from the lint run.
+  #
+  # Belt and braces, deliberately. This one rule is the whole reason the
+  # invariant tests are fast and total; it must not be defeatable by an
+  # inline directive nobody reviews.
+  check-boundaries:
+    desc: "Assert internal/domain imports nothing but stdlib+domain"
+    silent: true
+    cmds:
+      - |
+        set -eu
+        pkgs=$(go list ./internal/domain/... 2>/dev/null || true)
+        if [ -z "$pkgs" ]; then
+          echo "check-boundaries: internal/domain has no packages yet — nothing to check"
+          exit 0
+        fi
+
+        # -deps is the transitive import set. A direct-imports check is not
+        # enough: domain -> helper -> pgx is exactly as fatal as domain -> pgx.
+        #
+        # `.Standard` is go list's own answer to "is this the standard library".
+        # Do not infer it from the import path containing a dot: since Go 1.26
+        # the stdlib itself ships dotted paths (crypto/internal/entropy/v1.0.0),
+        # and that heuristic reports a false violation on every build.
+        violations=$(go list -deps -f '{{`{{if not .Standard}}{{.ImportPath}}{{end}}`}}' ./internal/domain/... \
+          | grep -v '^github.com/starvy/flagfish/internal/domain' \
+          || true)
+
+        if [ -n "$violations" ]; then
+          echo
+          echo "  ✗ internal/domain must import nothing but stdlib and domain."
+          echo "    Pure types and pure functions. Not the DB, not HTTP, not River."
+          echo
+          echo "    Non-stdlib packages reachable from internal/domain:"
+          echo "$violations" | sed 's/^/      /'
+          echo
+          exit 1
+        fi
+
+        # Nothing imports httpapi except the composition root — cmd/ and
+        # internal/app — which is the one layer above the transport and must wire it.
+        # A feature package reaching back into the transport is the first step to a
+        # god-package; the root reaching down into it is just assembly.
+        rdeps=$(go list -f '{{`{{.ImportPath}}{{range .Imports}} {{.}}{{end}}`}}' ./... 2>/dev/null \
+          | grep -v '^github.com/starvy/flagfish/internal/httpapi' \
+          | grep -v '^github.com/starvy/flagfish/cmd/' \
+          | grep -Ev '^github.com/starvy/flagfish/internal/app(/| )' \
+          | grep 'github.com/starvy/flagfish/internal/httpapi' \
+          || true)
+        if [ -n "$rdeps" ]; then
+          echo "  ✗ nothing may import internal/httpapi except the composition root (cmd/, internal/app):"
+          echo "$rdeps" | sed 's/^/      /'
+          exit 1
+        fi
+
+        echo "  ✓ internal/domain imports nothing but stdlib"
+        echo "  ✓ nothing imports internal/httpapi"
+
+  vuln:
+    desc: Scan dependencies for known vulnerabilities
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  # Advisory, on purpose. NilAway's inter-procedural nil analysis catches real
+  # panics the type system cannot, but it is young and its false-positive rate is
+  # not yet zero — so it reports, it does not fail the build. It found nothing on
+  # the tree the day it went in; if that stays true it earns promotion to blocking.
+  nilaway:
+    desc: "Advisory nil-safety analysis (non-blocking)"
+    deps: [tools]
+    cmds:
+      - "{{.BIN}}/nilaway -include-pkgs='github.com/starvy/flagfish' ./... || true"
+
+  tidy:
+    desc: go mod tidy on both modules
+    cmds:
+      - go mod tidy
+      - go -C tools mod tidy
+
+  # ---------------------------------------------------------------- tests
+  #
+  # Real Postgres, never a mock. A mock cannot fail the way
+  # a database can — and every invariant we care about is enforced by a constraint.
+
+  test:
+    desc: Unit tests (layer 1 — pure invariant/property tests over internal/domain)
+    # -race needs cgo; the global CGO_ENABLED=0 exists only for the static build.
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -race -shuffle=on ./internal/... ./cmd/...
+
+  test-race:
+    desc: Every test, with the race detector, against the test database
+    deps: [up-test]
+    # -race needs cgo; the global CGO_ENABLED=0 exists only for the static build.
+    env:
+      TEST_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      # -p 1: several suites here (concurrency, security) own the database — they
+      # TRUNCATE and re-seed it. Run in parallel against one Postgres they deadlock and
+      # trip each other's FK constraints. Serial package execution is the price of a
+      # shared test database, and it makes a new destructive suite safe by default
+      # rather than by remembering to isolate it.
+      - go test -race -shuffle=on -p 1 -tags=integration -timeout=15m ./...
+
+  test-integration:
+    desc: "Layer 3 — integration suite against a real Postgres (:5433)"
+    deps: [up-test]
+    env:
+      TEST_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      # -count=1 defeats the test cache so a flaky race actually re-runs.
+      - go test -race -count=1 -tags=integration -timeout=10m ./test/integration/...
+
+  test-concurrency:
+    desc: "Layer 2 — the concurrency suite. This is the product pitch."
+    deps: [up-test]
+    env:
+      TEST_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      # -count=1 defeats the test cache: a race that reproduces 1-in-20 must
+      # actually run every time, not replay a cached pass.
+      # -p 1 keeps concurrent packages from fighting over the same tables.
+      - go test -race -count=1 -p 1 -tags=integration -timeout=15m -v ./test/concurrency/...
+
+  test-security:
+    desc: "The authorization suite. Each test fails if its guard is removed."
+    deps: [up-test]
+    env:
+      TEST_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/security/...
+
+  test-modesrc:
+    desc: "The play-mode source-of-truth suite: instance.user_mode is the single authority"
+    deps: [up-test]
+    env:
+      MODESRC_DATABASE_URL: "{{.MODESRC_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      # Own database, created and migrated in isolation. `|| true`: CREATE DATABASE has no
+      # IF NOT EXISTS, and a second run finding it already there is success, not failure.
+      - docker compose exec -T postgres-test psql -U flagfish -d flagfish_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE flagfish_test_modesrc' || true
+      - task: _goose
+        vars: {DSN: "{{.MODESRC_DATABASE_URL}}", ARGS: "up"}
+      - go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/modesrc/...
+
+  cover:
+    desc: Coverage report over the domain + feature packages
+    deps: [up-test]
+    env:
+      TEST_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -race -tags=integration -coverprofile=coverage.out -covermode=atomic ./...
+      - go tool cover -func=coverage.out | tail -1
+      - 'echo "  task cover-html  # to browse it"'
+
+  cover-html:
+    desc: Open the coverage report in a browser
+    cmds:
+      - go tool cover -html=coverage.out
+
+  up-test:
+    internal: true
+    desc: Ensure the test database and object storage are up, healthy and migrated
+    cmds:
+      - docker compose up -d --wait postgres-test minio-test
+      - task: _goose
+        vars: {DSN: "{{.TEST_DATABASE_URL}}", ARGS: "up"}
+
+  # ---------------------------------------------------------------- build/run
+
+  web-dev:
+    desc: Vite dev server with hot reload; proxies /api to the server on :8000
+    dir: web
+    cmds:
+      - npm install
+      - npm run dev
+
+  web-build:
+    desc: Build the SPA and stage it under internal/web/dist for go:embed
+    status:
+      # Tolerate web/ being absent so backend-only checkouts still build.
+      - test ! -f web/package.json
+    cmds:
+      - cd web && npm ci && npm run build
+      # Stage into the embed tree, leaving the tracked .gitkeep in place.
+      - rm -rf internal/web/dist/assets internal/web/dist/index.html
+      - cp -R web/dist/. internal/web/dist/
+
+  build:
+    desc: Build the single static binary (embedded SPA + migrations)
+    deps: [web-build]
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      # -trimpath: reproducible builds. -s -w: no DWARF, smaller image.
+      - go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BINARY}} ./cmd/flagfish
+      - 'echo "  {{.BINARY}}"'
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+  run:
+    desc: Run the server (serve --with-worker — the default topology)
+    deps: [up, migrate]
+    cmds:
+      - go run ./cmd/flagfish serve --with-worker
+
+  dev:
+    desc: Live-reload the server with air
+    deps: [tools, up, migrate]
+    cmds:
+      - '{{.AIR}}'
+
+  docker-build:
+    desc: Build the production container image
+    cmds:
+      - docker build -t flagfish:{{.VERSION}} -t flagfish:latest .
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+  clean:
+    desc: Remove build artifacts (not the tools)
+    cmds:
+      - rm -rf {{.BINARY}} coverage.out tmp/ web/dist internal/web/dist/assets internal/web/dist/index.html
+
+  # ---------------------------------------------------------------- deploy
+  #
+  # The production-shaped stack lives in deploy/. It reads deploy/.env (never the
+  # repo-root .env), so its secrets stay out of the dev loop. compose.yaml is the
+  # stack; compose.e2e.yaml is a thin overlay that publishes Postgres for the suite.
+
+  deploy-up:
+    desc: Build and start the production stack (Postgres + MinIO + flagfish) from deploy/
+    cmds:
+      - |
+        if [ ! -f deploy/.env ]; then
+          echo "deploy/.env is missing — copy deploy/.env.example and set real secrets first" >&2
+          exit 1
+        fi
+      - "{{.DEPLOY_COMPOSE}} up -d --build --wait"
+      - 'echo "  app is up. Finish first-run setup (mark setup done + promote an admin): see docs/ops/deploy.md"'
+
+  deploy-down:
+    desc: Stop the production stack (keeps the named volumes)
+    cmds:
+      - "{{.DEPLOY_COMPOSE}} down --remove-orphans"
+
+  deploy-down-clean:
+    desc: Stop the production stack and destroy its data volumes
+    prompt: This deletes the deployment database and object-storage volumes. Continue?
+    cmds:
+      - "{{.DEPLOY_COMPOSE}} down --remove-orphans --volumes"
+
+  # ---------------------------------------------------------------- e2e
+  #
+  # Black-box end-to-end suite: a generated OpenAPI client drives a RUNNING server
+  # over HTTP. The suite touches the database only for out-of-band setup (mark the
+  # instance set up, promote the first admin) — every assertion goes over the wire.
+
+  e2e-gen:
+    desc: Regenerate the typed OpenAPI client in e2e/client from openapi.yaml
+    cmds:
+      # oapi-codegen does not support OpenAPI 3.1 yet, so downgrade the nullable spelling first.
+      - go run {{.ROOT_DIR}}/e2e/client/oas31to30.go {{.ROOT_DIR}}/openapi.yaml > {{.ROOT_DIR}}/e2e/client/openapi.gen.yaml
+      - go -C tools tool oapi-codegen -config {{.ROOT_DIR}}/e2e/client/config.yaml {{.ROOT_DIR}}/e2e/client/openapi.gen.yaml > {{.ROOT_DIR}}/e2e/client/client.gen.go
+      - "{{.GOFUMPT}} -w {{.ROOT_DIR}}/e2e/client/client.gen.go"
+      - 'echo "  e2e/client/client.gen.go regenerated"'
+
+  e2e:
+    desc: Bring up the deploy stack, run the black-box E2E suite over HTTP, tear down
+    cmds:
+      - |
+        if [ ! -f deploy/.env ]; then cp deploy/.env.example deploy/.env; echo "  created deploy/.env from example (test secrets)"; fi
+      - defer: "{{.E2E_COMPOSE}} down --remove-orphans --volumes"
+      - "{{.E2E_COMPOSE}} up -d --build --wait"
+      - task: e2e-run
+
+  e2e-run:
+    desc: Run the E2E suite against an already-running flagfish (set E2E_BASE_URL, E2E_DATABASE_URL)
+    # -race needs cgo; the global CGO_ENABLED=0 exists only for the static build.
+    env:
+      CGO_ENABLED: "1"
+      E2E_BASE_URL: '{{.E2E_BASE_URL | default "http://localhost:8000"}}'
+      E2E_DATABASE_URL: '{{.E2E_DATABASE_URL | default "postgres://flagfish:change-me-postgres@localhost:55432/flagfish?sslmode=disable"}}'
+    cmds:
+      - go test -race -count=1 -tags=e2e -timeout=10m ./e2e/...
+
+  # ---------------------------------------------------------------- ci
+
+  ci:
+    desc: Everything CI runs. If this is green, the PR is green.
+    cmds:
+      - task: tools
+      - task: check-boundaries   # fails the build, by design
+      - task: lint
+      - task: sqlc-diff          # schema drift ⇒ build fails
+      - task: check-generated    # contract drift ⇒ build fails
+      - task: test-race
+      # Re-run the two DB-owning suites standalone: -count=1 defeats the cache so a
+      # 1-in-20 race actually runs, and -v names the failing case.
+      - task: test-concurrency
+      - task: test-security
+
+  check-generated:
+    desc: Fail if generated code or openapi.yaml is stale (contract drift ⇒ build fails)
+    deps: [tools]
+    cmds:
+      - task: generate
+      - |
+        # The binary emits its own OpenAPI document (Huma derives it from the
+        # handlers), so the checked-in openapi.yaml is a contract, not an
+        # artifact: a handler change that silently alters the API surface has to
+        # show up as a diff a human approves.
+        if [ -f openapi.yaml ] && go run ./cmd/flagfish openapi >/dev/null 2>&1; then
+          go run ./cmd/flagfish openapi > openapi.yaml
+        fi
+      - |
+        if ! git diff --exit-code -- ':!bin' ':!.env'; then
+          echo
+          echo "  ✗ generated code / openapi.yaml is stale."
+          echo "    Run 'task generate' and commit the result."
+          exit 1
+        fi

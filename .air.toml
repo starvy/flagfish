@@ -1,0 +1,41 @@
+# Live reload for `task dev`. air rebuilds and restarts `flagfish serve --with-worker`
+# on save. Postgres keeps running — only the process is recycled.
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/flagfish ./cmd/flagfish"
+  bin = "./tmp/flagfish"
+  full_bin = "./tmp/flagfish serve --with-worker"
+  args_bin = []
+
+  include_ext = ["go", "sql", "tmpl", "html"]
+  # web/ has its own dev server with HMR (vite). Restarting the Go process on a
+  # .tsx save would be strictly worse than what vite already does.
+  exclude_dir = ["tmp", "bin", "web", "node_modules", "docs", ".git", ".github"]
+  exclude_regex = ["_test\\.go$"]
+  # sqlc output changes only when `task sqlc` runs, and that already triggers a
+  # rebuild via the .go files it writes.
+  exclude_unchanged = true
+  follow_symlink = false
+
+  # A compile error should stay on screen, not scroll away behind a restart loop.
+  stop_on_error = true
+  send_interrupt = true
+  # River workers and the LISTEN/NOTIFY loop need a moment to drain on SIGINT.
+  # SIGKILL-ing them makes every reload look like a crash in the logs.
+  kill_delay = "2s"
+
+  delay = 300
+  log = "build-errors.log"
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = true
+  keep_scroll = false

@@ -1,0 +1,458 @@
+version: "2"
+
+# A strict config for a senior Go codebase.
+#
+# The rule this file exists to enforce is `linters.settings.depguard` — CLAUDE.md
+# #1, `internal/domain` imports NOTHING. Everything else is hygiene.
+#
+# The config is CONFIGURED, not just enabled. A linter that fires on correct code
+# gets `//nolint`-ed, then wholesale-disabled, and then you have no linter and a
+# file that lies about it. Every exclusion below is deliberate and has a reason.
+
+run:
+  timeout: 5m
+  # The concurrency suite and the importer goldens are behind build tags. Lint
+  # them too — `//go:build integration` is not a licence to write bad code, and
+  # test/concurrency is the most load-bearing package in the repo.
+  build-tags:
+    - integration
+    - golden
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # --- the boundary -------------------------------------------------------
+    - depguard # ⚠️ CLAUDE.md #1. THE reason this file exists. Non-negotiable.
+
+    # --- correctness --------------------------------------------------------
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - bodyclose # a leaked response body is a leaked connection
+    - contextcheck # ctx must flow; no context.Background() below main (CLAUDE.md)
+    - errorlint # %w vs %v, and errors.Is/As over ==
+    - exhaustive # a new challenge type / flag type must not silently fall through
+    - nilerr # `if err != nil { return nil }` — the silent swallow (CLAUDE.md #4)
+    - nilnesserr
+    - noctx # every outbound HTTP/SQL call carries a context
+    - rowserrcheck # rows.Err() — the pgx footgun that eats query failures
+    - sqlclosecheck
+    - makezero
+    - reassign
+    - durationcheck
+    - protogetter
+    - zerologlint
+    - spancheck # an un-ended OTel span is an invisible request
+
+    # --- style / rot prevention ---------------------------------------------
+    - revive
+    - gocritic
+    - gosec
+    - unconvert
+    - unparam
+    - wastedassign
+    - copyloopvar
+    - intrange
+    - prealloc
+    - predeclared
+    - usestdlibvars
+    - errname
+    - nakedret
+    - misspell
+    - dupword
+    - godot
+    - forbidigo
+    - testifylint
+    - thelper
+    - tparallel
+    - usetesting
+    - wrapcheck # "no naked err returns from a boundary" (CLAUDE.md, Conventions)
+
+  settings:
+    # ======================================================================
+    # ⚠️  THE IMPORT BOUNDARY. CLAUDE.md #1: internal/domain imports NOTHING.
+    #
+    # Without this, `domain` grows a *pgxpool.Pool within a month and the invariant
+    # tests stop being fast and total.
+    #
+    # depguard semantics: a non-empty `allow` list is a WHITELIST — anything not
+    # matching a prefix in it is denied. `deny` is still evaluated on top, so the
+    # explicit stdlib denials below produce a good error message rather than the
+    # generic one.
+    #
+    # This is backed by a second, independent `go list` check (`task
+    # check-boundaries`) that a //nolint comment cannot silence. Both run in CI.
+    # ======================================================================
+    depguard:
+      rules:
+        domain-imports-nothing:
+          list-mode: strict
+          files:
+            - "**/internal/domain/**/*.go"
+          allow:
+            - $gostd
+            - github.com/starvy/flagfish/internal/domain
+          deny:
+            # $gostd allows the standard library wholesale, which is right —
+            # `time`, `errors`, `regexp`, `crypto/subtle` are exactly what a
+            # pure scoring/flag/policy package is made of. But three stdlib
+            # packages are transport and storage in disguise, and importing
+            # them is the first step of the rot this rule exists to prevent.
+            - pkg: database/sql
+              desc: "internal/domain is PURE (CLAUDE.md #1). The DB does not belong here — move the query to internal/db and pass the result in as a value."
+            - pkg: net/http
+              desc: "internal/domain is PURE (CLAUDE.md #1). HTTP does not belong here — the policy decision takes inputs and returns allow/deny, it does not know what a Request is."
+            - pkg: log
+              desc: "internal/domain is PURE (CLAUDE.md #1). A pure function returns an error; it does not log. Loud beats silent (#4), but the caller decides how loud."
+
+        # httpapi depends on the feature packages; nothing imports httpapi.
+        # A feature package reaching back into the transport layer is how a
+        # layered design becomes a ball of mud. internal/app is exempt: it is the
+        # composition root, the one layer ABOVE the transport, and wiring it up is
+        # its whole job.
+        nothing-imports-httpapi:
+          list-mode: lax
+          files:
+            - "**/internal/**/*.go"
+            - "!**/internal/httpapi/**"
+            - "!**/internal/app/**"
+          deny:
+            - pkg: github.com/starvy/flagfish/internal/httpapi
+              desc: "nothing may import internal/httpapi. Transport depends on features, never the reverse."
+
+        # Nothing is loaded at runtime: what compiles is what ships. And no ORM, ever.
+        no-orm-no-plugins:
+          list-mode: lax
+          files:
+            - "$all"
+          deny:
+            - pkg: gorm.io/gorm
+              desc: "No ORM (CLAUDE.md #7). sqlc generates from hand-written SQL in internal/db/queries."
+            - pkg: github.com/uptrace/bun
+              desc: "No ORM (CLAUDE.md #7)."
+            - pkg: github.com/jmoiron/sqlx
+              desc: "No ORM/reflection layer (CLAUDE.md #7). Use the sqlc-generated pgx code."
+            - pkg: plugin
+              desc: "No plugin system (CLAUDE.md #6). Challenge types and flag types are in-tree interfaces."
+            - pkg: github.com/pkg/errors
+              desc: "Use stdlib errors + %w (CLAUDE.md, Conventions)."
+            - pkg: io/ioutil
+              desc: "Deprecated. Use io and os."
+
+        # Weak randomness is a SECURITY bug in production — a competitor who can
+        # predict a unique-flag salt or a session token wins the CTF. It is the
+        # opposite in a test, where a seeded, reproducible PRNG is precisely what
+        # you want (the property tests in internal/domain/scoring seed one on
+        # purpose). So this deny is scoped to non-test files: `!$test`.
+        #
+        # Denying it everywhere would have made the property tests un-writable,
+        # which is exactly how a strict linter config gets wholesale-disabled.
+        no-weak-randomness:
+          list-mode: lax
+          files:
+            - "$all"
+            - "!$test"
+          deny:
+            - pkg: math/rand
+              desc: "math/rand is predictable. Use crypto/rand for anything a competitor could guess (flags, tokens, unique-flag salts); math/rand/v2 only for things that are provably not security-relevant."
+
+    govet:
+      enable-all: true
+      disable:
+        # Too noisy, and it fights readability: it wants struct fields ordered by
+        # size rather than by meaning. We are not memory-bound; we are
+        # correctness-bound. (Explicitly requested off.)
+        - fieldalignment
+      settings:
+        shadow:
+          # Only flag a shadow that actually changes behaviour. The default
+          # flags `if err := f(); err != nil` inside a function that already has
+          # an `err`, which is idiomatic Go and not a bug.
+          strict: false
+
+    errcheck:
+      # `v, _ := x.(T)` that panics later is a nil-deref with extra steps.
+      check-type-assertions: true
+      # `_ = mustSucceed()` should be a deliberate, commented act.
+      check-blank: true
+      exclude-functions:
+        # Deferred Close on a read-only handle: the error is genuinely unactionable.
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - (github.com/jackc/pgx/v5.Rows).Close
+        # pgx's tx.Rollback() after a successful Commit() returns ErrTxClosed by
+        # design. `defer tx.Rollback(ctx)` is THE idiom and must not be noise.
+        - (github.com/jackc/pgx/v5.Tx).Rollback
+        # Writing to a bytes.Buffer / strings.Builder cannot fail.
+        - (*bytes.Buffer).Write
+        - (*bytes.Buffer).WriteString
+        - (*strings.Builder).Write
+        - (*strings.Builder).WriteString
+        - fmt.Fprintf(*strings.Builder)
+
+    staticcheck:
+      checks:
+        - all
+        # ST1000: package comment on every package. We want them on the public
+        # domain packages, not on every leaf; enforced by revive's
+        # package-comments where it matters.
+        - -ST1000
+        # ST1003 duplicates revive's var-naming. One owner per rule.
+        - -ST1003
+
+    exhaustive:
+      # A `default:` clause means the author thought about the missing cases.
+      # Without this, exhaustive fires on switches that are correctly total.
+      default-signifies-exhaustive: true
+      # Enums here are typed string/int constants (challenge kind, flag kind,
+      # visibility, account mode). Missing one is a silent wrong answer — which
+      # is exactly the class of bug this whole project exists to not have.
+      check:
+        - switch
+        - map
+
+    errorlint:
+      errorf: true
+      # `%w` on more than one error is legal since 1.20 and we use it for
+      # multi-error wrapping.
+      errorf-multi: true
+      asserts: true
+      comparison: true
+
+    wrapcheck:
+      # "No naked `err` returns from a boundary" (CLAUDE.md, Conventions).
+      # An error crossing a package boundary without context is a stack trace
+      # you have to reconstruct from memory at 3am during a live CTF.
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+      ignore-package-globs:
+        # Our own packages already wrap; re-wrapping our own error doubles the
+        # message. This lints the FOREIGN boundary, which is the one that matters.
+        - github.com/starvy/flagfish/*
+      ignore-interface-regexps:
+        - ^river\.Worker
+
+    gosec:
+      excludes:
+        # G104 (unhandled errors) is errcheck's job, configured far better above.
+        - G104
+        # G304 (file inclusion via variable) fires on every legitimate
+        # `os.Open(path)` in the importer, which reads an operator-supplied
+        # archive by design. The real control is the zip-slip guard in the
+        # importer, which is tested, not a linter rule.
+        - G304
+      config:
+        # Flags, session tokens and unique-flag salts are adversarial inputs.
+        G306: "0600"
+      severity: low
+      confidence: low
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - opinionated
+      disabled-checks:
+        # Fires on `if err != nil { return err } else { ... }` shapes that are
+        # clearer as written.
+        - ifElseChain
+        # We prefer explicit `switch` over `if` chains where it reads better;
+        # this check disagrees with itself depending on branch count.
+        - singleCaseSwitch
+        # whyNoLint would force a comment on every //nolint — good in principle,
+        # but nolintlint owns that and we have none yet.
+        - commentedOutCode
+      settings:
+        captLocal:
+          paramsOnly: false
+        rangeValCopy:
+          # A 128-byte struct copied per iteration in the submit hot path is real.
+          sizeThreshold: 128
+        hugeParam:
+          sizeThreshold: 128
+
+    revive:
+      enable-all-rules: false
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+          arguments:
+            # CLAUDE.md: "context.Context first arg, always."
+            - allowTypesBefore: "*testing.T"
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+        - name: early-return
+        - name: defer
+          arguments:
+            - ["call-chain", "loop", "recover", "return"]
+        - name: confusing-results
+        - name: bare-return
+        - name: waitgroup-by-value
+        - name: unconditional-recursion
+        - name: identical-branches
+        - name: modifies-value-receiver
+        - name: string-of-int
+        - name: struct-tag
+        # `interface{}`/`any` is banned in domain code (CLAUDE.md, Conventions).
+        # revive cannot express "only in internal/domain", so this is advisory
+        # everywhere; the domain packages are small enough to police in review.
+        - name: datarace
+        - name: use-any
+
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: "Use the structured logger. fmt.Print is invisible to the log pipeline."
+        - pattern: ^print(ln)?$
+          msg: "Use the structured logger."
+        # CLAUDE.md: "No context.Background() outside main."
+        - pattern: ^context\.Background$
+          pkg: ^github\.com/starvy/flagfish/internal/
+          msg: "No context.Background() outside main (CLAUDE.md). Thread the caller's context — cancellation and the OTel span both ride on it."
+        - pattern: ^context\.TODO$
+          pkg: ^github\.com/starvy/flagfish/internal/
+          msg: "context.TODO() in internal/ is a TODO nobody will do. Thread the real context."
+        - pattern: ^time\.Sleep$
+          pkg: ^github\.com/starvy/flagfish/internal/
+          msg: "time.Sleep in production code is a race you have not diagnosed. Use a ticker, a context deadline, or LISTEN/NOTIFY."
+
+    nakedret:
+      max-func-lines: 0 # never. a naked return is a silent zero value.
+
+    prealloc:
+      simple: true
+      range-loops: true
+
+    testifylint:
+      enable-all: true
+
+    misspell:
+      # NO `locale:` on purpose. Setting locale US/UK makes misspell enforce a
+      # spelling VARIANT, and this codebase deliberately uses British English —
+      # the "flag-pool utilisation" gauge is named that way on purpose, so `locale: US`
+      # would demand we rename a published metric to fix a "typo".
+      # Unset, misspell still catches genuine misspellings (recieve, seperate)
+      # and stops arguing about -ise/-ize.
+      ignore-rules:
+        - flagfish
+        - vlajca
+
+    dupword:
+      keywords:
+        - "the"
+        - "and"
+        - "a"
+
+    unparam:
+      check-exported: false
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # ---- sqlc output. Never edited, never linted (CLAUDE.md #7). ----------
+      - path: internal/db/.*\.gen\.go
+        linters: [revive, gocritic, staticcheck, unused, unparam, wrapcheck, godot, dupword, errcheck]
+      - path: internal/db/(models|querier|db)\.go
+        linters: [revive, gocritic, staticcheck, unused, unparam, wrapcheck, godot]
+
+      # ---- tests -----------------------------------------------------------
+      - path: _test\.go
+        linters:
+          # A test IS the boundary; wrapping errors there adds nothing.
+          - wrapcheck
+          # Fixtures and golden data are full of magic numbers and long funcs.
+          - gosec
+          - unparam
+          - dupword
+          - contextcheck
+          - noctx
+      # The concurrency suite spins up N goroutines and DELIBERATELY
+      # races them. Its whole job is to do things that look wrong.
+      - path: test/concurrency/.*
+        linters: [errcheck, gosec, wrapcheck, prealloc, contextcheck]
+      # cmd/ is main. It is the ONE place context.Background() is correct, and
+      # the one place printing to stdout is the product (`flagfish openapi`).
+      - path: cmd/.*
+        linters: [forbidigo, wrapcheck]
+      # tools/ is a dependency-pinning shim with no code of its own.
+      - path: tools/.*
+        linters: [revive, godot, unused]
+
+      # `defer tx.Rollback(ctx)` — see errcheck.exclude-functions. Also catches
+      # the deferred-Close-in-a-loop shape gocritic dislikes but which is right
+      # inside a per-request handler.
+      - source: "^\\s*defer .*\\.(Rollback|Close)\\("
+        linters: [errcheck, gosec]
+
+    paths:
+      - internal/db/.*\.gen\.go
+      - web/
+      - third_party$
+      - builtin$
+      - examples$
+
+# In golangci-lint v2, formatters are a separate top-level block from linters.
+formatters:
+  enable:
+    - gofumpt # gofmt, but stricter. Non-negotiable in a senior codebase.
+    - goimports # import grouping + removal of unused imports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/starvy/flagfish
+  exclusions:
+    generated: lax
+    paths:
+      - internal/db/.*\.gen\.go
+      - web/
+
+issues:
+  # Report EVERY instance. The defaults (3 per linter, 3 per line) hide the
+  # scale of a problem and make "fix the lint" feel like whack-a-mole.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # A new linter finding on an old line is still a bug. No new-code-only mode.
+  new: false
+
+output:
+  formats:
+    text:
+      print-linter-name: true
+      colors: true
+  sort-order:
+    - file
+    - linter

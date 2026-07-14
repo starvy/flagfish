@@ -1,0 +1,73 @@
+//go:build integration
+
+package concurrency
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"testing"
+
+	"github.com/starvy/flagfish/internal/accounts"
+	"github.com/starvy/flagfish/internal/domain/account"
+)
+
+// The team_size cap is a config value, so it cannot be a CHECK; the caps trigger serializes the
+// count-then-enroll behind the same advisory lock the registration cap uses. N users racing for one
+// open slot must therefore see exactly one winner — the rest lose the slot in the database, not in Go.
+func TestTeamSlotCap_ExactlyOneWins(t *testing.T) {
+	f := setup(t, account.ModeTeams)
+	ctx := testCtx(t)
+
+	const slots = 1
+	if _, err := f.pool.Exec(ctx,
+		`INSERT INTO config (key, value) VALUES ('team_size', $1)`, fmt.Sprint(slots)); err != nil {
+		t.Fatalf("set team_size: %v", err)
+	}
+
+	// A captainless, password-less team with every slot open. Seeding it directly keeps the racers
+	// teamless — the harness's seedUser would give each its own team.
+	var teamID int64
+	if err := f.pool.QueryRow(ctx,
+		`INSERT INTO teams (name, email) VALUES ('slots', 'slots@ctf.test') RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("seed team: %v", err)
+	}
+
+	userIDs := make([]int64, N)
+	for i := range N {
+		if err := f.pool.QueryRow(ctx,
+			`INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id`,
+			fmt.Sprintf("j%03d", i), fmt.Sprintf("j%03d@ctf.test", i)).Scan(&userIDs[i]); err != nil {
+			t.Fatalf("seed user %d: %v", i, err)
+		}
+	}
+
+	acct := accounts.NewService(f.pool, account.ModeTeams, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// A password-less team admits an empty join password, so the race turns on the cap alone and not
+	// on N argon2 verifications.
+	errs := race(N, func(i int) error {
+		_, err := acct.JoinTeam(context.Background(), userIDs[i], "slots", "")
+		return err
+	})
+
+	won := 0
+	for i, err := range errs {
+		switch {
+		case err == nil:
+			won++
+		case errors.Is(err, accounts.ErrTeamFull):
+			// The slot was taken by the time this transaction's trigger ran: the cap holding.
+		default:
+			t.Fatalf("goroutine %d: unexpected error: %v", i, err)
+		}
+	}
+	if won != slots {
+		t.Errorf("winners = %d, want exactly %d", won, slots)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE team_id = $1`, teamID); n != slots {
+		t.Errorf("members = %d, want %d — the team_size cap was bypassed", n, slots)
+	}
+}

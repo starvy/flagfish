@@ -1,0 +1,557 @@
+/*
+ * The token contract lives here as the :root fallback — the terminal theme, so a
+ * paint that lands before the runtime applies a theme is already styled, never a
+ * flash of unstyled white. The active theme overrides these on the document root at
+ * runtime (see src/theme). Component rules below reference ONLY these variables;
+ * a raw colour in a component is a bug.
+ */
+:root {
+  --color-bg: #0b0f14;
+  --color-surface: #111823;
+  --color-inset: #070a0e;
+  --color-border: #1e2a3a;
+  --color-border-strong: #2e4058;
+  --color-text: #c9d7e4;
+  --color-text-muted: #7d8fa3;
+  --color-accent: #3ddc84;
+  --color-accent-dim: #1f7a4d;
+  --color-accent-contrast: #04140b;
+  --color-danger: #ff5c57;
+  --color-danger-contrast: #14040a;
+  --color-warn: #f3c669;
+  --color-blood: #ff2e63;
+  --color-success: #3ddc84;
+  --color-overlay: rgba(4, 7, 10, 0.75);
+  --radius: 6px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-body: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+code,
+kbd {
+  font-family: var(--font-mono);
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+/* ---- layout ---------------------------------------------------------- */
+
+.shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 4rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 2rem;
+}
+
+.brand {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.brand .cursor {
+  color: var(--color-accent);
+  animation: blink 1.2s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.topbar nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.topbar nav a {
+  color: var(--color-text-muted);
+}
+
+.topbar nav a:hover {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.topbar nav a[data-status="active"],
+.topbar nav a.active {
+  color: var(--color-accent);
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.topbar .who {
+  color: var(--color-text-muted);
+}
+
+/* ---- forms ----------------------------------------------------------- */
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+
+.panel > h2:first-child {
+  margin-top: 0;
+}
+
+.auth-panel {
+  max-width: 380px;
+  margin: 10vh auto 0;
+}
+
+form.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+input,
+select {
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-accent-dim);
+}
+
+button {
+  background: var(--color-accent-dim);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  color: var(--color-accent-contrast);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 1rem;
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.ghost {
+  background: transparent;
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--color-inset);
+  color: var(--color-text);
+}
+
+button.danger {
+  background: transparent;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: var(--color-danger-contrast);
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.ok {
+  color: var(--color-accent);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+/* ---- challenge board -------------------------------------------------- */
+
+.category {
+  margin-bottom: 2rem;
+}
+
+.category > h2 {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  text-transform: lowercase;
+  border-bottom: 1px dashed var(--color-border);
+  padding-bottom: 0.35rem;
+}
+
+.category > h2::before {
+  content: "## ";
+  color: var(--color-accent-dim);
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+a.chal-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  transition: border-color 0.1s ease;
+}
+
+a.chal-card:hover {
+  border-color: var(--color-accent-dim);
+  text-decoration: none;
+}
+
+a.chal-card.solved {
+  border-color: var(--color-accent-dim);
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-accent) 12%);
+}
+
+.chal-card .name {
+  font-weight: 600;
+}
+
+.chal-card .meta {
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: 0.8rem;
+  justify-content: space-between;
+}
+
+.chal-card .points {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.chal-card.solved .name::after {
+  content: " ✓";
+  color: var(--color-accent);
+}
+
+/* ---- challenge dialog -------------------------------------------------- */
+
+.overlay {
+  background: var(--color-overlay);
+  inset: 0;
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 6vh 1rem;
+}
+
+.dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  max-width: 640px;
+  width: 100%;
+  padding: 1.5rem 1.75rem;
+}
+
+.dialog header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.dialog header h2 {
+  margin: 0;
+  flex: 1;
+}
+
+.dialog header .points {
+  color: var(--color-accent);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.dialog .close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.2rem;
+  padding: 0 0.25rem;
+}
+
+.dialog .close:hover {
+  color: var(--color-text);
+  background: none;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+}
+
+.tag {
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  padding: 0.1rem 0.6rem;
+}
+
+.description {
+  white-space: pre-wrap;
+  margin: 1rem 0;
+}
+
+.dialog section {
+  border-top: 1px dashed var(--color-border);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+.dialog section h3 {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.file-list,
+.hint-list,
+.solver-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hint-row {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.hint-row .grow {
+  flex: 1;
+}
+
+.hint-content {
+  background: var(--color-inset);
+  border-left: 2px solid var(--color-accent-dim);
+  padding: 0.4rem 0.75rem;
+  white-space: pre-wrap;
+}
+
+.flag-form {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.flag-form input {
+  flex: 1;
+  font-family: var(--font-mono);
+}
+
+.verdict {
+  border-radius: 4px;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.verdict.correct {
+  background: color-mix(in srgb, var(--color-inset) 80%, var(--color-accent) 20%);
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+}
+
+.verdict.incorrect {
+  background: color-mix(in srgb, var(--color-inset) 85%, var(--color-danger) 15%);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+.verdict.already_solved {
+  background: color-mix(in srgb, var(--color-inset) 85%, var(--color-warn) 15%);
+  border: 1px solid var(--color-warn);
+  color: var(--color-warn);
+}
+
+.first-blood {
+  animation: bloodpulse 1.2s ease-in-out infinite alternate;
+  color: var(--color-blood);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+@keyframes bloodpulse {
+  from {
+    text-shadow: 0 0 4px color-mix(in srgb, var(--color-blood) 40%, transparent);
+  }
+  to {
+    text-shadow: 0 0 14px color-mix(in srgb, var(--color-blood) 90%, transparent);
+  }
+}
+
+/* ---- tables (scoreboard, tokens) -------------------------------------- */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+th {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+tr.self td {
+  background: color-mix(in srgb, var(--color-surface) 85%, var(--color-accent) 15%);
+}
+
+td.rank {
+  color: var(--color-text-muted);
+  width: 3rem;
+}
+
+td.score {
+  color: var(--color-accent);
+  font-weight: 700;
+  text-align: right;
+}
+
+/* ---- token reveal ------------------------------------------------------ */
+
+.token-reveal {
+  align-items: center;
+  background: var(--color-inset);
+  border: 1px solid var(--color-warn);
+  border-radius: 4px;
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.token-reveal code {
+  border: none;
+  background: none;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.page-head {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.stack-lg > * + * {
+  margin-top: 1.5rem;
+}
+
+.center {
+  color: var(--color-text-muted);
+  padding: 4rem 0;
+  text-align: center;
+}
+
+/* ---- theme switcher --------------------------------------------------- */
+
+.theme-switcher {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.theme-switcher select {
+  min-width: 12rem;
+}
