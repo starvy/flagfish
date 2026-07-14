@@ -51,7 +51,12 @@ SELECT (
 -- name: GetHint :one
 -- The challenge id from the URL is part of the key: a hint reached through the wrong challenge —
 -- or through a hidden one — is simply not found.
-SELECT h.id, h.challenge_id, h.title, h.content, h.cost, h.requirements, h.position
+--
+-- The challenge's requirements ride along because a hint is not purchasable independently of the
+-- challenge that owns it: the unlock is gated on the challenge's prerequisites as well as the
+-- hint's own, and reading them here keeps that gate on the row we already had to fetch.
+SELECT h.id, h.challenge_id, h.title, h.content, h.cost, h.requirements, h.position,
+       c.requirements AS challenge_requirements
   FROM hints h
   JOIN challenges c ON c.id = h.challenge_id
  WHERE h.id = @hint_id

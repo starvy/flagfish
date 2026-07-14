@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { Dialog } from "../ui";
 import { newestId } from "./feed";
@@ -27,11 +27,15 @@ export function NotificationsDrawer() {
   useNotificationToasts(feed);
 
   const newest = newestId(feed.items);
+  const newestRef = useRef(newest);
+  newestRef.current = newest;
 
-  // Opening the drawer is the read: there is no server-side read state to reconcile with.
+  // Reading is closing, not opening: while the panel is up the unread rows have to stay marked
+  // as unread, or they un-highlight under the reader's eyes. The cursor moves on the way out.
   useEffect(() => {
-    if (open && newest > 0) markReadThrough(newest);
-  }, [open, newest]);
+    if (!open) return;
+    return () => markReadThrough(newestRef.current);
+  }, [open]);
 
   return (
     <Dialog
@@ -57,8 +61,7 @@ export function NotificationsDrawer() {
       ) : feed.items.length === 0 ? (
         <NotificationsEmpty compact />
       ) : (
-        // The cursor is read once, on open: rows must not un-highlight under the reader's eyes.
-        <NotificationList items={feed.items} readThrough={open ? readThrough : newest} dense />
+        <NotificationList items={feed.items} readThrough={readThrough} dense />
       )}
     </Dialog>
   );

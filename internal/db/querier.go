@@ -278,7 +278,12 @@ type Querier interface {
 	GetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	// The metadata a download needs, joined to its challenge so the handler can enforce that a hidden
 	// challenge's file is invisible to non-admins. A file with no owning challenge returns no row.
-	GetChallengeFileForDownload(ctx context.Context, id int64) (GetChallengeFileForDownloadRow, error)
+	//
+	// prereqs_met is the projection the board and the detail view already compute: a challenge whose
+	// prerequisites this account has not solved lists no files at all, so a download by id answers to
+	// the same gate. Without it the id — a bigserial, and therefore guessable — is a side door onto the
+	// artifacts of every challenge the board is withholding.
+	GetChallengeFileForDownload(ctx context.Context, arg GetChallengeFileForDownloadParams) (GetChallengeFileForDownloadRow, error)
 	// calling this on a static challenge is a no-op, not a corruption
 	// The flag_mode='static' compare path. Loaded on every submit of a static challenge — the
 	// hottest read in the product — and served entirely by flags_challenge_idx.
@@ -294,7 +299,11 @@ type Querier interface {
 	GetFileByLocation(ctx context.Context, location string) (File, error)
 	// The challenge id from the URL is part of the key: a hint reached through the wrong challenge —
 	// or through a hidden one — is simply not found.
-	GetHint(ctx context.Context, arg GetHintParams) (Hint, error)
+	//
+	// The challenge's requirements ride along because a hint is not purchasable independently of the
+	// challenge that owns it: the unlock is gated on the challenge's prerequisites as well as the
+	// hint's own, and reading them here keeps that gate on the row we already had to fetch.
+	GetHint(ctx context.Context, arg GetHintParams) (GetHintRow, error)
 	// Read under the account spend lock, which is what makes it safe to branch on. It runs
 	// Before affordability: an account that owns a hint and has since spent down to zero
 	// must be told it owns the hint — not that it cannot afford it.

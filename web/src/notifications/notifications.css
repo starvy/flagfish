@@ -1,0 +1,148 @@
+/*
+ * Notifications: the bell, the drawer, the feed rows.
+ *
+ * Colour comes from the token contract and nowhere else, so a theme repaints this the same way
+ * it repaints the kit. The drawer is <Dialog> re-anchored to the right edge rather than a second
+ * modal implementation — the focus trap is the hard part and it already exists.
+ */
+
+/* ---------------------------------------------------------------- bell -- */
+
+.ff-notif-bell {
+  position: relative;
+}
+
+.ff-notif-bell__glyph {
+  display: block;
+}
+
+.ff-notif-bell__count {
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+  color: var(--color-accent-contrast);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1;
+  min-width: 1.1rem;
+  padding: 2px 4px;
+  position: absolute;
+  right: 0;
+  text-align: center;
+  top: 0;
+  transform: translate(35%, -25%);
+}
+
+/* -------------------------------------------------------------- drawer -- */
+
+/* The backdrop is Dialog's, and the drawer has no handle on it — :has is what lets the panel
+   restyle the container it was portalled into without a second backdrop element. */
+.ff-dialog__backdrop:has(> .ff-notif-drawer) {
+  align-items: stretch;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 0;
+}
+
+.ff-notif-drawer {
+  border-bottom: 0;
+  border-radius: 0;
+  border-right: 0;
+  border-top: 0;
+  max-height: 100vh;
+  max-width: min(28rem, 100vw);
+}
+
+.ff-notif-drawer .ff-dialog__body {
+  /* min-height:0 or the flex item refuses to shrink and the list scrolls the page instead. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.ff-notif-drawer .ff-dialog__foot {
+  justify-content: space-between;
+}
+
+/* ---------------------------------------------------------------- feed -- */
+
+.ff-notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ff-notif {
+  background: var(--color-surface);
+  border: var(--border);
+  border-left: 3px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.ff-notif-list--dense .ff-notif {
+  padding: var(--space-2) var(--space-3);
+}
+
+.ff-notif--unread {
+  border-left-color: var(--color-accent);
+}
+
+/* First blood outranks unread: it is the loudest thing the platform says, and it stays loud
+   after it has been read. */
+.ff-notif--blood,
+.ff-notif--blood.ff-notif--unread {
+  background: color-mix(in srgb, var(--color-blood) 8%, var(--color-surface));
+  border-left-color: var(--color-blood);
+}
+
+.ff-notif__head {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.ff-notif__title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin: 0;
+}
+
+.ff-notif--blood .ff-notif__title {
+  color: var(--color-blood);
+}
+
+.ff-notif__time {
+  color: var(--color-text-muted);
+  flex: none;
+  font-size: var(--text-xs);
+}
+
+.ff-notif__body {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* The toast for a first blood carries the badge; the badge is what tells the card to bleed. */
+.ff-toast:has(.ff-badge--blood) {
+  --toast-color: var(--color-blood);
+}
+
+/* ---------------------------------------------------------------- page -- */
+
+.ff-notif-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ff-notif-page__status {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}

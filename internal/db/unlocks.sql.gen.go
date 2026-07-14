@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -81,7 +82,8 @@ func (q *Queries) GetAccountScore(ctx context.Context, arg GetAccountScoreParams
 }
 
 const getHint = `-- name: GetHint :one
-SELECT h.id, h.challenge_id, h.title, h.content, h.cost, h.requirements, h.position
+SELECT h.id, h.challenge_id, h.title, h.content, h.cost, h.requirements, h.position,
+       c.requirements AS challenge_requirements
   FROM hints h
   JOIN challenges c ON c.id = h.challenge_id
  WHERE h.id = $1
@@ -94,11 +96,26 @@ type GetHintParams struct {
 	ChallengeID int64
 }
 
+type GetHintRow struct {
+	ID                    int64
+	ChallengeID           int64
+	Title                 *string
+	Content               string
+	Cost                  int32
+	Requirements          json.RawMessage
+	Position              int32
+	ChallengeRequirements json.RawMessage
+}
+
 // The challenge id from the URL is part of the key: a hint reached through the wrong challenge —
 // or through a hidden one — is simply not found.
-func (q *Queries) GetHint(ctx context.Context, arg GetHintParams) (Hint, error) {
+//
+// The challenge's requirements ride along because a hint is not purchasable independently of the
+// challenge that owns it: the unlock is gated on the challenge's prerequisites as well as the
+// hint's own, and reading them here keeps that gate on the row we already had to fetch.
+func (q *Queries) GetHint(ctx context.Context, arg GetHintParams) (GetHintRow, error) {
 	row := q.db.QueryRow(ctx, getHint, arg.HintID, arg.ChallengeID)
-	var i Hint
+	var i GetHintRow
 	err := row.Scan(
 		&i.ID,
 		&i.ChallengeID,
@@ -107,6 +124,7 @@ func (q *Queries) GetHint(ctx context.Context, arg GetHintParams) (Hint, error) 
 		&i.Cost,
 		&i.Requirements,
 		&i.Position,
+		&i.ChallengeRequirements,
 	)
 	return i, err
 }

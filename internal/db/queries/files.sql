@@ -24,7 +24,28 @@ SELECT count(*) FROM files WHERE sha256sum = @sha256sum;
 -- name: GetChallengeFileForDownload :one
 -- The metadata a download needs, joined to its challenge so the handler can enforce that a hidden
 -- challenge's file is invisible to non-admins. A file with no owning challenge returns no row.
-SELECT f.id, f.name, f.sha256sum, f.size_bytes, c.state, c.id AS challenge_id
+--
+-- prereqs_met is the projection the board and the detail view already compute: a challenge whose
+-- prerequisites this account has not solved lists no files at all, so a download by id answers to
+-- the same gate. Without it the id — a bigserial, and therefore guessable — is a side door onto the
+-- artifacts of every challenge the board is withholding.
+WITH mode AS (
+    SELECT user_mode FROM instance
+)
+SELECT f.id, f.name, f.sha256sum, f.size_bytes, c.state, c.id AS challenge_id,
+    NOT EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements_text(c.requirements -> 'prerequisites') AS req(pid)
+         WHERE NOT EXISTS (
+            SELECT 1 FROM solves ps
+            CROSS JOIN mode pm
+            WHERE ps.challenge_id = req.pid::bigint
+              AND CASE WHEN pm.user_mode = 'teams'
+                       THEN ps.team_id = sqlc.narg(team_id)::bigint
+                       ELSE ps.user_id = sqlc.arg(user_id)::bigint
+                  END
+         )
+    ) AS prereqs_met
 FROM files f
 JOIN challenges c ON c.id = f.challenge_id
 WHERE f.id = @id;

@@ -76,11 +76,33 @@ func (q *Queries) CountFilesBySha(ctx context.Context, sha256sum []byte) (int64,
 }
 
 const getChallengeFileForDownload = `-- name: GetChallengeFileForDownload :one
-SELECT f.id, f.name, f.sha256sum, f.size_bytes, c.state, c.id AS challenge_id
+WITH mode AS (
+    SELECT user_mode FROM instance
+)
+SELECT f.id, f.name, f.sha256sum, f.size_bytes, c.state, c.id AS challenge_id,
+    NOT EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements_text(c.requirements -> 'prerequisites') AS req(pid)
+         WHERE NOT EXISTS (
+            SELECT 1 FROM solves ps
+            CROSS JOIN mode pm
+            WHERE ps.challenge_id = req.pid::bigint
+              AND CASE WHEN pm.user_mode = 'teams'
+                       THEN ps.team_id = $1::bigint
+                       ELSE ps.user_id = $2::bigint
+                  END
+         )
+    ) AS prereqs_met
 FROM files f
 JOIN challenges c ON c.id = f.challenge_id
-WHERE f.id = $1
+WHERE f.id = $3
 `
+
+type GetChallengeFileForDownloadParams struct {
+	TeamID *int64
+	UserID int64
+	ID     int64
+}
 
 type GetChallengeFileForDownloadRow struct {
 	ID          int64
@@ -89,12 +111,18 @@ type GetChallengeFileForDownloadRow struct {
 	SizeBytes   int64
 	State       string
 	ChallengeID int64
+	PrereqsMet  bool
 }
 
 // The metadata a download needs, joined to its challenge so the handler can enforce that a hidden
 // challenge's file is invisible to non-admins. A file with no owning challenge returns no row.
-func (q *Queries) GetChallengeFileForDownload(ctx context.Context, id int64) (GetChallengeFileForDownloadRow, error) {
-	row := q.db.QueryRow(ctx, getChallengeFileForDownload, id)
+//
+// prereqs_met is the projection the board and the detail view already compute: a challenge whose
+// prerequisites this account has not solved lists no files at all, so a download by id answers to
+// the same gate. Without it the id — a bigserial, and therefore guessable — is a side door onto the
+// artifacts of every challenge the board is withholding.
+func (q *Queries) GetChallengeFileForDownload(ctx context.Context, arg GetChallengeFileForDownloadParams) (GetChallengeFileForDownloadRow, error) {
+	row := q.db.QueryRow(ctx, getChallengeFileForDownload, arg.TeamID, arg.UserID, arg.ID)
 	var i GetChallengeFileForDownloadRow
 	err := row.Scan(
 		&i.ID,
@@ -103,6 +131,7 @@ func (q *Queries) GetChallengeFileForDownload(ctx context.Context, id int64) (Ge
 		&i.SizeBytes,
 		&i.State,
 		&i.ChallengeID,
+		&i.PrereqsMet,
 	)
 	return i, err
 }

@@ -1,0 +1,277 @@
+/* The two challenge screens. Layout only: every colour is a token from the contract, so a theme
+   repaints the board without touching this file. */
+
+/* ---------------------------------------------------------------- board -- */
+
+.board__category {
+  margin-bottom: var(--space-6);
+}
+
+.board__category-head {
+  align-items: baseline;
+  border-bottom: var(--border);
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2);
+}
+
+.board__category-name {
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-caps);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.board__grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+
+.chal-card {
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  transition:
+    border-color var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+.chal-card:hover {
+  border-color: var(--color-border-strong);
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.chal-card:focus-visible {
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+/* A solved challenge is not merely a badge: the card itself reads as done at a glance. */
+.chal-card--solved {
+  border-color: var(--color-accent-dim);
+}
+
+.chal-card--solved::before {
+  background: var(--color-accent);
+  border-radius: var(--radius) var(--radius) 0 0;
+  content: "";
+  height: 2px;
+  left: -1px;
+  position: absolute;
+  right: -1px;
+  top: -1px;
+}
+
+.chal-card--solved,
+.chal-card--locked {
+  position: relative;
+}
+
+.chal-card--locked {
+  border-style: dashed;
+}
+
+.chal-card__head {
+  align-items: baseline;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.chal-card__name {
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.chal-card__value {
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.chal-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chal-card__foot {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.chal-card__note {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin: 0;
+}
+
+/* --------------------------------------------------------------- detail -- */
+
+.chal-detail__head {
+  margin-bottom: var(--space-5);
+}
+
+.chal-detail__title {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+
+.chal-detail__value {
+  color: var(--color-accent);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.chal-detail__meta {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+}
+
+.chal-detail__back {
+  display: inline-block;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-3);
+}
+
+.chal-detail__section {
+  margin-top: var(--space-5);
+}
+
+.chal-detail__section h3 {
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-caps);
+  margin: 0 0 var(--space-3);
+  text-transform: uppercase;
+}
+
+.chal-detail__attribution {
+  font-size: var(--text-sm);
+  margin-top: var(--space-3);
+}
+
+/* ---------------------------------------------------------------- files -- */
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-list__row {
+  align-items: center;
+  background: var(--color-inset);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.file-list__name {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- hints -- */
+
+.hint-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hint-row {
+  background: var(--color-surface);
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.hint-row--locked {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.hint-row__title {
+  font-weight: 600;
+}
+
+.hint-row__note {
+  font-size: var(--text-xs);
+  margin: var(--space-2) 0 0;
+}
+
+.hint-row__body {
+  border-top: var(--border);
+  font-size: var(--text-sm);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+/* ------------------------------------------------------------ flag form -- */
+
+.flag-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.flag-form__input {
+  flex: 1;
+}
+
+.flag-form__budget {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin: var(--space-2) 0 0;
+}
+
+.flag-form__verdict {
+  margin-top: var(--space-3);
+}
+
+/* First blood is the loudest thing the platform says. It is also announced politely on a live
+   region — this is the sighted half of that, never the whole of it. */
+.flag-form__blood {
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-1);
+}
+
+/* --------------------------------------------------------------- solves -- */
+
+.solve-list__blood td {
+  color: var(--color-blood);
+}
+
+.solve-list__rank {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  width: 3rem;
+}
+</content>
