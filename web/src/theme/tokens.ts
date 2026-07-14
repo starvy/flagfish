@@ -4,6 +4,10 @@
 //
 // Keys are written without the leading `--`; applyTokens prepends it when it
 // writes them to the document root.
+//
+// Only what a theme may repaint belongs here. The spacing and type scales are
+// structure, not palette: they are fixed at :root in styles.css so a theme cannot
+// silently reflow the app, and so a new theme stays a short list of colours.
 export const TOKEN_KEYS = [
   "color-bg", // page background
   "color-surface", // panels, cards, dialogs
@@ -18,8 +22,11 @@ export const TOKEN_KEYS = [
   "color-danger",
   "color-danger-contrast",
   "color-warn",
+  "color-info", // a signal, not a verdict: notices, anticheat findings
   "color-blood", // first-blood highlight
   "color-success",
+  "color-diff-add", // audit trail: the `after` side of a JSON diff
+  "color-diff-del", // audit trail: the `before` side
   "color-overlay", // modal backdrop
   "radius",
   "shadow",

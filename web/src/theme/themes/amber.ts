@@ -22,8 +22,14 @@ export const amber: Theme = {
     "color-danger": "#ff6a3d",
     "color-danger-contrast": "#140f05",
     "color-warn": "#ffd24a",
+    "color-info": "#79c8d8",
     "color-blood": "#ff3b30",
     "color-success": "#ffb020",
+    // A diff needs two hues that survive a glance; monochrome amber cannot supply
+    // them, so the add side leans green — the same concession the theme already
+    // makes for danger and for first blood.
+    "color-diff-add": "#9ed36a",
+    "color-diff-del": "#ff6a3d",
     "color-overlay": "rgba(10, 6, 0, 0.78)",
     radius: "6px",
     shadow: "0 8px 24px rgba(0, 0, 0, 0.55)",
