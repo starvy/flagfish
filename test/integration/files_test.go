@@ -271,6 +271,75 @@ func TestFileDownloadHiddenChallengeIs404ForNonAdmin(t *testing.T) {
 	}
 }
 
+// A file behind unmet prerequisites is not downloadable by id, however the id was obtained.
+//
+// The detail view of a locked challenge lists no files, so the only way to the artifact is the id —
+// and file ids are a bigserial, so guessing them is a loop, not an attack. On a chained CTF that
+// loop hands out the stage-2 binary before stage 1 is solved. The download therefore runs the same
+// prerequisite gate the detail view runs, and answers 404: a 403 would confirm, id by id, exactly
+// what the board is withholding.
+func TestFileDownloadRequiresPrerequisites(t *testing.T) {
+	f := newFilesAPI(t, account.ModeUsers)
+	adminCookie, adminCSRF, _ := f.admin("root", "root@files.test")
+	adminAuth := []func(*http.Request){withCookie(adminCookie), withCSRF(adminCSRF)}
+
+	chA := f.seedChallenge("Alpha", "misc", 100)
+	f.seedFlag(chA, "flag{a}")
+	// Visible-but-locked, which is the harder case: the challenge is on the board and its state is
+	// 'visible', so the hidden-state check the handler already had says yes.
+	chB := f.seedChallengeWithReqs("Bravo", "misc", 200,
+		fmt.Sprintf(`{"prerequisites":[%d],"anonymize":"preview"}`, chA))
+
+	content := []byte("the stage-2 binary nobody may have yet")
+	res, body := f.upload(chB, "file", "stage2.bin", content, adminAuth...)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("upload: got %d, want 201 (%s)", res.StatusCode, body)
+	}
+	fileID := decodeID(t, body)
+	path := fmt.Sprintf("/api/v1/files/%d", fileID)
+
+	cookie, csrf := f.register("ada", "ada@files.test", "correct-horse-battery")
+
+	// The detail view of the locked challenge hands out no file ids…
+	_, detailBody := f.do(http.MethodGet, fmt.Sprintf("/api/v1/challenges/%d", chB), nil, withCookie(cookie))
+	if got := f.decodeDetail(detailBody); len(got.Files) != 0 {
+		t.Fatalf("locked detail leaked file ids: %s", detailBody)
+	}
+	// …and knowing the id anyway buys nothing.
+	dl, dlBody := f.doRaw(http.MethodGet, path, withCookie(cookie))
+	if dl.StatusCode != http.StatusNotFound {
+		t.Fatalf("file of a prerequisite-locked challenge: got %d, want 404 — walking the sequential "+
+			"file ids downloads the artifacts of every challenge the prerequisites are hiding", dl.StatusCode)
+	}
+	if bytes.Equal(dlBody, content) {
+		t.Fatal("the response body carried the artifact of a locked challenge")
+	}
+
+	// The admin is never gated: a preview must still work.
+	adminDL, adminBody := f.doRaw(http.MethodGet, path, withCookie(adminCookie))
+	if adminDL.StatusCode != http.StatusOK {
+		t.Fatalf("admin download of a locked challenge's file: got %d, want 200", adminDL.StatusCode)
+	}
+	if !bytes.Equal(adminBody, content) {
+		t.Error("admin download returned the wrong bytes")
+	}
+
+	// Solving the prerequisite opens it, so the gate is a gate and not a wall.
+	res, body = f.do(http.MethodPost, f.attemptPath(chA),
+		map[string]any{"flag": "flag{a}"}, withCookie(cookie), withCSRF(csrf))
+	if res.StatusCode != http.StatusOK || decodeAttempt(t, body).Status != "correct" {
+		t.Fatalf("solve prerequisite: got %d (%s)", res.StatusCode, body)
+	}
+
+	dl, dlBody = f.doRaw(http.MethodGet, path, withCookie(cookie))
+	if dl.StatusCode != http.StatusOK {
+		t.Fatalf("file after the prerequisite is solved: got %d, want 200", dl.StatusCode)
+	}
+	if !bytes.Equal(dlBody, content) {
+		t.Errorf("unlocked download returned %d bytes, want %d", len(dlBody), len(content))
+	}
+}
+
 func TestFileUploadDedupesInBucket(t *testing.T) {
 	f := newFilesAPI(t, account.ModeUsers)
 	cookie, csrf, _ := f.admin("root", "root@files.test")
