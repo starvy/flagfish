@@ -27,4 +27,3 @@ export function QueryError({ error, onRetry, title = "could not load" }: QueryEr
     </Alert>
   );
 }
-</content>

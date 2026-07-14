@@ -21,4 +21,3 @@ export function useClock(): Clock {
     frozen: freeze !== null && Date.now() >= Date.parse(freeze),
   };
 }
-</content>

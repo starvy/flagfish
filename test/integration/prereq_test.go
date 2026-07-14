@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/starvy/flagfish/internal/domain/account"
@@ -211,21 +212,6 @@ func (f *apiFix) score(userID int64) int64 {
 		f.t.Fatalf("score: %v", err)
 	}
 	return n
-}
-
-type unlockBody struct {
-	Content string `json:"content"`
-	Charged int32  `json:"charged"`
-	Score   int64  `json:"score"`
-}
-
-func decodeUnlock(t *testing.T, body []byte) unlockBody {
-	t.Helper()
-	var v unlockBody
-	if err := json.Unmarshal(body, &v); err != nil {
-		t.Fatalf("decode unlock: %v (%s)", err, body)
-	}
-	return v
 }
 
 // TestChallengePrerequisiteGatesHintUnlock: a hint on a challenge whose prerequisites are unsolved

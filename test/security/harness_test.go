@@ -173,6 +173,20 @@ func registerProbes(srv *httpapi.Server) {
 	httpapi.Register(srv.Public, policy.ClassAccountSelf, huma.Operation{
 		OperationID: "probe-write", Method: http.MethodPost, Path: "/probe",
 	}, ok)
+
+	// A probe carrying an id, so the rate-limit bucket has an id to key on: the same {id} + ParseInt
+	// shape as /challenges/{id}/attempt, which is the route the limiter actually has to protect.
+	type idIn struct {
+		ID int64 `path:"id"`
+	}
+	okID := func(context.Context, *idIn) (*out, error) {
+		var o out
+		o.Body.OK = true
+		return &o, nil
+	}
+	httpapi.Register(srv.Public, policy.ClassAccountSelf, huma.Operation{
+		OperationID: "probe-by-id", Method: http.MethodGet, Path: "/probe/{id}",
+	}, okID)
 }
 
 func truncate(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {

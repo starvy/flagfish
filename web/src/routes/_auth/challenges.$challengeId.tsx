@@ -138,4 +138,3 @@ function DetailSkeleton() {
     </div>
   );
 }
-</content>

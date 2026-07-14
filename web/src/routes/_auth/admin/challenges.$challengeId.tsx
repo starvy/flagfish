@@ -226,9 +226,9 @@ function seedOf(ch: AdminChallenge | null, read: ChallengeDetail | null): FormSt
       description: ch.description ?? "",
       attribution: ch.attribution ?? "",
       connection_info: ch.connection_info ?? "",
-      state: ch.state,
-      function: ch.function,
-      logic: ch.logic,
+      state: ch.state as FormState["state"],
+      function: ch.function as FormState["function"],
+      logic: ch.logic as FormState["logic"],
       value: String(ch.value),
       initial: optNum(ch.initial),
       minimum: optNum(ch.minimum),
@@ -245,8 +245,8 @@ function seedOf(ch: AdminChallenge | null, read: ChallengeDetail | null): FormSt
       description: read.description ?? "",
       attribution: read.attribution ?? "",
       connection_info: read.connection_info ?? "",
-      state: read.state,
-      function: read.function,
+      state: read.state as FormState["state"],
+      function: read.function as FormState["function"],
       logic: "",
       value: String(read.value),
       max_attempts: String(read.max_attempts),
@@ -814,7 +814,7 @@ function flagProblem(type: FlagType, content: string): string | null {
 
 /* ------------------------------------------------------------------ hints */
 
-type ReadHint = ChallengeDetail["hints"][number];
+type ReadHint = NonNullable<ChallengeDetail["hints"]>[number];
 
 function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeDetail }) {
   const toast = useToast();
@@ -831,7 +831,7 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
   const [editing, setEditing] = useState<ReadHint | null>(null);
   const [target, setTarget] = useState<ReadHint | null>(null);
 
-  const hints = read.hints;
+  const hints = read.hints ?? [];
   const reordering = update.isPending;
 
   const submit = async () => {
@@ -1099,7 +1099,7 @@ function EditHintDialog({
 
 /* ------------------------------------------------------------------ files */
 
-type ReadFile = ChallengeDetail["files"][number];
+type ReadFile = NonNullable<ChallengeDetail["files"]>[number];
 
 function FilesTab({ read }: { read: ChallengeDetail }) {
   const toast = useToast();
@@ -1186,7 +1186,7 @@ function FilesTab({ read }: { read: ChallengeDetail }) {
         <DataTable
           caption="Files attached to this challenge"
           columns={columns}
-          rows={read.files}
+          rows={read.files ?? []}
           rowKey={(f) => f.id}
           empty={
             <EmptyState

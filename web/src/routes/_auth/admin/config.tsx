@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import type { AdminConfig, AdminConfigPatch } from "../../../api/admin";
@@ -82,7 +82,7 @@ function ConfigPage() {
   );
 }
 
-function Page({ children }: { children: React.ReactNode }) {
+function Page({ children }: { children: ReactNode }) {
   return (
     <AdminPage
       title="Config"

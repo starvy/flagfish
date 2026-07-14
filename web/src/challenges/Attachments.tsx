@@ -65,4 +65,3 @@ function saveBlob(blob: Blob, filename: string): void {
   a.remove();
   URL.revokeObjectURL(url);
 }
-</content>

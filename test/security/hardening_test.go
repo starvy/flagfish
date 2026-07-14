@@ -130,6 +130,44 @@ func TestS13_OversizedBodiesAreRefused(t *testing.T) {
 	})
 }
 
+// One id is one bucket, however the id is spelled.
+//
+// chi matches any segment against {id} and Huma parses it with strconv.ParseInt, which accepts
+// leading zeros and a sign — so /probe/7, /probe/007 and /probe/+7 are all id 7. Key the limiter on
+// the raw path and each spelling is a fresh budget against the same row, out of a padding space with
+// no end. On a challenge that sets no max_attempts — the default — the limiter is the only thing
+// between a script and the flag, so a bucket per spelling is a brute-force multiplier, not a
+// cosmetic bug.
+func TestS16_RateLimitBucketIsTheRouteNotTheRawPath(t *testing.T) {
+	const limit = 5
+	f := setup(t, withLimit(limit))
+
+	// Spend the whole budget for id 7.
+	for i := range limit {
+		if got := f.do(http.MethodGet, "/api/v1/probe/7").StatusCode; got == http.StatusTooManyRequests {
+			t.Fatalf("limited after only %d requests (limit %d)", i, limit)
+		}
+	}
+	if got := f.do(http.MethodGet, "/api/v1/probe/7").StatusCode; got != http.StatusTooManyRequests {
+		t.Fatalf("id 7: %d after %d requests, want 429 — the limiter is not limiting at all", got, limit)
+	}
+
+	// Every other spelling of 7 is the same bucket, already spent.
+	for _, padded := range []string{"/api/v1/probe/007", "/api/v1/probe/0000000007", "/api/v1/probe/+7"} {
+		if got := f.do(http.MethodGet, padded).StatusCode; got != http.StatusTooManyRequests {
+			t.Errorf("%s: %d, want 429 — it is the same id as /probe/7, whose budget is spent. "+
+				"Padding the id mints a fresh bucket, so the limit on a flag submission is "+
+				"limit × however many zeros an attacker cares to type", padded, got)
+		}
+	}
+
+	// And the per-id budget still exists: a different id is a different bucket, or the fix would
+	// have "worked" by collapsing every challenge into one limit.
+	if got := f.do(http.MethodGet, "/api/v1/probe/8").StatusCode; got == http.StatusTooManyRequests {
+		t.Errorf("id 8: %d — a different id must have its own budget", got)
+	}
+}
+
 // A database failure during authentication is a 503, and it says nothing.
 //
 // The failure mode is two bugs in one line: the caller is told 401 ("your credential is bad")

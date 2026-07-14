@@ -52,4 +52,3 @@ export function ChallengeCard({ challenge }: { challenge: BoardChallenge }) {
     </Link>
   );
 }
-</content>

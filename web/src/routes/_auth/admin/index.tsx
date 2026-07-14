@@ -90,7 +90,7 @@ function OverviewPage() {
 
   const inst = instance.data;
   const cfg = config.data;
-  const list = challenges.data.challenges;
+  const list = challenges.data.challenges ?? [];
   const phase = phaseOf(Date.now(), cfg.start, cfg.end, cfg.freeze);
   const categories = new Set(list.map((c) => c.category)).size;
   const points = list.reduce((sum, c) => sum + c.value, 0);
@@ -129,8 +129,8 @@ function OverviewPage() {
           label={inst.mode === "teams" ? "Users (teams mode)" : "Users"}
           value={users.data?.total ?? "—"}
         />
-        <Stat label="Brackets" value={brackets.data?.brackets.length ?? "—"} />
-        <Stat label="Tags" value={tags.data?.tags.length ?? "—"} />
+        <Stat label="Brackets" value={brackets.data?.brackets?.length ?? "—"} />
+        <Stat label="Tags" value={tags.data?.tags?.length ?? "—"} />
       </StatGrid>
 
       <div className="admin-grid">

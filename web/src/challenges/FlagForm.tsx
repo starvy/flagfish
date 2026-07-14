@@ -148,4 +148,3 @@ function announce(verdict: AttemptResult): string {
       return "Incorrect.";
   }
 }
-</content>

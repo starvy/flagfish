@@ -73,4 +73,3 @@ export function SolvesTab({ challengeId }: { challengeId: number }) {
     </>
   );
 }
-</content>

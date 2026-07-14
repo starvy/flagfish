@@ -113,4 +113,3 @@ function BoardSkeleton() {
     </>
   );
 }
-</content>
