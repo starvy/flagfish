@@ -404,11 +404,6 @@ tasks:
       MODESRC_DATABASE_URL: "{{.MODESRC_DATABASE_URL}}"
       CGO_ENABLED: "1"
     cmds:
-      # Own database, created and migrated in isolation. `|| true`: CREATE DATABASE has no
-      # IF NOT EXISTS, and a second run finding it already there is success, not failure.
-      - docker compose exec -T postgres-test psql -U flagfish -d flagfish_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE flagfish_test_modesrc' || true
-      - task: _goose
-        vars: {DSN: "{{.MODESRC_DATABASE_URL}}", ARGS: "up"}
       - go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/modesrc/...
 
   cover:
@@ -434,6 +429,19 @@ tasks:
       - docker compose up -d --wait postgres-test minio-test
       - task: _goose
         vars: {DSN: "{{.TEST_DATABASE_URL}}", ARGS: "up"}
+      # test/modesrc needs a second database: it boots against a mismatched instance.user_mode,
+      # which the shared test database cannot hold at the same time as everything else. It is
+      # created here rather than in test-modesrc because `go test ./...` reaches that suite, so
+      # any run — not just the named task — has to find the database already there.
+      - |
+        exists=$(docker compose exec -T postgres-test psql -U flagfish -d flagfish_test -tAc \
+          "SELECT 1 FROM pg_database WHERE datname = 'flagfish_test_modesrc'")
+        if [ "$exists" != "1" ]; then
+          docker compose exec -T postgres-test psql -U flagfish -d flagfish_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE flagfish_test_modesrc'
+        fi
+      - task: _goose
+        vars: {DSN: "{{.MODESRC_DATABASE_URL}}", ARGS: "up"}
 
   # ---------------------------------------------------------------- build/run
 
@@ -566,10 +574,11 @@ tasks:
       - task: sqlc-diff          # schema drift ⇒ build fails
       - task: check-generated    # contract drift ⇒ build fails
       - task: test-race
-      # Re-run the two DB-owning suites standalone: -count=1 defeats the cache so a
+      # Re-run the DB-owning suites standalone: -count=1 defeats the cache so a
       # 1-in-20 race actually runs, and -v names the failing case.
       - task: test-concurrency
       - task: test-security
+      - task: test-modesrc
 
   check-generated:
     desc: Fail if generated code or openapi.yaml is stale (contract drift ⇒ build fails)

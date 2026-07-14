@@ -195,6 +195,7 @@ jobs:
       # reproducible locally with `task up && task test-race` and nothing else.
       TEST_DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
       DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
+      MODESRC_DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test_modesrc?sslmode=disable
 
     steps:
       - uses: actions/checkout@v5
@@ -225,6 +226,14 @@ jobs:
         run: ${{ github.workspace }}/bin/task migrate-test
         env:
           TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      # test/modesrc owns a second database: it boots against a mismatched
+      # instance.user_mode, which the shared test database cannot hold alongside
+      # everything else. `go test ./...` below reaches that suite, so it has to exist.
+      - name: Create and migrate the play-mode database
+        run: |
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE flagfish_test_modesrc'
+          ${{ github.workspace }}/bin/goose -dir internal/db/migrations postgres "$MODESRC_DATABASE_URL" up
 
       - name: go build
         run: go build ./...
