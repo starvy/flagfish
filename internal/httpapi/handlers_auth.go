@@ -91,6 +91,13 @@ type meOutput struct {
 		Verified bool   `json:"verified"`
 		IsAdmin  bool   `json:"is_admin"`
 		TeamID   *int64 `json:"team_id,omitempty"`
+		// The session cookie outlives the tab that minted it, and it is HttpOnly, so a client
+		// that comes back with a live cookie and no CSRF token cannot mint one: login and
+		// register are the only other emitters, and even logout is a CSRF-guarded POST. Without
+		// this field such a client authenticates, renders, and then 403s on every write with no
+		// way out. Safe to return: it is the caller's own token, on a request the cookie already
+		// authenticated, and it is never readable cross-origin.
+		CSRFToken string `json:"csrf_token"`
 	}
 }
 
@@ -190,7 +197,8 @@ func (s *Server) logout(ctx context.Context, in *logoutInput) (*clearedOutput, e
 }
 
 func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
-	pr := AuthOf(ctx).Principal
+	a := AuthOf(ctx)
+	pr := a.Principal
 	p, err := s.opts.Accounts.Profile(ctx, pr.UserID)
 	if err != nil {
 		s.opts.Log.ErrorContext(ctx, "profile lookup failed", "error", err)
@@ -204,6 +212,8 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	out.Body.Verified = p.Verified
 	out.Body.IsAdmin = pr.IsAdmin
 	out.Body.TeamID = p.TeamID
+	// Empty for bearer auth, which mints no CSRF token because it is exempt from the check.
+	out.Body.CSRFToken = a.CSRFToken
 	return out, nil
 }
 

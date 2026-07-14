@@ -86,6 +86,38 @@ func TestPauseBlocksAdminAttempt(t *testing.T) {
 	if !out.Allow {
 		t.Errorf("admin ?preview must short-circuit the pause gate, got %+v", out)
 	}
+
+	// Preview is read straight off the query string, so it may lift the pause only for an
+	// admin. For a player it would be a one-parameter bypass: solve while the field is locked
+	// out, take the first blood, and move the decay.
+	out = policy.Decide(policy.Policy{E: e, P: player(), R: policy.Request{Class: policy.ClassChallengeAttempt, Preview: true}})
+	if out.Allow || out.Reason != policy.ReasonPaused {
+		t.Errorf("player ?preview must NOT lift the pause gate, got %+v", out)
+	}
+}
+
+// The clock stopping is the end of scoring, whatever view_after_ctf says. That setting is the
+// ordinary post-event courtesy — leave the challenges readable — and it must not also leave them
+// solvable, or the standings keep moving after everyone has gone home.
+func TestEndedCTFBlocksScoringEvenWhenViewAfterCTF(t *testing.T) {
+	e := runningEvent()
+	e.Phase = policy.PhaseEnded
+	e.ViewAfterCTF = true
+
+	for _, c := range []policy.RouteClass{
+		policy.ClassChallengeAttempt, policy.ClassHintUnlock, policy.ClassSolutionUnlock,
+	} {
+		out := policy.Decide(policy.Policy{E: e, P: player(), R: policy.Request{Class: c}})
+		if out.Allow || out.Reason != policy.ReasonCTFEnded {
+			t.Errorf("%v: view_after_ctf must not reopen scoring after the event ends, got %+v", c, out)
+		}
+	}
+
+	// The read classes are exactly what view_after_ctf is for, and they stay open.
+	out := policy.Decide(policy.Policy{E: e, P: player(), R: policy.Request{Class: policy.ClassChallengeList}})
+	if !out.Allow {
+		t.Errorf("view_after_ctf must keep the challenges readable after the end, got %+v", out)
+	}
 }
 
 func TestPausedHintUnlockStillCharges(t *testing.T) {
@@ -121,9 +153,12 @@ func TestFreezeExemptionIsCallSiteDriven(t *testing.T) {
 		{"admin, scoreboard detail on the public surface", admin(), policy.Request{Class: policy.ClassScoreboardDetail, Surface: policy.SurfacePublic}, false},
 		// Challenge detail: frozen even for admins, unconditionally.
 		{"admin, challenge detail", admin(), policy.Request{Class: policy.ClassChallengeDetail, Surface: policy.SurfaceAdmin}, false},
-		// Challenge list: driven by ?view=admin, not by is_admin.
+		// Challenge list: ?view=admin narrows an admin's exemption; it never grants one. A
+		// player's ?view=admin must not be honoured, or diffing the frozen list against the
+		// "admin" one reads off every solve that landed during the freeze.
 		{"admin, challenge list, no view=admin", admin(), policy.Request{Class: policy.ClassChallengeList}, false},
-		{"player, challenge list, view=admin", player(), policy.Request{Class: policy.ClassChallengeList, AdminView: true}, true},
+		{"admin, challenge list, view=admin", admin(), policy.Request{Class: policy.ClassChallengeList, AdminView: true}, true},
+		{"player, challenge list, view=admin", player(), policy.Request{Class: policy.ClassChallengeList, AdminView: true}, false},
 		// The one genuinely role-driven site, with an inverted ?preview default.
 		{"admin, per-challenge solves", admin(), policy.Request{Class: policy.ClassChallengeSolves}, true},
 		{"admin, per-challenge solves, ?preview", admin(), policy.Request{Class: policy.ClassChallengeSolves, Preview: true}, false},

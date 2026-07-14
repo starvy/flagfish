@@ -55,6 +55,28 @@ func (q *Queries) CountIPOverlaps(ctx context.Context, minAccounts int32) (int64
 	return count, err
 }
 
+const countUnissuedSolves = `-- name: CountUnissuedSolves :one
+SELECT count(*)
+  FROM solves s
+  JOIN challenges c ON c.id = s.challenge_id
+  CROSS JOIN instance i
+ WHERE c.flag_mode = 'unique'
+   AND NOT EXISTS (
+       SELECT 1
+         FROM flag_issues fi
+        WHERE fi.challenge_id = s.challenge_id
+          AND fi.account_id = (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)
+   )
+`
+
+// The unissued-solve count behind FindUnissuedSolves, for pagination.
+func (q *Queries) CountUnissuedSolves(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnissuedSolves)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const findFlagSharing = `-- name: FindFlagSharing :many
 
 SELECT sub.id, sub.date, sub.challenge_id, sub.user_id, sub.team_id, sub.ip,
@@ -387,7 +409,9 @@ func (q *Queries) FindIPOverlaps(ctx context.Context, arg FindIPOverlapsParams) 
 }
 
 const findUnissuedSolves = `-- name: FindUnissuedSolves :many
-SELECT s.id AS solve_id, s.challenge_id, s.user_id, s.team_id, s.date, s.value
+SELECT s.id AS solve_id, s.challenge_id, c.name AS challenge_name,
+       (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)::bigint AS account_id,
+       s.user_id, s.team_id, s.date, s.value
   FROM solves s
   JOIN challenges c ON c.id = s.challenge_id
   CROSS JOIN instance i
@@ -398,17 +422,24 @@ SELECT s.id AS solve_id, s.challenge_id, s.user_id, s.team_id, s.date, s.value
         WHERE fi.challenge_id = s.challenge_id
           AND fi.account_id = (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)
    )
- ORDER BY s.date DESC
- LIMIT $1::int
+ ORDER BY s.date DESC, s.id DESC
+ LIMIT $2::int OFFSET $1::int
 `
 
+type FindUnissuedSolvesParams struct {
+	Off int32
+	Lim int32
+}
+
 type FindUnissuedSolvesRow struct {
-	SolveID     int64
-	ChallengeID int64
-	UserID      int64
-	TeamID      *int64
-	Date        pgtype.Timestamptz
-	Value       int32
+	SolveID       int64
+	ChallengeID   int64
+	ChallengeName string
+	AccountID     int64
+	UserID        int64
+	TeamID        *int64
+	Date          pgtype.Timestamptz
+	Value         int32
 }
 
 // The provable detector, not a statistical signal.
@@ -419,8 +450,8 @@ type FindUnissuedSolvesRow struct {
 // row means the flag came from somewhere else. Full stop.
 //
 // Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
-func (q *Queries) FindUnissuedSolves(ctx context.Context, lim int32) ([]FindUnissuedSolvesRow, error) {
-	rows, err := q.db.Query(ctx, findUnissuedSolves, lim)
+func (q *Queries) FindUnissuedSolves(ctx context.Context, arg FindUnissuedSolvesParams) ([]FindUnissuedSolvesRow, error) {
+	rows, err := q.db.Query(ctx, findUnissuedSolves, arg.Off, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +462,8 @@ func (q *Queries) FindUnissuedSolves(ctx context.Context, lim int32) ([]FindUnis
 		if err := rows.Scan(
 			&i.SolveID,
 			&i.ChallengeID,
+			&i.ChallengeName,
+			&i.AccountID,
 			&i.UserID,
 			&i.TeamID,
 			&i.Date,

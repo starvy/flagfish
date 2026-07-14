@@ -69,6 +69,33 @@ type acIPOverlapOutput struct {
 	}
 }
 
+// acUnissuedSolveBody carries both ids: the account is the unit the detector fires on, and the
+// user is who to talk to — in teams mode they are different rows, and an admin needs both.
+type acUnissuedSolveBody struct {
+	SolveID       int64     `json:"solve_id"`
+	ChallengeID   int64     `json:"challenge_id"`
+	ChallengeName string    `json:"challenge_name"`
+	AccountID     int64     `json:"account_id"`
+	UserID        int64     `json:"user_id"`
+	TeamID        *int64    `json:"team_id,omitempty"`
+	Date          time.Time `json:"date"`
+	Value         int32     `json:"value"`
+}
+
+type acUnissuedSolvesInput struct {
+	Page    int `query:"page" minimum:"1" maximum:"1000000" default:"1"`
+	PerPage int `query:"per_page" minimum:"1" maximum:"100" default:"50"`
+}
+
+type acUnissuedSolvesOutput struct {
+	Body struct {
+		Solves  []acUnissuedSolveBody `json:"solves"`
+		Total   int64                 `json:"total"`
+		Page    int                   `json:"page"`
+		PerPage int                   `json:"per_page"`
+	}
+}
+
 type acSharingEdgeBody struct {
 	Direction       string    `json:"direction"`
 	Counterparty    int64     `json:"counterparty"`
@@ -110,9 +137,35 @@ func (s *Server) registerAdminAnticheat() {
 	}, s.adminAnticheatIPOverlap)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-anticheat-unissued-solves", Method: http.MethodGet, Path: "/anticheat/unissued-solves",
+		Summary: "Solves on unique-flag challenges by accounts never issued an instance (paginated)",
+		Tags:    []string{"admin/anticheat"},
+	}, s.adminAnticheatUnissuedSolves)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-anticheat-account", Method: http.MethodGet, Path: "/anticheat/accounts/{id}",
 		Summary: "One account's sharing and IP-overlap evidence", Tags: []string{"admin/anticheat"},
 	}, s.adminAnticheatAccount)
+}
+
+func (s *Server) adminAnticheatUnissuedSolves(ctx context.Context, in *acUnissuedSolvesInput) (*acUnissuedSolvesOutput, error) {
+	page, err := s.opts.Anticheat.UnissuedSolves(ctx, in.Page, in.PerPage)
+	if err != nil {
+		return nil, s.anticheatError(ctx, err, "list unissued-solve evidence")
+	}
+	out := &acUnissuedSolvesOutput{}
+	out.Body.Total = page.Total
+	out.Body.Page = in.Page
+	out.Body.PerPage = in.PerPage
+	out.Body.Solves = make([]acUnissuedSolveBody, len(page.Solves))
+	for i, u := range page.Solves {
+		out.Body.Solves[i] = acUnissuedSolveBody{
+			SolveID: u.SolveID, ChallengeID: u.ChallengeID, ChallengeName: u.ChallengeName,
+			AccountID: u.AccountID, UserID: u.UserID, TeamID: u.TeamID,
+			Date: u.Date, Value: u.Value,
+		}
+	}
+	return out, nil
 }
 
 func (s *Server) adminAnticheatFlagSharing(ctx context.Context, in *acFlagSharingInput) (*acFlagSharingOutput, error) {

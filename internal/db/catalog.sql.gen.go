@@ -18,7 +18,7 @@ WITH mode AS (
 )
 SELECT
     c.id, c.name, c.category, c.description, c.attribution, c.connection_info,
-    c.type, c.value, c.function, c.max_attempts, c.state, c.requirements,
+    c.type, c.value, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
     (SELECT count(*)
        FROM solves s
        CROSS JOIN mode m
@@ -79,6 +79,7 @@ type GetChallengeForViewRow struct {
 	MaxAttempts    int32
 	State          string
 	Requirements   json.RawMessage
+	FlagMode       string
 	SolveCount     int64
 	Solved         bool
 	PrereqsMet     bool
@@ -107,6 +108,7 @@ func (q *Queries) GetChallengeForView(ctx context.Context, arg GetChallengeForVi
 		&i.MaxAttempts,
 		&i.State,
 		&i.Requirements,
+		&i.FlagMode,
 		&i.SolveCount,
 		&i.Solved,
 		&i.PrereqsMet,

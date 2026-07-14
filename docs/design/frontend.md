@@ -4,7 +4,13 @@ The SPA in `web/` is a React + Vite + TanStack app, built to static assets and
 `go:embed`'d into the binary. There is no separate frontend server in production:
 the Go process serves the API under `/api` and the SPA on everything else.
 
-## Stack
+This document is both a description of what exists and the **specification for the
+full UI** — every operation the API publishes has a screen that drives it, and
+§7 is the matrix that proves it.
+
+---
+
+## 1. Stack
 
 | Concern      | Choice                                   | Why |
 |--------------|------------------------------------------|-----|
@@ -12,23 +18,26 @@ the Go process serves the API under `/api` and the SPA on everything else.
 | Routing      | TanStack Router (file-based)             | Type-safe routes and loaders; `beforeLoad` is the auth guard. |
 | Server state | TanStack Query                           | Caching, polling, and invalidation without hand-rolled reducers. |
 | API types    | `openapi-typescript` from `openapi.yaml` | The contract is the source of truth; the client is typed from it, not by hand. |
-| Styling      | Hand-rolled CSS with custom properties   | Themes are design-token data, not stylesheets; no component library to carry. |
-| Tests        | Vitest (`npm test`)                      | The API client and the theme resolver are the parts with logic worth pinning. |
+| Styling      | Hand-rolled CSS with custom properties   | One small terminal/CTF theme; no component library to carry. |
 
 Dependencies are deliberately lean: React, the two TanStack packages, and dev-only
 build tooling. No state manager, no CSS framework, no data-fetching wrapper beyond a
-thin typed `fetch`.
+thin typed `fetch`. **The admin console does not get to change this.** It is more
+screens, not a second stack.
 
-## Theming
+## 2. What already exists
 
-Nothing renders a raw colour. Every rule in `src/styles.css` reads a `--color-*` /
-`--radius` / `--shadow` / `--font-*` variable, and the active theme sets those on the
-document root at runtime. A theme is therefore one value per key in the token contract
-(`src/theme/tokens.ts`) — data, not CSS — so adding one is a file plus a registry line,
-and a theme that omits a token fails typecheck rather than rendering a hole. Three ship
-today (`terminal`, `amber`, `light`); `src/theme/README.md` is the contract.
+- `src/api/client.ts` — typed `fetch` wrapper (§3), covering the public auth,
+  challenge, submit, hint, scoreboard and token operations.
+- `src/queries.ts` — the TanStack Query option objects.
+- `src/theme/` — the token contract, three themes, resolution order, no-flash boot.
+- Routes: `login`, `register`, `_auth` (guard + shell), `_auth/challenges`,
+  `_auth/challenges/$challengeId`, `_auth/scoreboard`, `_auth/profile`.
 
-## API client
+Everything else in this document is to be built. Nothing here asks for a rewrite of
+the above; the spec extends it in its own grain.
+
+## 3. API client
 
 `src/api/client.ts` is a small typed wrapper over `fetch`:
 
@@ -45,14 +54,268 @@ today (`terminal`, `amber`, `light`); `src/theme/README.md` is the contract.
   session died and triggers a redirect to login; a 401 from a login/change-password
   submit is the form's own error and does not.
 
-## Auth guard
+### 3.1 The admin client
 
-The `/_auth` layout route's `beforeLoad` calls `ensureQueryData(meQuery)`. A failure
-redirects to `/login?redirect=…`. Because every authenticated page nests under
-`/_auth`, protection is structural — a new page is guarded by where it lives, not by
-a check someone has to remember to add.
+The admin API is a **second Huma surface** on `/api/v1/admin` with its own OpenAPI
+document. It is not in `openapi.yaml`, which is why the admin console has no types
+today. The fix is symmetric with the public one and is a prerequisite for §8:
 
-## Embedding and serving
+1. `flagfish openapi --admin` prints the admin document (the `openapi` command builds
+   the router without a database and dumps `s.Public`; it gains a flag that dumps
+   `s.Admin` instead).
+2. `openapi.admin.yaml` is checked in and drift-checked by `task check-generated`,
+   exactly as the public one is. A handler change that alters the admin surface is a
+   reviewable diff, not a surprise.
+3. `npm run generate:api` emits `src/api/schema.admin.gen.ts` alongside the public one.
+4. `src/api/admin.ts` re-uses the same `request()` — same cookie, same CSRF token,
+   same 401 rule — with the `/api/v1/admin` prefix. **There is no second auth story.**
+
+Nothing about the admin console is a different kind of client. It is the same client
+pointed at a different prefix, which is exactly what the two-surface design bought.
+
+## 4. Routing, guards, and the policy contract
+
+### 4.1 Structural guards
+
+`/_auth`'s `beforeLoad` calls `ensureQueryData(meQuery)`; failure redirects to
+`/login?redirect=…`. Every authenticated page nests under `/_auth`, so protection is
+a property of *where a route lives*, not of a check someone remembered to add.
+
+The admin console adds one more layer with the same property:
+
+- `/_auth/_admin` — `beforeLoad` asserts `me.is_admin`, else `throw notFound()`.
+  A non-admin does not get a 403 page; the console does not exist for them.
+
+### 4.2 Denials are a typed vocabulary, not status codes
+
+The policy layer answers every denial with a stable reason string and, where the
+product wants one, a redirect. **The client must render the reason, never guess from
+the status.** Two wire details are load-bearing and easy to get wrong:
+
+- On Huma operations the reason arrives in the problem document's **`detail`**, not
+  in `type` (`type` is omitted). The raw middleware gates (ban wall, CSRF, rate
+  limiter, SSE) instead emit `type: urn:flagfish:error:<reason>` *and* the
+  same string in `detail`. So the client keys on `detail`, falling back to `type`.
+- A redirect is **never a 3xx**. The status stays 403/404 and the destination is in
+  the **`Location` header**. The rule is therefore: *on a 403, if `Location` is set,
+  navigate there; otherwise render the reason inline.*
+
+`ApiError` gains `reason` and `location`, and one `<PolicyGate>` boundary renders
+this table. Screens do not each re-implement it.
+
+| Reason | Status | `Location` | UI |
+|---|---|---|---|
+| `setup-incomplete` | 403 | `/setup` | Full-page "this instance is not set up" (setup is CLI-only today — §9). |
+| `banned` | 403 | — | Full-page ban wall. No nav, no retry. |
+| `team-banned` | 403 | — | Same wall, worded for the team. |
+| `password-change-required` | 403 | `/reset_password` | Force the change-password form; suppress nav. |
+| `auth-required` | 403 | `/login` | Redirect, preserving `?redirect=`. |
+| `authentication-required` | 403 | — | The attempt path's deliberate non-redirect: inline form error. |
+| `admin-required` / `admins-only` | 403 | — | Not-found inside the console; inline "admins only" elsewhere. |
+| `unverified` | 403 | `/confirm` | Verification screen with a resend button. Applies to challenges, files, hint unlocks **and tokens**. |
+| `incomplete-profile` | 403 | `/settings` | Profile-completion form. |
+| `incomplete-team-profile` | 403 | — | No redirect is given: the client picks `/team` and highlights the missing fields. |
+| `team-required` | 403 | `/team` | Teamless player → enrollment. The normal pre-join state, not an error. |
+| `already-on-team` | 403 | — | Hide create+join on `/team`. |
+| `team-creation-disabled` | 403 | — | Join-only enrollment page. |
+| `ctf-not-started` | 403 | — | Countdown. (A *teamless* player gets `team-required` + `/team` instead — enrollment beats "come back later".) |
+| `ctf-ended` | 403 | — | "The CTF has ended"; with `view_after_ctf` the board stays readable. |
+| `paused` | 403 | — | Banner + disabled flag input. Attempt only — hint unlocks and browsing keep working, and **admins are paused too**. |
+| `scores-hidden` | 403 | — | Board replaced with "scores are hidden". |
+| `not-found` | 404 | — | The route does not exist in this mode (all five team ops in users mode), or existence is being denied (`admins` visibility on scores/accounts; `private`/`mlc` registration). |
+| `already-authed` | 403 | `/challenges` | Bounce a logged-in user off register. |
+
+Three more come from middleware, on any route: **429 `rate-limited`** (a first-class
+UI state — see §6), **403 `csrf`** (the client's token is stale: re-fetch `/me` and
+retry once), **503 `unavailable`** (the limiter is down; the server fails closed and
+so does the UI).
+
+### 4.3 Mode is a first-class branch
+
+`GET /instance` is public and pre-auth. It must also carry what the shell needs to
+decide *what UI exists at all* — the account mode (users vs teams). Today it returns
+only `ctf_name`, `theme`, `theme_tokens`; §9 asks for `mode`, `start`, `end`,
+`freeze`, `paused`, `team_creation`, `registration_visibility`, `verify_emails`.
+Without those the SPA has to infer the world from 403s, which is exactly the
+guessing this codebase refuses to do elsewhere.
+
+With them, the shell can:
+
+- show or hide `/team` and `/teams/$id` (teams mode only),
+- render a countdown before start and an "ended" state after end,
+- show a freeze banner when `now >= freeze` ("standings frozen at …"),
+- hide the register link when registration is `private`/`mlc`.
+
+## 5. Design system
+
+The token contract in `src/theme/tokens.ts` stays as-is; every colour a new screen
+draws must come from it. The console needs component primitives the player UI has so
+far done without. They live in `src/ui/`, they are unstyled-by-default and
+token-driven, and they are the whole component budget:
+
+| Primitive | Used by |
+|---|---|
+| `<DataTable>` — columns, empty state, `page`/`per_page` footer | users, audit, anticheat, tags, notifications |
+| `<Form>` / `<Field>` — label, hint, per-field error from a 422 problem | every write screen |
+| `<Dialog>` — focus trap, `Esc`, backdrop uses `--color-overlay` | create/edit/confirm |
+| `<ConfirmDestructive>` — types the resource name to confirm | delete challenge/flag/hint/file/tag/bracket, ban |
+| `<Toast>` — success/failure of a mutation, `aria-live="polite"` | every mutation |
+| `<Markdown>` — challenge/notification bodies, sanitized, no raw HTML | challenge detail, notifications |
+| `<CodeBlock>` — mono, copy button | connection info, token reveal, audit JSON |
+| `<Tabs>` | challenge editor (details / flags / hints / files) |
+| `<EmptyState>` | every list |
+| `<RelativeTime>` — `<time datetime>` + title with the absolute value | everything with a timestamp |
+
+Three tokens are added to the contract for the console: `--color-info` (signal, not
+verdict — anticheat), plus `--color-diff-add` / `--color-diff-del` (audit before/after).
+Adding a token means adding it to `TOKEN_KEYS` and to every theme; TypeScript fails
+the build if a theme forgets one, which is the property that keeps a theme complete.
+
+## 6. Data layer rules
+
+- **Query keys** mirror the URL: `["challenges"]`, `["challenges", id]`,
+  `["admin", "users", page]`. A mutation invalidates the prefix it wrote.
+- **staleTime** is deliberate, not default: `instance` 5 min, `me` 60 s, challenges
+  15 s, scoreboard `refetchInterval: 10 s`, admin lists 0 (an operator wants truth).
+- **Optimism is banned on the hot path.** A flag submit renders the *server's*
+  verdict — `status` is exactly `correct` | `incorrect` | `already_solved`
+  (underscore), plus `first_blood` and `value`. It never guesses. The same rule holds
+  for a hint unlock, which charges points and whose failure modes are real UI states:
+  **402** (not enough points), **409** (already unlocked), **403** (prerequisite hints
+  first). A wrong flag is a 200, not an error — only a locked challenge (403), an
+  exhausted attempt budget (403) and a missing challenge (404) are.
+- **Live notifications** come from `GET /api/v1/notifications/stream` (SSE): the
+  shell opens one `EventSource` for the whole session, dedupes on `id` (the stream
+  deliberately replays up to 50 on connect and can overlap by one), pushes each into
+  a toast + the notifications drawer, and reconnects with backoff. The paginated
+  `GET /notifications` backfills the drawer. First blood arrives this way — it is the
+  most visible thing the platform does, and it must not need a refresh.
+- **A 429 is a first-class state**, not an error toast: the flag form disables and
+  shows "too many attempts — try again in …".
+
+## 7. Coverage matrix
+
+Every published operation and the screen that drives it. This is the definition of
+"the UI covers the API"; a new endpoint is not done until it has a row here.
+
+### Public surface (25 ops + 1 stream)
+
+| Operation | Screen |
+|---|---|
+| `instance` | Shell (theme, name, mode, clock) |
+| `register` | `/register` |
+| `login` | `/login` |
+| `logout` | Shell (user menu) |
+| `me` | `/_auth` guard + user menu |
+| `change-password` | `/_auth/settings` → Security |
+| `reset-request` | `/forgot-password` |
+| `reset-apply` | `/reset-password?token=` |
+| `verify-resend` | `/confirm` |
+| `verify-confirm` | `/confirm?token=` (auto-submits, then bounces to `/challenges`) |
+| `list-challenges` | `/_auth/challenges` (board, grouped by category) |
+| `challenge-detail` | `/_auth/challenges/$id` |
+| `challenge-solves` | `/_auth/challenges/$id` → Solves tab |
+| `attempt` | `/_auth/challenges/$id` → flag form |
+| `unlock-hint` | `/_auth/challenges/$id` → hint row (confirm dialog shows the cost) |
+| `download-file` | `/_auth/challenges/$id` → attachments |
+| `scoreboard` | `/_auth/scoreboard` (+ `?bracket=`, `?as_of=` time-travel slider, freeze banner) |
+| `brackets` | `/_auth/scoreboard` → bracket filter |
+| `list-notifications` | `/_auth/notifications` + shell drawer |
+| *(SSE)* `notifications/stream` | Shell (toasts, live board nudge) |
+| `create-team` | `/_auth/team` (teams mode, teamless) |
+| `join-team` | `/_auth/team` |
+| `my-team` | `/_auth/team` (member view: roster, per-member points, captain) |
+| `leave-team` | `/_auth/team` → Leave (disabled with a reason once the team has solves) |
+| `team-detail` | `/_auth/teams/$id` (public profile, linked from the board) |
+| `list-tokens` / `create-token` / `delete-token` | `/_auth/settings` → API tokens (create shows the plaintext **once**, in a `<CodeBlock>` with a copy button and a warning) |
+
+### Admin surface (33 ops), all under `/_auth/_admin`
+
+| Area | Screen | Operations |
+|---|---|---|
+| Overview | `/admin` | (reads the public + config ops; no new endpoint) |
+| Config | `/admin/config` | `admin-get-config`, `admin-update-config` — event name/description, theme + token overrides (live preview against the running theme), the clock (start/end/freeze, three-state: omit keeps, `null` clears), the four visibility knobs. Mode is **not** editable and the form says so. |
+| Challenges | `/admin/challenges` | list (public op with `?view=admin`, so hidden challenges appear), `admin-reorder-challenges` (drag, one bulk PUT), `admin-set-challenge-state`, `admin-delete-challenge` (409 → "it has solves; hide it instead") |
+| Challenge editor | `/admin/challenges/$id` | `admin-create-challenge`, `admin-update-challenge`; Flags tab: `admin-add-flag`, `admin-update-flag`, `admin-delete-flag` (static/regex, case-insensitive); Hints tab: `admin-add-hint`, `admin-update-hint`, `admin-delete-hint`; Files tab: `admin-upload-file` (multipart, field name `file`; 503 → "file storage is not configured"), `admin-delete-file` |
+| Tags | `/admin/tags` | `admin-list-tags` (with usage counts), `admin-merge-tag` (rename/merge), `admin-delete-tag` (409 unless `force=true` — the dialog explains what force does) |
+| Users | `/admin/users` | `admin-list-users` (paginated; shows email/verified/banned/hidden), `admin-set-user-banned` (409 self-ban), `admin-set-user-role` (409 last-admin) |
+| Brackets | `/admin/brackets` | `admin-create-bracket`, `admin-list-brackets`, `admin-update-bracket`, `admin-delete-bracket`, `admin-assign-bracket` (`null` clears; `applies_to` must match the instance mode) |
+| Notifications | `/admin/notifications` | `admin-create-notification` (composer with a live Markdown preview; publishing fans out over SSE) |
+| Audit | `/admin/audit` | `admin-list-audit` — filters (actor, action, target table, target id), before/after JSON diff. **The most sensitive screen**: the captured rows can contain flag plaintext, so it is not linkable from anywhere outside the console. |
+| Anticheat | `/admin/anticheat` | `admin-anticheat-flag-sharing`, `admin-anticheat-ip-overlap` (`min_accounts`), `admin-anticheat-account` (drill-down). Framed as **evidence, not a verdict** — shared NAT produces false clusters, and the UI says so on the page rather than in a doc. Each row links to the user screen, where a ban is one deliberate click behind a confirm. |
+
+## 8. Screen states
+
+Every list screen renders four states and the spec is not met until all four exist:
+**loading** (skeleton, not a spinner-on-white), **empty** (`<EmptyState>` that says
+what would fill it), **error** (the problem `detail`, plus retry), **denied** (§4.2).
+
+Two screens carry extra state that is the product, not chrome:
+
+- **Challenge detail.** `solve_count` is `null` — not `0` — when the caller may not
+  see both scores and accounts; render "—". `locked` (on the challenge and on each
+  hint) is a first-class field: show the prerequisite, do not wait for the 403.
+  `max_attempts` renders as "n of m attempts used". First blood on the solve list gets
+  `--color-blood`. The solve list is truncated at the freeze for a non-exempt viewer,
+  which is why the freeze banner belongs on this page too, not only on the board.
+- **Team page.** Teams mode only. `GET /me/team` answers **404 when the player is
+  teamless** — that is the enrollment state, not a failure: render create/join, do not
+  render an error. Member → roster with per-member solve counts and points (attributed
+  from the stamped ledger, so it is stable under roster churn), captain marked, Leave
+  disabled with the real reason once the team has scored. A failed join is one answer
+  for "no such team" and "wrong password" (403 *that information is incorrect*) — the
+  UI must not branch on it and must not hint which half was wrong.
+
+## 9. Backend gaps this spec depends on
+
+Writing the matrix surfaced the places where the API cannot yet back a usable UI.
+These are small, and each is a real product hole, not a frontend convenience:
+
+1. **Admin OpenAPI is not emitted or checked in** (§3.1). Without it the console is
+   untyped. `flagfish openapi --admin` + `openapi.admin.yaml` + drift check.
+2. **`GET /instance` is too thin** (§4.3): add `mode`, `start`, `end`, `freeze`,
+   `paused`, `team_creation`, `registration_visibility`, `verify_emails`. All are
+   already in the config snapshot; none is a secret.
+3. **No profile-edit endpoint.** The policy layer redirects an incomplete profile to
+   `/settings`, and `/settings` has nothing to submit: there is no `PATCH /me`, and
+   custom registration fields (`fields`, `field_entries`) have no API at all. The
+   `incomplete-profile` gate is therefore a redirect to a dead end.
+4. **No public account pages.** `ClassAccountList` / `ClassAccountDetail` exist in the
+   policy table with no routes behind them, so a scoreboard row cannot link to a
+   player. Teams have `team-detail`; users have nothing.
+5. **No admin challenge read endpoint.** The console reads challenges through the
+   public op with `?view=admin`. That works, but the admin list cannot show what only
+   the admin cares about (flag counts, hint counts, unpublished state) without N+1
+   requests.
+6. **Setup is CLI-only.** `ClassSetup` and the `setup-incomplete` redirect exist, but
+   there is no setup API, so `/setup` can only be a page that explains the CLI.
+
+The player UI (§7, public) is buildable today except for 2 and 3. The console needs 1.
+
+## 10. Accessibility and performance
+
+- Keyboard-complete: the flag input is focusable from the challenge card (`Enter`),
+  dialogs trap focus and restore it, the board is a real `<table>` with a caption.
+- Every async result announces on an `aria-live` region — a correct flag is a
+  polite announcement, not a colour change only.
+- Contrast is a theme's responsibility; the token contract is what makes it checkable
+  once per theme instead of once per component.
+- Route-level code splitting: the console is a lazy chunk. A player never downloads
+  the audit viewer.
+- The board polls at 10 s and the SSE stream carries the interesting events, so the
+  page is quiet when nothing happens.
+
+## 11. Testing
+
+- **Vitest** for the pure parts: theme resolution, the client's CSRF/401 rules, the
+  policy-reason → UI mapping table (a table test, mirroring the Go golden table).
+- **The Go E2E suite** (`e2e/`, black-box over HTTP) already covers the API contract
+  the UI depends on; the UI does not re-test the backend.
+- **Playwright smoke** over the built binary for the flows a broken build must never
+  ship: register → join team → solve → see the board move; and admin: create a
+  challenge → add a flag → publish → a player solves it. Two specs, not a suite.
+
+## 12. Embedding and serving
 
 `internal/web` embeds `dist/` with `//go:embed all:dist` and serves it as the chi
 router's `NotFound` handler, mounted outside the authenticated chain (like `/healthz`)
@@ -70,14 +333,24 @@ so a banned user can still load the page that tells them so.
 `internal/web/dist`; `task build` depends on it. The real build output is gitignored;
 only the placeholder is tracked.
 
-## Development
+## 13. Development
 
 `task web-dev` runs the Vite dev server, which proxies `/api` to the Go server on
 `:8000`. Run the backend (`task run`) and the dev server side by side; the cookie and
 CSRF flow work unchanged because the proxy keeps everything same-origin.
 
-## Build ordering
-
 Vite generates `src/routeTree.gen.ts` (a build artifact, gitignored). The build
 script runs `vite build` before `tsc` so the route tree exists when the typecheck
 runs — a clean checkout builds without a manual generate step.
+
+## 14. Delivery order
+
+1. **Player completeness** — settings (tokens, password), team enrollment + team
+   pages, notifications drawer + SSE, scoreboard brackets/time-travel, file
+   downloads, verify/reset flows. Needs gap 2.
+2. **Console foundation** — admin OpenAPI + typed client + `/_auth/_admin` guard +
+   `<DataTable>`/`<Dialog>`/`<Form>`. Needs gap 1.
+3. **Console content** — config, challenges + editor, users, brackets, tags,
+   notifications.
+4. **Console forensics** — audit, anticheat.
+5. **Profile/accounts** — once gaps 3 and 4 land.

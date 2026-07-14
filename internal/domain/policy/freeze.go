@@ -29,8 +29,10 @@ func FreezeExempt(p Policy) bool {
 		return r.Surface == SurfaceAdmin
 
 	case ClassChallengeList:
-		// ?view=admin, not is_admin.
-		return r.AdminView
+		// ?view=admin is a string the caller supplies, so it can only narrow an exemption an
+		// admin already has — never grant one. Honoured alone it lets any player diff the
+		// frozen list against the live one and read off every solve landed during the freeze.
+		return pr.IsAdmin && r.AdminView
 
 	case ClassChallengeDetail:
 		// Frozen even for admins.

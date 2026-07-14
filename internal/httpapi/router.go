@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"html"
 	"log/slog"
 	"net"
 	"net/http"
@@ -50,8 +52,18 @@ type Options struct {
 
 	// TrustedProxies is the list of networks whose X-Forwarded-For we believe. Empty means
 	// trust nobody and record the socket peer: submission IPs are anti-cheat evidence, and a
-	// wrong-but-honest IP beats a forged one.
+	// wrong-but-honest IP beats a forged one. Empty behind a proxy is a misconfiguration, and
+	// New says so.
 	TrustedProxies []*net.IPNet
+
+	// InsecureCookies drops the Secure attribute from the session cookie. The zero value is the
+	// safe one on purpose — a caller that forgets this field, and a deployment that never sets
+	// FLAGFISH_SECURE_COOKIES, both get Secure cookies. Only plain-HTTP development wants it set.
+	InsecureCookies bool
+
+	// MaxUploadBytes caps a multipart upload; zero means the built-in default. Every other body
+	// is capped far lower and is not configurable.
+	MaxUploadBytes int64
 }
 
 // A Server is the router plus the two Huma APIs — public and admin. Two paths on purpose:
@@ -84,16 +96,33 @@ func New(opts Options) *Server {
 		opts.Auth = auth.Anonymous{}
 		opts.Log.Warn("no authenticator configured: every caller is anonymous")
 	}
+	if opts.MaxUploadBytes <= 0 {
+		opts.MaxUploadBytes = config.DefaultMaxUploadBytes
+	}
+	if len(opts.TrustedProxies) == 0 {
+		// Not fatal — a bare `flagfish serve` on a laptop has no proxy and is right not to trust
+		// one. It is fatal-shaped behind a reverse proxy, though, so name both consequences.
+		opts.Log.Warn("no trusted proxies configured: X-Forwarded-For is ignored. " +
+			"If anything is proxying to this process, EVERY client behind it shares ONE anonymous " +
+			"rate-limit bucket and every recorded submission IP is the proxy's. " +
+			"Set FLAGFISH_TRUSTED_PROXIES to the proxy's address(es).")
+	}
+	if opts.InsecureCookies {
+		opts.Log.Warn("FLAGFISH_SECURE_COOKIES=false: session cookies are issued WITHOUT Secure, " +
+			"so a browser will send them over plain HTTP. Local development only.")
+	}
 
 	r := chi.NewRouter()
 
 	// --- outside the wall -----------------------------------------------------
-	// These four are safe for anyone, including a banned account, and they run
-	// before authentication because they must also work when it fails.
+	// These run before authentication because they must also work when it fails. The body limit
+	// is one of them: an anonymous caller must not be able to make us read a gigabyte before
+	// anyone has decided who they are.
 	r.Use(chimw.RequestID)
-	r.Use(realIP(opts.TrustedProxies))
+	r.Use(realIP(opts.TrustedProxies, !opts.InsecureCookies, opts.Log))
 	r.Use(recoverer(opts.Log))
 	r.Use(logging(opts.Log))
+	r.Use(limitBody(opts.MaxUploadBytes))
 
 	// Health and static assets mount outside the authenticated chain, which makes their
 	// ban-exemption structural rather than a hand-maintained list. A banned user must still
@@ -135,16 +164,100 @@ func (s *Server) newAPI(r chi.Router, prefix, title string, surface policy.Surfa
 	cfg := huma.DefaultConfig(title, "1.0.0")
 	cfg.Servers = []*huma.Server{{URL: prefix}}
 	// The OpenAPI document is a contract: the TypeScript client, flagfishctl, and third-party
-	// bots are written against it, so each surface serves its own docs and schema.
-	cfg.DocsPath = prefix + "/docs"
-	cfg.OpenAPIPath = prefix + "/openapi"
+	// bots are written against it, so each surface serves its own docs and schema. The paths are
+	// relative to the sub-router this API is mounted on, which is what lands them at
+	// {prefix}/docs and {prefix}/openapi.json on the wire.
+	cfg.DocsPath = "/docs"
+	cfg.OpenAPIPath = "/openapi"
+
+	// The admin document is a map of every admin endpoint, and Huma registers docs and schema
+	// through Adapter.Handle — which bypasses UseMiddleware, so the policy gate never sees them.
+	// Left to Huma they answer 200 to anyone. They are re-registered below, behind the same
+	// authorization as the routes they describe.
+	if surface == policy.SurfaceAdmin {
+		cfg.DocsPath, cfg.OpenAPIPath = "", ""
+	}
 
 	sub := chi.NewRouter()
 	r.Mount(prefix, sub)
 
 	api := humachi.New(sub, cfg)
 	api.UseMiddleware(s.policyGate(api, surface))
+
+	if surface == policy.SurfaceAdmin {
+		s.mountAdminDocs(sub, api, prefix, title)
+	}
 	return api
+}
+
+// mountAdminDocs serves the admin surface's schema and reference UI to admins only: the same
+// Decide, on the same class as the endpoints the document describes.
+func (s *Server) mountAdminDocs(sub chi.Router, api huma.API, prefix, title string) {
+	sub.Group(func(g chi.Router) {
+		g.Use(s.httpGate(policy.ClassAdmin, policy.SurfaceAdmin))
+
+		g.Get("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
+			doc, err := json.Marshal(api.OpenAPI())
+			if err != nil {
+				s.opts.Log.ErrorContext(r.Context(), "rendering the admin OpenAPI document failed", "error", err)
+				problem(w, http.StatusInternalServerError, "internal-error", "internal error")
+				return
+			}
+			s.writeDoc(r.Context(), w, "application/openapi+json", doc)
+		})
+
+		g.Get("/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+			doc, err := api.OpenAPI().YAML()
+			if err != nil {
+				s.opts.Log.ErrorContext(r.Context(), "rendering the admin OpenAPI document failed", "error", err)
+				problem(w, http.StatusInternalServerError, "internal-error", "internal error")
+				return
+			}
+			s.writeDoc(r.Context(), w, "application/openapi+yaml", doc)
+		})
+
+		g.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Security-Policy", adminDocsCSP)
+			s.writeDoc(r.Context(), w, "text/html; charset=utf-8", []byte(adminDocsHTML(title, prefix)))
+		})
+	})
+}
+
+func (s *Server) writeDoc(ctx context.Context, w http.ResponseWriter, contentType string, body []byte) {
+	w.Header().Set("Content-Type", contentType)
+	if _, err := w.Write(body); err != nil {
+		// The 200 is already on the wire; the client hung up. There is no second response to send.
+		s.opts.Log.WarnContext(ctx, "writing an admin doc response failed", "error", err)
+	}
+}
+
+const adminDocsCSP = "default-src 'none'; base-uri 'none'; connect-src 'self'; form-action 'none'; " +
+	"frame-ancestors 'none'; sandbox allow-same-origin allow-scripts; " +
+	"script-src https://unpkg.com/@stoplight/elements@9.0.15/web-components.min.js; " +
+	"style-src 'unsafe-inline' https://unpkg.com/@stoplight/elements@9.0.15/styles.min.css"
+
+// adminDocsHTML is Huma's Stoplight Elements page, rendered by us because Huma's own is not behind
+// the gate. It fetches the spec same-origin, so the admin's cookie carries it through that gate too.
+func adminDocsHTML(title, prefix string) string {
+	return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>` + html.EscapeString(title) + ` Reference</title>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements@9.0.15/styles.min.css" crossorigin integrity="sha384-iVQBHadsD+eV0M5+ubRCEVXrXEBj+BqcuwjUwPoVJc0Pb1fmrhYSAhL+BFProHdV">
+    <script src="https://unpkg.com/@stoplight/elements@9.0.15/web-components.min.js" crossorigin integrity="sha384-xjOcq9PZ/k+pGtPS/xcsCRXGjKKfTlIa4H1IYEnC+97jNa6sAMWTNrV6hY08W3GL"></script>
+  </head>
+  <body style="height: 100vh;">
+    <elements-api
+      apiDescriptionUrl="` + html.EscapeString(prefix) + `/openapi.yaml"
+      router="hash"
+      layout="sidebar"
+      tryItCredentialsPolicy="same-origin"
+    ></elements-api>
+  </body>
+</html>`
 }
 
 // policyGate is a Huma middleware so it can read the operation's declared RouteClass. An

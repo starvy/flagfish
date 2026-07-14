@@ -120,7 +120,7 @@ func run(ctx context.Context, args []string, env config.Env, log *slog.Logger) e
 	case "env":
 		return envCmd(env)
 	case "openapi":
-		return openapiCmd(log)
+		return openapiCmd(ctx, args[1:], log)
 	case "healthcheck":
 		return healthcheckCmd(ctx, args[1:])
 	case "-h", "--help", "help":
@@ -151,11 +151,18 @@ func envCmd(env config.Env) error {
 	return nil
 }
 
-// openapiCmd prints the public OpenAPI document to stdout. It builds the router without a database —
-// the handlers are registered but never called — so the emitted contract is exactly what the binary
-// serves, which is what makes the checked-in openapi.yaml a drift check rather than an artifact.
-func openapiCmd(log *slog.Logger) error {
-	doc, err := app.OpenAPIYAML(log)
+// openapiCmd prints an OpenAPI document to stdout: the public surface, or the admin one with
+// --admin. It builds the router without a database — the handlers are registered but never called —
+// so the emitted contract is exactly what the binary serves, which is what makes the checked-in
+// openapi.yaml a drift check rather than an artifact.
+func openapiCmd(ctx context.Context, args []string, log *slog.Logger) error {
+	fs := flag.NewFlagSet("openapi", flag.ExitOnError)
+	admin := fs.Bool("admin", false, "emit the admin surface instead of the public one")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	doc, err := app.OpenAPIYAML(ctx, log, *admin)
 	if err != nil {
 		return err
 	}
@@ -221,12 +228,15 @@ func usage() {
   worker                  run the job worker only
   migrate                 apply schema migrations, behind an advisory lock
   import <archive.zip>    import a CTFd archive
-  admin create            create (or --promote) the first admin account
+  admin create            create (or --promote) the first admin AND complete setup — this is what
+                          makes a freshly migrated database a live instance. Until it runs, every
+                          route is denied, login included. --mode users|teams fixes the model.
   export [--safe|--backup] <out.zip>
                           export the instance in our own format (default: --safe,
                           field-masked and shareable; --backup is full fidelity)
   restore <in.zip>        restore a --backup archive into an empty instance
   env                     print the resolved environment and exit
+  openapi [--admin]       print the OpenAPI document (public surface; --admin for the admin one)
 
 Environment (see .env.example):
   FLAGFISH_DATABASE_URL     postgres://user:pass@host:5432/flagfish   (required;

@@ -4,14 +4,18 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/starvy/flagfish/internal/accounts"
 	"github.com/starvy/flagfish/internal/domain/policy"
 )
 
@@ -36,9 +40,22 @@ import (
 // client can forge their own recorded IP by setting a header. Behind a proxy — which
 // is every real deployment — you need a trusted-proxy list, and the list has to be
 // consulted, so it has to be here.
-func realIP(trusted []*net.IPNet) func(http.Handler) http.Handler {
+func realIP(trusted []*net.IPNet, secureCookies bool, log *slog.Logger) func(http.Handler) http.Handler {
+	var warnOnce sync.Once
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A proxy is forwarding to us and we trust none: every request now presents the
+			// proxy's address, so the rate limiter sees the whole internet as one client and
+			// the recorded submission IP is the proxy's. Say so, once, in full.
+			if len(trusted) == 0 && r.Header.Get("X-Forwarded-For") != "" {
+				warnOnce.Do(func() {
+					log.WarnContext(r.Context(), "requests carry X-Forwarded-For but no proxy is trusted: "+
+						"the header is ignored, so every client behind the proxy shares ONE rate-limit bucket "+
+						"and every recorded IP is the proxy's. Set FLAGFISH_TRUSTED_PROXIES to the proxy's address(es).",
+						"peer", r.RemoteAddr)
+				})
+			}
+
 			// Peer trust is read before clientIP rewrites RemoteAddr — afterwards the socket
 			// peer is gone, and X-Forwarded-Proto must be gated on the same list as X-Forwarded-For.
 			trustedPeer := peerTrusted(r, trusted)
@@ -47,7 +64,7 @@ func realIP(trusted []*net.IPNet) func(http.Handler) http.Handler {
 			if addr, err := netip.ParseAddr(r.RemoteAddr); err == nil {
 				ctx = context.WithValue(ctx, ctxClientIP, addr)
 			}
-			ctx = context.WithValue(ctx, ctxSecure, isSecure(r, trustedPeer))
+			ctx = context.WithValue(ctx, ctxSecure, isSecure(r, trustedPeer, secureCookies))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -62,11 +79,19 @@ func peerTrusted(r *http.Request, trusted []*net.IPNet) bool {
 	return ip != nil && isTrusted(ip, trusted)
 }
 
-// isSecure reports whether the client reached us over TLS, so a session cookie can be marked Secure on
-// a real deployment and left open on plain-HTTP localhost. X-Forwarded-Proto is believed only from a
-// trusted proxy — an untrusted client cannot flip the cookie's Secure attribute by setting a header.
-func isSecure(r *http.Request, trustedPeer bool) bool {
-	if r.TLS != nil {
+// isSecure decides the session cookie's Secure attribute.
+//
+// secureCookies is the operator's answer and it defaults to yes, which is the whole point: the
+// shipped topology terminates TLS at a proxy and speaks plain HTTP to us, so deriving Secure from
+// "did this request arrive over TLS" hands out cookies without it on a real HTTPS site whenever the
+// proxy is not in the trusted list. An operator opts out only to serve plain http:// themselves.
+//
+// TLS and a trusted X-Forwarded-Proto still force it on regardless — an opt-out that survives a
+// move to HTTPS would be the same silent failure with a different cause. X-Forwarded-Proto is
+// believed only from a trusted proxy: an untrusted client must not be able to flip the attribute
+// by setting a header.
+func isSecure(r *http.Request, trustedPeer, secureCookies bool) bool {
+	if secureCookies || r.TLS != nil {
 		return true
 	}
 	return trustedPeer && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
@@ -101,6 +126,15 @@ func clientIP(r *http.Request, trusted []*net.IPNet) string {
 	return peer
 }
 
+// clientKey identifies an unauthenticated caller to the rate limiter: the client address realIP
+// resolved, rather than whatever socket the request last hopped through.
+func clientKey(r *http.Request) string {
+	if addr, ok := r.Context().Value(ctxClientIP).(netip.Addr); ok {
+		return addr.String()
+	}
+	return r.RemoteAddr
+}
+
 func isTrusted(ip net.IP, trusted []*net.IPNet) bool {
 	for _, n := range trusted {
 		if n.Contains(ip) {
@@ -108,6 +142,34 @@ func isTrusted(ip net.IP, trusted []*net.IPNet) bool {
 		}
 	}
 	return false
+}
+
+// maxJSONBodyBytes caps every request body that is not a multipart upload. Anonymous routes take
+// bodies (login, register), so this bound is what stands between a stranger and our heap.
+const maxJSONBodyBytes int64 = 1 << 20
+
+// limitBody bounds what a caller can make us read, before routing and before authentication.
+//
+// Huma caps a JSON body per operation, but the multipart path does not go through that cap: it
+// hands the request to ParseMultipartForm, which streams to a temp file and stops at nothing. So
+// the outer bound has to live here. A body that declares itself too large is refused at the header;
+// one that lies is cut off by MaxBytesReader mid-read.
+func limitBody(uploadMax int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			limit := maxJSONBodyBytes
+			if ct, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil && ct == "multipart/form-data" {
+				limit = uploadMax
+			}
+			if r.ContentLength > limit {
+				problem(w, http.StatusRequestEntityTooLarge, "body-too-large",
+					fmt.Sprintf("request body is too large (limit %d bytes)", limit))
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // recoverer turns a panic into a 500 and a log line, and keeps the process up.
@@ -170,13 +232,26 @@ func (w *statusWriter) Flush() {
 
 // authenticate resolves the Principal from either credential, once, before anything
 // downstream can make a decision that depends on it.
+//
+// "The credential is bad" and "we could not check the credential" are different answers and get
+// different statuses. Collapsing them into a 401 whose body is err.Error() tells an anonymous
+// caller that the database is down, and tells them in pgx's words — a 401 that is really a 503,
+// with our internals in the detail field.
 func authenticate(a Authenticator, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			auth, err := a.Authenticate(r.Context(), r)
-			if err != nil {
-				log.WarnContext(r.Context(), "authentication failed", "error", err)
-				problem(w, http.StatusUnauthorized, "invalid-credentials", err.Error())
+			switch {
+			case errors.Is(err, accounts.ErrUnauthorized):
+				log.WarnContext(r.Context(), "credential rejected", "error", err)
+				problem(w, http.StatusUnauthorized, "invalid-credentials", "invalid or expired credential")
+				return
+			case err != nil:
+				// Our failure, not the caller's. The real error goes to the log, where it is
+				// useful; the caller gets a status that says "try again", not a stack of wrapped
+				// driver text that says which database we run.
+				log.ErrorContext(r.Context(), "authentication failed", "error", err)
+				problem(w, http.StatusServiceUnavailable, "unavailable", "could not verify credentials")
 				return
 			}
 			ctx := context.WithValue(r.Context(), ctxAuth, auth)
@@ -258,12 +333,17 @@ func safeMethod(m string) bool {
 // rateLimit keys on the account when we know it, and on the client IP when we do
 // not — so an anonymous flood is limited per-source and an authenticated one
 // per-account, which is what you want when a single team is behind one NAT.
+//
+// The IP is the one realIP resolved, which is the client's only if a proxy in front of us is
+// trusted. Untrusted, every request behind that proxy keys on the proxy's own address and the
+// anonymous bucket becomes global — one stranger can then rate-limit /login for everyone. That
+// misconfiguration is warned about loudly at boot and on the first forwarded request.
 func rateLimit(l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			pr := AuthOf(r.Context()).Principal
 
-			key := "ip:" + r.RemoteAddr
+			key := "ip:" + clientKey(r)
 			if pr.Authed {
 				key = fmt.Sprintf("account:%d", pr.AccountID)
 			}

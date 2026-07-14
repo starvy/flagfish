@@ -14,6 +14,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/starvy/flagfish/internal/db"
+	"github.com/starvy/flagfish/internal/domain/flags"
 	"github.com/starvy/flagfish/internal/domain/prereq"
 )
 
@@ -63,6 +64,10 @@ type Challenge struct {
 	// Locked mirrors Listing.Locked: a visible-but-locked detail withholds description, files and
 	// hints. A challenge the anonymize flag hides is a not-found instead, never a locked detail.
 	Locked bool
+	// FlagMode is how this challenge's flags are issued. ModeUnique is the one case where an
+	// eligible account's view of the detail assigns it an instance — the caller decides who is
+	// eligible; this package only reports the mode.
+	FlagMode flags.Mode
 }
 
 type File struct {
@@ -147,6 +152,13 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 		return Detail{}, fmt.Errorf("catalog: detail: %w", err)
 	}
 
+	// A flag_mode we cannot parse must not degrade to 'static': that would hand a shared, empty
+	// challenge to every viewer of a unique one and silently kill the uniqueness property.
+	mode, err := flags.ParseMode(ch.FlagMode)
+	if err != nil {
+		return Detail{}, fmt.Errorf("catalog: detail: challenge %d: %w", challengeID, err)
+	}
+
 	if !ch.PrereqsMet {
 		reqs, perr := prereq.Parse(ch.Requirements)
 		if perr != nil {
@@ -166,7 +178,7 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 			Challenge: Challenge{
 				ID: ch.ID, Name: name, Category: ch.Category, Type: ch.Type, Value: ch.Value,
 				Function: ch.Function, MaxAttempts: ch.MaxAttempts, State: ch.State,
-				SolveCount: ch.SolveCount, Solved: ch.Solved, Locked: true,
+				SolveCount: ch.SolveCount, Solved: ch.Solved, Locked: true, FlagMode: mode,
 			},
 			Tags:  []string{},
 			Files: []File{},
@@ -194,7 +206,7 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 			ID: ch.ID, Name: ch.Name, Category: ch.Category, Description: ch.Description,
 			Attribution: ch.Attribution, ConnectionInfo: ch.ConnectionInfo, Type: ch.Type,
 			Value: ch.Value, Function: ch.Function, MaxAttempts: ch.MaxAttempts, State: ch.State,
-			SolveCount: ch.SolveCount, Solved: ch.Solved,
+			SolveCount: ch.SolveCount, Solved: ch.Solved, FlagMode: mode,
 		},
 		Tags:  tags,
 		Files: make([]File, len(files)),

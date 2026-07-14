@@ -24,6 +24,17 @@ type Env struct {
 	LogFormat      string // text | json
 	TrustedProxies []netip.Prefix
 
+	// SecureCookies marks the session cookie Secure. It defaults to true and is deliberately
+	// NOT derived from the trusted-proxy list: the documented topology is a TLS proxy in front
+	// of a plaintext app, so a deployment that never configures proxy trust would otherwise
+	// hand out session cookies a browser will happily send over plain HTTP. Turn it off only
+	// to serve the app over http:// yourself, which means a development laptop.
+	SecureCookies bool
+
+	// MaxUploadBytes caps a multipart upload. Every other request body gets a much smaller,
+	// fixed cap — an upload is the one route that legitimately carries megabytes.
+	MaxUploadBytes int64
+
 	// RateLimit is the number of requests one caller may make per RateWindow before the
 	// limiter starts denying. It is process-level and not runtime config on purpose: a
 	// brute-force guard an admin can turn down from the UI is a brute-force guard an
@@ -31,6 +42,11 @@ type Env struct {
 	RateLimit  int
 	RateWindow time.Duration
 }
+
+// DefaultMaxUploadBytes bounds a multipart upload when none is configured. The multipart
+// parser spills past its memory budget to a temp file, so this bounds disk more than heap —
+// but unbounded is unbounded either way, and the container it ships in has 512 MB.
+const DefaultMaxUploadBytes int64 = 32 << 20
 
 // EnvError lists everything wrong with the environment at once. Reporting the first
 // failure only means a misconfigured deploy takes four restarts to diagnose.
@@ -77,6 +93,31 @@ func LoadEnv() (Env, error) {
 		env.LogFormat = f
 	default:
 		errs = append(errs, fmt.Sprintf("FLAGFISH_LOG_FORMAT=%q (want text|json)", f))
+	}
+
+	// Default on. An operator who forgets this variable entirely must still get Secure
+	// cookies, because the deployment that forgets it is the one behind a TLS proxy.
+	env.SecureCookies = true
+	if raw := firstSet("FLAGFISH_SECURE_COOKIES"); raw != "" {
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("FLAGFISH_SECURE_COOKIES=%q is not a boolean (true|false)", raw))
+		} else {
+			env.SecureCookies = b
+		}
+	}
+
+	env.MaxUploadBytes = DefaultMaxUploadBytes
+	if raw := firstSet("FLAGFISH_MAX_UPLOAD_BYTES"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_MAX_UPLOAD_BYTES=%q is not an integer", raw))
+		case n <= 0:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_MAX_UPLOAD_BYTES=%d must be positive", n))
+		default:
+			env.MaxUploadBytes = n
+		}
 	}
 
 	env.RateLimit = 60

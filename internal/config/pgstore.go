@@ -18,12 +18,22 @@ import (
 // outgrown your design, and re-reading 100 rows is free.
 const configChannel = "config_changed"
 
+// NotifyChanged fires the config-changed signal on tx, so every replica re-reads the table when it
+// commits. The console bootstrap writes config.setup outside this package — in the same transaction
+// as the first admin — and it must still wake a server that is already running, or that server keeps
+// serving a snapshot in which setup was never done.
+func NotifyChanged(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_notify($1, '')`, configChannel); err != nil {
+		return fmt.Errorf("config: notify: %w", err)
+	}
+	return nil
+}
+
 // PGStore is the Postgres-backed config table.
 //
 // It writes raw SQL rather than going through sqlc, and that is deliberate: this
-// package owns the config table, nothing outside it touches those rows, and the
-// two statements below are the entire surface. Keeping them here is what makes
-// "one typed door" true rather than aspirational.
+// package owns the config table, and the two statements below are the entire surface.
+// Keeping them here is what makes "one typed door" true rather than aspirational.
 type PGStore struct {
 	pool *pgxpool.Pool
 }
@@ -114,8 +124,8 @@ func (s *PGStore) Replace(ctx context.Context, kv map[string]string) error {
 	if err := tx.SendBatch(ctx, batch).Close(); err != nil {
 		return fmt.Errorf("config: upsert: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `SELECT pg_notify($1, '')`, configChannel); err != nil {
-		return fmt.Errorf("config: notify: %w", err)
+	if err := NotifyChanged(ctx, tx); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("config: commit: %w", err)

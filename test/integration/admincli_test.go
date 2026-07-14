@@ -10,16 +10,34 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/starvy/flagfish/internal/accounts"
+	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/db"
 	"github.com/starvy/flagfish/internal/domain/account"
+	"github.com/starvy/flagfish/internal/domain/policy"
 	"github.com/starvy/flagfish/internal/migrate"
 )
+
+// adminSpec is the console bootstrap as `flagfish admin create` calls it: an admin, and the instance
+// that admin makes live.
+func adminSpec(email, password string, mode account.Mode, explicit bool) accounts.AdminSpec {
+	return accounts.AdminSpec{
+		Name:     email,
+		Email:    email,
+		Password: password,
+		Instance: accounts.InstanceSpec{Mode: mode, ModeExplicit: explicit, Version: "test"},
+	}
+}
+
+func defaultInstanceSpec() accounts.InstanceSpec {
+	return accounts.InstanceSpec{Mode: account.ModeUsers, Version: "test"}
+}
 
 // adminCLIDBName is a database of this suite's own, separate from the shared flagfish_test the rest of
 // the integration harness truncates. The admin bootstrap needs to run against a pristine schema and to
@@ -92,10 +110,11 @@ func TestAdminCLICreate(t *testing.T) {
 	const email = "root@example.com"
 	const password = "correct-horse-battery"
 
-	id, err := svc.CreateAdmin(ctx, "Root", email, password)
+	res, err := svc.CreateAdmin(ctx, adminSpec(email, password, account.ModeUsers, false))
 	if err != nil {
 		t.Fatalf("CreateAdmin: %v", err)
 	}
+	id := res.UserID
 	if id == 0 {
 		t.Fatal("CreateAdmin returned id 0")
 	}
@@ -122,7 +141,7 @@ func TestAdminCLICreate(t *testing.T) {
 	}
 
 	// A second create on the same address is a loud failure, not a silent duplicate.
-	if _, err := svc.CreateAdmin(ctx, "Root Again", email, password); !errors.Is(err, accounts.ErrEmailTaken) {
+	if _, err := svc.CreateAdmin(ctx, adminSpec(email, password, account.ModeUsers, false)); !errors.Is(err, accounts.ErrEmailTaken) {
 		t.Fatalf("duplicate CreateAdmin error = %v, want ErrEmailTaken", err)
 	}
 }
@@ -155,7 +174,7 @@ func TestAdminCLICreateBypassesUserCap(t *testing.T) {
 
 	// The admin bootstrap must punch through it — the first admin cannot be locked out of a
 	// full instance.
-	id, err := svc.CreateAdmin(ctx, "Root", "root@example.com", "correct-horse-battery")
+	res, err := svc.CreateAdmin(ctx, adminSpec("root@example.com", "correct-horse-battery", account.ModeUsers, false))
 	if err != nil {
 		t.Fatalf("CreateAdmin at cap: %v", err)
 	}
@@ -163,8 +182,8 @@ func TestAdminCLICreateBypassesUserCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUserByEmail: %v", err)
 	}
-	if u.ID != id || u.Role != "admin" {
-		t.Errorf("admin row = (id %d, role %q), want (id %d, admin)", u.ID, u.Role, id)
+	if u.ID != res.UserID || u.Role != "admin" {
+		t.Errorf("admin row = (id %d, role %q), want (id %d, admin)", u.ID, u.Role, res.UserID)
 	}
 }
 
@@ -175,8 +194,12 @@ func TestAdminCLIPromote(t *testing.T) {
 	q := db.New(pool)
 
 	// Unknown address is a loud error, not a no-op.
-	if _, _, err := svc.PromoteToAdmin(ctx, "ghost@example.com"); !errors.Is(err, accounts.ErrNoSuchUser) {
+	if _, err := svc.PromoteToAdmin(ctx, "ghost@example.com", defaultInstanceSpec()); !errors.Is(err, accounts.ErrNoSuchUser) {
 		t.Fatalf("promote unknown error = %v, want ErrNoSuchUser", err)
+	}
+	// ...and it commits nothing: a failed promotion must not leave the instance half set up.
+	if setupDone(t, pool) {
+		t.Fatal("a failed promotion marked the instance set up")
 	}
 
 	hash := "x"
@@ -187,15 +210,15 @@ func TestAdminCLIPromote(t *testing.T) {
 		t.Fatalf("seed player: %v", err)
 	}
 
-	id, already, err := svc.PromoteToAdmin(ctx, "player@example.com")
+	res, err := svc.PromoteToAdmin(ctx, "player@example.com", defaultInstanceSpec())
 	if err != nil {
 		t.Fatalf("PromoteToAdmin: %v", err)
 	}
-	if already {
+	if res.AlreadyAdmin {
 		t.Error("alreadyAdmin = true on first promotion")
 	}
-	if id != uid.ID {
-		t.Errorf("promoted id = %d, want %d", id, uid.ID)
+	if res.UserID != uid.ID {
+		t.Errorf("promoted id = %d, want %d", res.UserID, uid.ID)
 	}
 	u, err := q.GetUserByEmail(ctx, "player@example.com")
 	if err != nil {
@@ -206,7 +229,172 @@ func TestAdminCLIPromote(t *testing.T) {
 	}
 
 	// Promoting again is idempotent, not an error.
-	if _, already, err := svc.PromoteToAdmin(ctx, "player@example.com"); err != nil || !already {
-		t.Fatalf("second promote = (already %v, err %v), want (true, nil)", already, err)
+	res, err = svc.PromoteToAdmin(ctx, "player@example.com", defaultInstanceSpec())
+	if err != nil || !res.AlreadyAdmin {
+		t.Fatalf("second promote = (already %v, err %v), want (true, nil)", res.AlreadyAdmin, err)
 	}
+}
+
+// The bug this suite exists for: a freshly migrated database denies every route — /login and
+// /register included — because config.setup is false and the policy gate fails closed on it. Nothing
+// in the product ever wrote that key, so `migrate && admin create && serve` produced a bricked
+// instance. The bootstrap must leave it live.
+func TestAdminCLICreateCompletesSetup(t *testing.T) {
+	ctx := context.Background()
+	pool := provisionAdminCLIDB(t)
+	svc := newAdminService(t, pool)
+
+	// Before: the instance is not set up, and the gate proves what that means.
+	before := loadConfig(t, pool)
+	if before.SetupDone {
+		t.Fatal("a freshly migrated database reports SetupDone = true; the fixture is lying")
+	}
+	for _, class := range []policy.RouteClass{policy.ClassLogin, policy.ClassRegister} {
+		if out := decideAnon(before, class); out.Allow {
+			t.Fatalf("%v was allowed before setup; this test cannot prove anything", class)
+		}
+	}
+
+	if _, err := svc.CreateAdmin(ctx, adminSpec("root@example.com", "correct-horse-battery", account.ModeUsers, false)); err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+
+	// After: setup is done, and the routes a player needs to get in are open.
+	after := loadConfig(t, pool)
+	if !after.SetupDone {
+		t.Fatal("SetupDone = false after `admin create`: the instance is still bricked — " +
+			"every route, including /login, answers 403 setup-incomplete")
+	}
+	for _, class := range []policy.RouteClass{policy.ClassLogin, policy.ClassRegister} {
+		if out := decideAnon(after, class); !out.Allow {
+			t.Fatalf("%v denied after `admin create`: %v (status %d)", class, out.Reason, out.Status)
+		}
+	}
+
+	// The other half of a playable instance: the singleton every scoring query keys on. Without a
+	// row here the mode is not merely defaulted — the gameplay SQL's CROSS JOIN instance matches
+	// nothing and no one can solve anything.
+	if got := instanceMode(t, pool); got != account.ModeUsers.String() {
+		t.Fatalf("instance.user_mode = %q, want %q", got, account.ModeUsers)
+	}
+	if after.Mode != account.ModeUsers {
+		t.Fatalf("Snapshot.Mode = %s, want users", after.Mode)
+	}
+}
+
+// --mode teams sets the model the instance plays under, and the snapshot sources it from the
+// instance singleton — never from a config key.
+func TestAdminCLICreateTeamsMode(t *testing.T) {
+	ctx := context.Background()
+	pool := provisionAdminCLIDB(t)
+	svc := newAdminService(t, pool)
+
+	res, err := svc.CreateAdmin(ctx, adminSpec("root@example.com", "correct-horse-battery", account.ModeTeams, true))
+	if err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+	if res.Mode != account.ModeTeams {
+		t.Fatalf("bootstrapped mode = %s, want teams", res.Mode)
+	}
+	if got := instanceMode(t, pool); got != account.ModeTeams.String() {
+		t.Fatalf("instance.user_mode = %q, want teams", got)
+	}
+
+	snap := loadConfig(t, pool)
+	if !snap.SetupDone || snap.Mode != account.ModeTeams {
+		t.Fatalf("snapshot = (setup %v, mode %s), want (true, teams)", snap.SetupDone, snap.Mode)
+	}
+	// The mode has ONE home. The bootstrap must not have written a config user_mode key alongside it.
+	if v, ok := snap.Raw("user_mode"); ok {
+		t.Fatalf("the bootstrap wrote a config user_mode = %q; the account model lives in the instance", v)
+	}
+}
+
+// Re-running the bootstrap on a live instance is safe, and the model it already plays is a fact: a
+// second admin, or a promotion, leaves setup true and user_mode untouched. An operator who
+// *explicitly* asks for the other model gets a loud refusal rather than an instance that quietly
+// ignored the flag.
+func TestAdminCLIBootstrapIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	pool := provisionAdminCLIDB(t)
+	svc := newAdminService(t, pool)
+
+	if _, err := svc.CreateAdmin(ctx, adminSpec("root@example.com", "correct-horse-battery", account.ModeTeams, true)); err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+
+	// A second, defaulted-mode bootstrap yields to the instance instead of trying to flip it.
+	res, err := svc.CreateAdmin(ctx, adminSpec("second@example.com", "correct-horse-battery", account.ModeUsers, false))
+	if err != nil {
+		t.Fatalf("second CreateAdmin: %v", err)
+	}
+	if res.Mode != account.ModeTeams {
+		t.Fatalf("second bootstrap reported mode %s, want the instance's own (teams)", res.Mode)
+	}
+
+	// An explicit --mode users against a teams instance is a refusal, and it rolls the whole thing
+	// back: no admin, no setup key rewritten.
+	_, err = svc.CreateAdmin(ctx, adminSpec("third@example.com", "correct-horse-battery", account.ModeUsers, true))
+	if !errors.Is(err, accounts.ErrModeConflict) {
+		t.Fatalf("explicit mode conflict error = %v, want ErrModeConflict", err)
+	}
+	if _, err := db.New(pool).GetUserByEmail(ctx, "third@example.com"); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("the refused bootstrap committed its admin anyway (err = %v)", err)
+	}
+
+	promoted, err := svc.PromoteToAdmin(ctx, "second@example.com", defaultInstanceSpec())
+	if err != nil {
+		t.Fatalf("PromoteToAdmin on a live instance: %v", err)
+	}
+	if !promoted.AlreadyAdmin || promoted.Mode != account.ModeTeams {
+		t.Fatalf("promote = (already %v, mode %s), want (true, teams)", promoted.AlreadyAdmin, promoted.Mode)
+	}
+
+	snap := loadConfig(t, pool)
+	if !snap.SetupDone || snap.Mode != account.ModeTeams {
+		t.Fatalf("after re-runs snapshot = (setup %v, mode %s), want (true, teams)", snap.SetupDone, snap.Mode)
+	}
+}
+
+// loadConfig builds the snapshot exactly as the server does at boot: config rows plus the instance
+// singleton, through the real Postgres store.
+func loadConfig(t *testing.T, pool *pgxpool.Pool) *config.Snapshot {
+	t.Helper()
+	m, err := config.New(context.Background(), config.NewPGStore(pool), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("config load: %v", err)
+	}
+	return m.Current()
+}
+
+// decideAnon runs the real route gate for an anonymous caller, which is the only thing that proves
+// "usable": SetupDone is a bool, but a 403 on /login is the bug.
+func decideAnon(snap *config.Snapshot, class policy.RouteClass) policy.Outcome {
+	return policy.Decide(policy.Policy{
+		E: snap.Event(time.Now()),
+		P: policy.Principal{},
+		R: policy.Request{Class: class, Surface: policy.SurfacePublic},
+	})
+}
+
+func setupDone(t *testing.T, pool *pgxpool.Pool) bool {
+	t.Helper()
+	var v string
+	err := pool.QueryRow(context.Background(), `SELECT value FROM config WHERE key = 'setup'`).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false
+	}
+	if err != nil {
+		t.Fatalf("read setup key: %v", err)
+	}
+	return v == "true"
+}
+
+func instanceMode(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var mode string
+	if err := pool.QueryRow(context.Background(), `SELECT user_mode FROM instance`).Scan(&mode); err != nil {
+		t.Fatalf("read instance.user_mode: %v", err)
+	}
+	return mode
 }

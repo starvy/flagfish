@@ -131,9 +131,14 @@ services:
       FLAGFISH_ADDR: ":8000"
       FLAGFISH_LOG_FORMAT: ${FLAGFISH_LOG_FORMAT:-json}
       FLAGFISH_LOG_LEVEL: ${FLAGFISH_LOG_LEVEL:-info}
-      # Behind a reverse proxy this MUST name the proxy's address, or every request —
-      # and every anti-cheat IP — is attributed to the proxy. Empty trusts the socket peer.
+      # Behind a reverse proxy this MUST name the proxy's address. Empty trusts the socket
+      # peer, which behind a proxy means every client shares one anonymous rate-limit bucket
+      # and every recorded submission IP is the proxy's. The app warns loudly about both.
       FLAGFISH_TRUSTED_PROXIES: ${FLAGFISH_TRUSTED_PROXIES:-}
+      # Secure session cookies, independent of the proxy list: this stack is meant to sit
+      # behind TLS termination, and the app cannot see that from a plaintext hop.
+      FLAGFISH_SECURE_COOKIES: ${FLAGFISH_SECURE_COOKIES:-true}
+      FLAGFISH_MAX_UPLOAD_BYTES: ${FLAGFISH_MAX_UPLOAD_BYTES:-33554432}
       FLAGFISH_RATE_LIMIT: ${FLAGFISH_RATE_LIMIT:-60}
       FLAGFISH_RATE_WINDOW: ${FLAGFISH_RATE_WINDOW:-1m}
       # Challenge file storage. Path-style + plaintext is what MinIO on the compose

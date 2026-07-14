@@ -12,9 +12,11 @@
 package security
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -80,11 +82,24 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		limit = o.limit
 	}
 
+	var authenticator httpapi.Authenticator = acct
+	if o.auth != nil {
+		authenticator = o.auth
+	}
+
 	srv := httpapi.New(httpapi.Options{
-		Config:  cfg,
-		Auth:    acct,
-		Limiter: accounts.NewLimiter(pool, limit, time.Minute),
-		Log:     log,
+		Config: cfg,
+		Auth:   authenticator,
+		// The real auth routes, not just the seam: the session cookie a browser gets is minted by
+		// POST /login, so that is where its attributes have to be asserted.
+		Accounts: acct,
+		Limiter:  accounts.NewLimiter(pool, limit, time.Minute),
+		Log:      log,
+
+		// Everything else is left at its zero value on purpose: the fixture is the server a
+		// forgetful operator gets, and the tests below assert that server is the safe one.
+		TrustedProxies: o.trustedProxies,
+		MaxUploadBytes: o.maxUpload,
 	})
 
 	// Probe routes, registered through the real Huma path with a real RouteClass — so
@@ -106,10 +121,36 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 	}
 }
 
-// fixOpts tunes the fixture. Only the rate-limit test needs a real limit.
-type fixOpts struct{ limit int }
+// fixOpts tunes the fixture. The defaults are the shipped defaults; a test that changes one
+// says why.
+type fixOpts struct {
+	limit          int
+	trustedProxies []*net.IPNet
+	maxUpload      int64
+	auth           httpapi.Authenticator
+}
 
 func withLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.limit = n } }
+
+// withTrustedProxy trusts the loopback the httptest client dials from, so X-Forwarded-For is
+// believed exactly as it would be behind a real reverse proxy.
+func withTrustedProxy() func(*fixOpts) {
+	return func(o *fixOpts) {
+		_, loopback, err := net.ParseCIDR("127.0.0.0/8")
+		if err != nil {
+			panic(err) // a constant CIDR
+		}
+		o.trustedProxies = []*net.IPNet{loopback}
+	}
+}
+
+func withMaxUpload(n int64) func(*fixOpts) { return func(o *fixOpts) { o.maxUpload = n } }
+
+// withAuthenticator swaps the credential seam — the only way to make the database fail
+// underneath authentication without breaking every other fixture in the suite.
+func withAuthenticator(a httpapi.Authenticator) func(*fixOpts) {
+	return func(o *fixOpts) { o.auth = a }
+}
 
 // registerProbes adds two operations: a safe read and an unsafe write, both requiring
 // auth, so the chain's guards have something to guard.
@@ -230,9 +271,13 @@ func (f *fixture) count(query string, args ...any) int64 {
 	return n
 }
 
-// resp is what a probe returns: the status, and the body drained and closed so the
-// connection is reusable and the linter is satisfied.
-type resp struct{ StatusCode int }
+// resp is what a probe returns: the status, the body read out, and the response's cookies —
+// the body is always drained and closed so the connection is reusable.
+type resp struct {
+	StatusCode int
+	Body       string
+	Cookies    []*http.Cookie
+}
 
 // do issues a request against the real server with whatever credential is attached.
 func (f *fixture) do(method, path string, mut ...func(*http.Request)) resp {
@@ -248,11 +293,37 @@ func (f *fixture) do(method, path string, mut ...func(*http.Request)) resp {
 	if err != nil {
 		f.t.Fatalf("do: %v", err)
 	}
-	if _, err := io.Copy(io.Discard, r.Body); err != nil {
-		f.t.Fatalf("drain body: %v", err)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		f.t.Fatalf("read body: %v", err)
 	}
 	_ = r.Body.Close()
-	return resp{StatusCode: r.StatusCode}
+	return resp{StatusCode: r.StatusCode, Body: string(body), Cookies: r.Cookies()}
+}
+
+// withBody attaches a request body. ContentLength is set, as any real client sets it.
+func withBody(contentType string, b []byte) func(*http.Request) {
+	return func(r *http.Request) {
+		r.Header.Set("Content-Type", contentType)
+		r.Body = io.NopCloser(bytes.NewReader(b))
+		r.ContentLength = int64(len(b))
+		r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
+	}
+}
+
+// withForwardedFor forges the header a reverse proxy would append.
+func withForwardedFor(ip string) func(*http.Request) {
+	return func(r *http.Request) { r.Header.Set("X-Forwarded-For", ip) }
+}
+
+// cookie returns the named cookie from a response, or nil.
+func (r resp) cookie(name string) *http.Cookie {
+	for _, c := range r.Cookies {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
 }
 
 func withToken(tok string) func(*http.Request) {

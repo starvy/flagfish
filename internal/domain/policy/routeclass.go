@@ -71,6 +71,12 @@ type attrs struct {
 	requiresTeam     bool
 	timeGated        bool
 
+	// mutatesScore: the route can move the standings — a solve, a first blood, a hint
+	// deduction. view_after_ctf reopens the challenges for READING once the event is over;
+	// it must never reopen scoring. Kept as a table attribute rather than a condition at the
+	// gate so a new scoring route cannot forget to be excluded.
+	mutatesScore bool
+
 	adminOnly bool
 
 	// exemptFromBan / exemptFromPasswordChange: the two global gates that run
@@ -105,13 +111,13 @@ var classAttrs = map[RouteClass]attrs{
 	ClassChallengeDetail: {visGates: []VisKind{VisChallenge}, requiresVerified: true, requiresProfile: true, requiresTeam: true, timeGated: true},
 	ClassChallengeAttempt: {
 		visGates: []VisKind{VisChallenge}, requiresAuth: true, requiresVerified: true,
-		requiresProfile: true, requiresTeam: true, timeGated: true,
+		requiresProfile: true, requiresTeam: true, timeGated: true, mutatesScore: true,
 	},
 	ClassChallengeSolves: {visGates: []VisKind{VisChallenge}, requiresVerified: true, timeGated: true},
 
 	// No pause gate on the unlock classes. See PolicyPauseDoesNotBlockUnlocks.
-	ClassHintUnlock:     {requiresAuth: true, requiresVerified: true, timeGated: true},
-	ClassSolutionUnlock: {requiresAuth: true, requiresVerified: true, timeGated: true},
+	ClassHintUnlock:     {requiresAuth: true, requiresVerified: true, timeGated: true, mutatesScore: true},
+	ClassSolutionUnlock: {requiresAuth: true, requiresVerified: true, timeGated: true, mutatesScore: true},
 
 	// The scoreboard is gated on both account and score visibility, and is not
 	// time-gated (you can look at the board before the CTF starts).
@@ -165,6 +171,7 @@ func (c RouteClass) RequiresVerified() bool         { return c.attrs().requiresV
 func (c RouteClass) RequiresCompleteProfile() bool  { return c.attrs().requiresProfile }
 func (c RouteClass) RequiresTeam() bool             { return c.attrs().requiresTeam }
 func (c RouteClass) TimeGated() bool                { return c.attrs().timeGated }
+func (c RouteClass) MutatesScore() bool             { return c.attrs().mutatesScore }
 func (c RouteClass) AdminOnly() bool                { return c.attrs().adminOnly }
 func (c RouteClass) ExemptFromBan() bool            { return c.attrs().exemptFromBan }
 func (c RouteClass) ExemptFromPasswordChange() bool { return c.attrs().exemptFromPasswordChange }

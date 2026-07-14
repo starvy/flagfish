@@ -44,10 +44,15 @@ func adminCmd(ctx context.Context, args []string, env config.Env, log *slog.Logg
 func adminUsage() {
 	fmt.Fprint(os.Stderr, `flagfish admin — administrative bootstrap
 
-  create --email <e> [--name <n>] [--promote]
+  create --email <e> [--name <n>] [--mode users|teams] [--promote]
 
-Create the first admin, or promote an existing account to admin. role='admin' is otherwise only
-grantable through the admin API, which already requires an admin — this command breaks that deadlock.
+Create the first admin and make the instance live, or promote an existing account to admin.
+role='admin' is otherwise only grantable through the admin API, which already requires an admin —
+this command breaks that deadlock.
+
+It is also what completes setup: the same transaction marks the instance set up and fixes the account
+model, so `+"`migrate && admin create && serve`"+` gives you an instance you can log in to. Before it
+runs, every route — login and registration included — is denied. Re-running it is safe.
 
 The password (create only) is read from, in order: --password, $`+adminPasswordEnv+`, or an
 interactive no-echo prompt. Prefer the environment variable: a password in --password is visible in
@@ -56,6 +61,8 @@ interactive no-echo prompt. Prefer the environment variable: a password in --pas
   --email    <address>   the admin's email (required)
   --name     <name>      display name (defaults to the email)
   --password <pw>        NOT recommended; prefer `+adminPasswordEnv+`
+  --mode     users|teams the account model, FIXED at setup (default users; an instance that is
+                         already set up keeps its own)
   --promote              elevate an EXISTING account to admin instead of creating one
 `)
 }
@@ -65,6 +72,7 @@ func adminCreate(ctx context.Context, args []string, env config.Env, log *slog.L
 	email := fs.String("email", "", "the admin's email address (required)")
 	name := fs.String("name", "", "display name (defaults to the email)")
 	password := fs.String("password", "", "NOT recommended; prefer $"+adminPasswordEnv)
+	mode := fs.String("mode", account.ModeUsers.String(), "the account model, fixed at setup: users|teams")
 	promote := fs.Bool("promote", false, "elevate an existing account to admin instead of creating one")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -75,26 +83,31 @@ func adminCreate(ctx context.Context, args []string, env config.Env, log *slog.L
 		return errors.New("admin create: --email is required and must be an address")
 	}
 
+	inst, err := instanceSpec(fs, *mode)
+	if err != nil {
+		return fmt.Errorf("admin create: %w", err)
+	}
+
 	pool, err := pgxpool.New(ctx, env.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("admin create: connect: %w", err)
 	}
 	defer pool.Close()
 
-	// The account model is irrelevant to bootstrapping an admin — neither CreateAdmin nor
-	// PromoteToAdmin resolves an account — so the mode passed here is never consulted.
+	// The service mode decides how an account is RESOLVED, and neither call below resolves one. The
+	// mode the instance plays under is the one in inst, and the bootstrap reports what it ended up as.
 	svc := accounts.NewService(pool, account.ModeUsers, log)
 
 	if *promote {
-		id, already, perr := svc.PromoteToAdmin(ctx, *email)
+		res, perr := svc.PromoteToAdmin(ctx, *email, inst)
 		if perr != nil {
 			return fmt.Errorf("admin create: %w", perr)
 		}
-		if already {
-			fmt.Printf("%s is already an admin (id %d); nothing to do\n", *email, id)
-			return nil
+		verb := "promoted"
+		if res.AlreadyAdmin {
+			verb = "already an admin"
 		}
-		fmt.Printf("promoted %s to admin (id %d)\n", *email, id)
+		fmt.Printf("%s: %s (id %d); instance is set up, %s mode\n", *email, verb, res.UserID, res.Mode)
 		return nil
 	}
 
@@ -111,7 +124,12 @@ func adminCreate(ctx context.Context, args []string, env config.Env, log *slog.L
 		displayName = *email
 	}
 
-	id, err := svc.CreateAdmin(ctx, displayName, *email, pw)
+	res, err := svc.CreateAdmin(ctx, accounts.AdminSpec{
+		Name:     displayName,
+		Email:    *email,
+		Password: pw,
+		Instance: inst,
+	})
 	if errors.Is(err, accounts.ErrEmailTaken) {
 		return fmt.Errorf("admin create: an account already exists for %s "+
 			"(use --promote to make that account an admin)", *email)
@@ -119,8 +137,26 @@ func adminCreate(ctx context.Context, args []string, env config.Env, log *slog.L
 		return fmt.Errorf("admin create: %w", err)
 	}
 
-	fmt.Printf("created admin %s (id %d)\n", *email, id)
+	fmt.Printf("created admin %s (id %d); instance is set up, %s mode — ready to serve\n",
+		*email, res.UserID, res.Mode)
 	return nil
+}
+
+// instanceSpec parses --mode and records whether the operator actually typed it. A defaulted mode
+// yields to whatever the instance already plays; a typed one that disagrees is an error rather than
+// a flag that was silently ignored.
+func instanceSpec(fs *flag.FlagSet, mode string) (accounts.InstanceSpec, error) {
+	m, err := account.ParseMode(mode)
+	if err != nil {
+		return accounts.InstanceSpec{}, fmt.Errorf("--mode: %w", err)
+	}
+	var explicit bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "mode" {
+			explicit = true
+		}
+	})
+	return accounts.InstanceSpec{Mode: m, ModeExplicit: explicit, Version: version}, nil
 }
 
 // resolvePassword sources the password without ever putting it in a log or a return-value error.

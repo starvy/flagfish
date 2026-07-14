@@ -95,6 +95,8 @@ components:
           type:
             - array
             - "null"
+        flag_mode:
+          type: string
         function:
           type: string
         hints:
@@ -106,6 +108,8 @@ components:
         id:
           format: int64
           type: integer
+        instance:
+          $ref: "#/components/schemas/ChallengeInstance"
         locked:
           type: boolean
         max_attempts:
@@ -143,6 +147,7 @@ components:
         - function
         - max_attempts
         - state
+        - flag_mode
         - solve_count
         - solved
         - locked
@@ -189,6 +194,22 @@ components:
         - cost
         - unlocked
         - locked
+      type: object
+    ChallengeInstance:
+      additionalProperties: false
+      properties:
+        artifact_id:
+          format: int64
+          type: integer
+        instance_id:
+          format: int64
+          type: integer
+        vars:
+          additionalProperties: {}
+          type: object
+      required:
+        - instance_id
+        - vars
       type: object
     ChallengeListItem:
       additionalProperties: false
@@ -447,15 +468,46 @@ components:
           type: string
         ctf_name:
           type: string
+        end:
+          format: date-time
+          type: string
+        freeze:
+          format: date-time
+          type: string
+        mode:
+          enum:
+            - users
+            - teams
+          type: string
+        paused:
+          type: boolean
+        registration_visibility:
+          enum:
+            - public
+            - private
+            - mlc
+          type: string
+        start:
+          format: date-time
+          type: string
+        team_creation:
+          type: boolean
         theme:
           type: string
         theme_tokens:
           additionalProperties:
             type: string
           type: object
+        verify_emails:
+          type: boolean
       required:
         - ctf_name
         - theme
+        - mode
+        - paused
+        - team_creation
+        - verify_emails
+        - registration_visibility
       type: object
     JoinTeamInputBody:
       additionalProperties: false

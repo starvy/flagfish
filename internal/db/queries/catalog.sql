@@ -61,7 +61,7 @@ WITH mode AS (
 )
 SELECT
     c.id, c.name, c.category, c.description, c.attribution, c.connection_info,
-    c.type, c.value, c.function, c.max_attempts, c.state, c.requirements,
+    c.type, c.value, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
     (SELECT count(*)
        FROM solves s
        CROSS JOIN mode m

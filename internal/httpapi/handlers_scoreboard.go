@@ -12,7 +12,10 @@ import (
 )
 
 type scoreboardInput struct {
-	Limit int `query:"limit" minimum:"0"`
+	// Bounded on both ends on purpose: board.clampLimit reads 0 as "no limit", so an absent
+	// or zero limit would make the ordinary front-page request re-aggregate the whole ledger
+	// and return every account — uncached, at whatever rate the limiter allows.
+	Limit int `query:"limit" minimum:"1" maximum:"1000" default:"100"`
 	// AsOf time-travels the standings to a past instant (RFC3339). It is a pure
 	// function of the immutable score ledger. For a viewer the freeze still applies
 	// to, it is clamped to the freeze horizon — a non-exempt caller can never travel

@@ -13,6 +13,11 @@ services:
 
   # Keep the app's start gate short so `task e2e` reaches green quickly.
   flagfish:
+    environment:
+      # The suite drives the app over plain http://localhost with a stdlib cookie jar, which
+      # (correctly) never sends a Secure cookie over http. This is the one topology that opts
+      # out; a deployment does not.
+      FLAGFISH_SECURE_COOKIES: "false"
     healthcheck:
       interval: 3s
       start_period: 5s

@@ -2,15 +2,25 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/starvy/flagfish/internal/catalog"
+	"github.com/starvy/flagfish/internal/domain/account"
+	"github.com/starvy/flagfish/internal/domain/flags"
 	"github.com/starvy/flagfish/internal/domain/policy"
+	"github.com/starvy/flagfish/internal/gameplay"
 )
+
+// errNoIssuer is a wiring bug, not a player-facing condition: the catalog is serving a unique-flag
+// challenge with no gameplay service to assign from. Serving the challenge without an instance
+// would hand out a flagless, unsolvable body and quietly void the uniqueness property, so it fails.
+var errNoIssuer = errors.New("httpapi: unique-flag challenge but no gameplay service is wired")
 
 type challengeIDInput struct {
 	ID int64 `path:"id"`
@@ -47,25 +57,36 @@ type challengeHint struct {
 	Locked   bool    `json:"locked"`
 }
 
+// challengeInstance is the caller's own bundle for a unique-flag challenge: the per-account
+// variables the description is written against, and the artifact the author generated for them.
+// There is no flag field, here or anywhere below it — only the hash is ever stored.
+type challengeInstance struct {
+	InstanceID int64          `json:"instance_id"`
+	ArtifactID *int64         `json:"artifact_id,omitempty"`
+	Vars       map[string]any `json:"vars"`
+}
+
 type challengeDetailOutput struct {
 	Body struct {
-		ID             int64           `json:"id"`
-		Name           string          `json:"name"`
-		Category       string          `json:"category"`
-		Description    string          `json:"description"`
-		Attribution    *string         `json:"attribution,omitempty"`
-		ConnectionInfo *string         `json:"connection_info,omitempty"`
-		Type           string          `json:"type"`
-		Value          int32           `json:"value"`
-		Function       string          `json:"function"`
-		MaxAttempts    int32           `json:"max_attempts"`
-		State          string          `json:"state"`
-		SolveCount     *int64          `json:"solve_count"`
-		Solved         bool            `json:"solved"`
-		Locked         bool            `json:"locked"`
-		Tags           []string        `json:"tags"`
-		Files          []challengeFile `json:"files"`
-		Hints          []challengeHint `json:"hints"`
+		ID             int64              `json:"id"`
+		Name           string             `json:"name"`
+		Category       string             `json:"category"`
+		Description    string             `json:"description"`
+		Attribution    *string            `json:"attribution,omitempty"`
+		ConnectionInfo *string            `json:"connection_info,omitempty"`
+		Type           string             `json:"type"`
+		Value          int32              `json:"value"`
+		Function       string             `json:"function"`
+		MaxAttempts    int32              `json:"max_attempts"`
+		State          string             `json:"state"`
+		FlagMode       string             `json:"flag_mode"`
+		SolveCount     *int64             `json:"solve_count"`
+		Solved         bool               `json:"solved"`
+		Locked         bool               `json:"locked"`
+		Tags           []string           `json:"tags"`
+		Files          []challengeFile    `json:"files"`
+		Hints          []challengeHint    `json:"hints"`
+		Instance       *challengeInstance `json:"instance,omitempty"`
 	}
 }
 
@@ -142,7 +163,24 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 	}
 
 	c := d.Challenge
+	inst, err := s.issueForView(ctx, c)
+	switch {
+	case errors.Is(err, flags.ErrPoolExhausted):
+		// Loud, and never a challenge body with no flag in it: a silent fallback would destroy
+		// uniqueness for exactly the late registrants the detector exists to catch.
+		s.opts.Log.ErrorContext(ctx, "challenge instance pool exhausted",
+			"challenge_id", c.ID, "challenge", c.Name)
+		return nil, huma.Error503ServiceUnavailable("this challenge has no instances left — tell an organiser")
+	case errors.Is(err, account.ErrTeamless):
+		return nil, huma.Error403Forbidden("join a team to play")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "issue challenge instance failed", "challenge_id", c.ID, "error", err)
+		return nil, huma.Error500InternalServerError("could not load challenge")
+	}
+
 	out := &challengeDetailOutput{}
+	out.Body.Instance = inst
+	out.Body.FlagMode = c.FlagMode.String()
 	out.Body.ID = c.ID
 	out.Body.Name = c.Name
 	out.Body.Category = c.Category
@@ -171,6 +209,48 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 		out.Body.Hints[i] = challengeHint{ID: h.ID, Title: h.Title, Cost: h.Cost, Unlocked: h.Unlocked, Locked: h.Locked}
 	}
 	return out, nil
+}
+
+// issueForView returns the caller's instance for a unique-flag challenge, assigning one from the
+// pool on their first view. It is the only read in this product that writes, so the gate is narrow
+// and everything outside it costs nothing: a static challenge, an anonymous viewer, an admin, and a
+// challenge whose prerequisites are unmet all return here without touching the database.
+//
+// Admins are excluded because a preview that burned an instance would take a flag from a player who
+// needs one, and because the pool is sized for the field, not for the organisers. Hidden accounts
+// are NOT excluded: hiddenness keeps an account off the board, it does not stop it playing, and an
+// account that can solve must be able to hold its own flag — otherwise its solves are
+// indistinguishable from a shared one to the unissued-solve detector.
+//
+// The write happens once per (challenge, account): every later view finds the existing row and
+// returns it. Idempotence is the primary key's, not this function's.
+func (s *Server) issueForView(ctx context.Context, ch catalog.Challenge) (*challengeInstance, error) {
+	pr := AuthOf(ctx).Principal
+	if ch.FlagMode != flags.ModeUnique || ch.Locked || !pr.Authed || pr.IsAdmin {
+		return nil, nil
+	}
+	if s.opts.Gameplay == nil {
+		return nil, errNoIssuer
+	}
+	acct, err := s.actor(ctx).AccountID(s.opts.Config.Current().Mode)
+	if err != nil {
+		return nil, fmt.Errorf("httpapi: issue for view: %w", err)
+	}
+	issued, err := s.opts.Gameplay.IssueInstance(ctx, ch.ID, int64(acct))
+	if err != nil {
+		return nil, fmt.Errorf("httpapi: issue for view: challenge %d: %w", ch.ID, err)
+	}
+	return instanceBody(issued)
+}
+
+func instanceBody(i gameplay.IssuedInstance) (*challengeInstance, error) {
+	vars := map[string]any{}
+	if len(i.Vars) > 0 {
+		if err := json.Unmarshal(i.Vars, &vars); err != nil {
+			return nil, fmt.Errorf("httpapi: instance %d: decode vars: %w", i.InstanceID, err)
+		}
+	}
+	return &challengeInstance{InstanceID: i.InstanceID, ArtifactID: i.ArtifactID, Vars: vars}, nil
 }
 
 func (s *Server) challengeSolves(ctx context.Context, in *challengeIDInput) (*solvesOutput, error) {

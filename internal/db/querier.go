@@ -159,6 +159,8 @@ type Querier interface {
 	CountSubmissionsWithoutParent(ctx context.Context) (int64, error)
 	CountTagsWithoutChallenge(ctx context.Context) (int64, error)
 	CountTeamsWithoutCaptain(ctx context.Context) (int64, error)
+	// The unissued-solve count behind FindUnissuedSolves, for pagination.
+	CountUnissuedSolves(ctx context.Context) (int64, error)
 	// The prerequisite gate for hint unlocks. A hint can require other hints to be unlocked first;
 	// this counts how many of them this account already owns, and the caller compares that against the
 	// number required. Hint prerequisites carry no anonymize flag — a locked hint is simply not
@@ -200,6 +202,17 @@ type Querier interface {
 	// "Already on a team" is the WHERE clause, not a prior read: zero rows means the user was enrolled
 	// elsewhere by the time this ran. The caps trigger enforces team_size on the same statement.
 	EnrollUser(ctx context.Context, arg EnrollUserParams) (int64, error)
+	// The console bootstrap: the one path from an empty database to a playable instance.
+	//
+	// Two rows make an instance live — the instance singleton (which the scoring SQL keys on) and
+	// config.setup (which the route policy gates every request on, including /login). They are written
+	// in the same transaction as the first admin, so a live instance always has an admin and an
+	// instance with an admin is always live.
+	// The singleton, created once and never rewritten: user_mode is fixed at setup, and the immutability
+	// trigger says so. ON CONFLICT makes a re-run idempotent and hands back the mode actually in force —
+	// the no-op SET exists only so RETURNING fires on the conflict path, and it re-asserts the same
+	// user_mode so the trigger stays satisfied.
+	EnsureInstance(ctx context.Context, arg EnsureInstanceParams) (string, error)
 	// The anti-cheat detectors. Reads only. These never mutate, never penalise, and never tell the
 	// player anything: auto-penalisation was considered and rejected (no appeal path, and a false
 	// positive becomes an instant ban during a live event). They feed an admin review queue; a human
@@ -244,7 +257,7 @@ type Querier interface {
 	// row means the flag came from somewhere else. Full stop.
 	//
 	// Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
-	FindUnissuedSolves(ctx context.Context, lim int32) ([]FindUnissuedSolvesRow, error)
+	FindUnissuedSolves(ctx context.Context, arg FindUnissuedSolvesParams) ([]FindUnissuedSolvesRow, error)
 	// Looked up by sha256(token); the plaintext is shown once, at creation, and never stored —
 	// a table of plaintext secrets turns every dump or export into a bearer-credential leak.
 	// Expiry is enforced here, in the WHERE clause, for the same reason as sessions.
@@ -526,6 +539,10 @@ type Querier interface {
 	// Prefer an issued row over an unissued one when a hash exists across generations, so attribution
 	// survives a pool re-upload.
 	LookupInstanceByHash(ctx context.Context, arg LookupInstanceByHashParams) (LookupInstanceByHashRow, error)
+	// Flips the instance live. Until this row says "true" the policy gate denies every route with
+	// setup-incomplete, so a fresh install has no front door. Idempotent: re-running the bootstrap on a
+	// live instance rewrites the same value.
+	MarkSetupComplete(ctx context.Context) error
 	MarkUserVerified(ctx context.Context, userID int64) error
 	// The one number that must be right before the event starts. Pool exhaustion mid-CTF is a hard
 	// failure by design, and this gauge is what makes it preventable rather than merely loud.

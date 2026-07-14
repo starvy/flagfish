@@ -63,6 +63,27 @@ type IPOverlapPage struct {
 	Total    int64
 }
 
+// UnissuedSolve is one solve on a unique-flag challenge by an account that was never issued an
+// instance for it. Unlike the other two detectors this is not a heuristic: assignment is lazy, so an
+// account that so much as opened the challenge has a flag_issues row. No row and a solve means the
+// flag reached that account by some route other than this platform handing it over.
+type UnissuedSolve struct {
+	SolveID       int64
+	ChallengeID   int64
+	ChallengeName string
+	AccountID     int64
+	UserID        int64
+	TeamID        *int64
+	Date          time.Time
+	Value         int32
+}
+
+// UnissuedSolvePage is one page of unissued solves plus the total.
+type UnissuedSolvePage struct {
+	Solves []UnissuedSolve
+	Total  int64
+}
+
 // SharingEdge is one counterparty in a single account's sharing evidence. Direction is "issued_to"
 // when the subject account was issued the flag and someone else submitted it, and "submitted" when
 // the subject submitted a flag issued to the counterparty.
@@ -135,6 +156,32 @@ func (s *Service) IPOverlap(ctx context.Context, minAccounts, page, perPage int)
 		out.Clusters[i] = IPCluster{
 			IP: derefAddr(r.Ip), AccountCount: r.AccountCount, AccountIDs: r.AccountIds,
 			FirstSeen: r.FirstSeen.Time, LastSeen: r.LastSeen.Time,
+		}
+	}
+	return out, nil
+}
+
+// UnissuedSolves returns solves on unique-flag challenges by accounts that were never issued an
+// instance, one page at a time. A static-flag challenge cannot appear here: with no pool there is
+// nothing to be issued, and absence of a flag_issues row means nothing.
+func (s *Service) UnissuedSolves(ctx context.Context, page, perPage int) (UnissuedSolvePage, error) {
+	total, err := s.q.CountUnissuedSolves(ctx)
+	if err != nil {
+		return UnissuedSolvePage{}, fmt.Errorf("anticheat: count unissued solves: %w", err)
+	}
+	rows, err := s.q.FindUnissuedSolves(ctx, db.FindUnissuedSolvesParams{
+		Lim: int32(perPage),              //nolint:gosec // per_page is capped by the handler
+		Off: int32((page - 1) * perPage), //nolint:gosec // page is bounded by the handler
+	})
+	if err != nil {
+		return UnissuedSolvePage{}, fmt.Errorf("anticheat: unissued solves: %w", err)
+	}
+	out := UnissuedSolvePage{Total: total, Solves: make([]UnissuedSolve, len(rows))}
+	for i, r := range rows {
+		out.Solves[i] = UnissuedSolve{
+			SolveID: r.SolveID, ChallengeID: r.ChallengeID, ChallengeName: r.ChallengeName,
+			AccountID: r.AccountID, UserID: r.UserID, TeamID: r.TeamID,
+			Date: r.Date.Time, Value: r.Value,
 		}
 	}
 	return out, nil

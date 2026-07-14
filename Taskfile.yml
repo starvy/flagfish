@@ -515,6 +515,9 @@ tasks:
           echo "deploy/.env is missing — copy deploy/.env.example and set real secrets first" >&2
           exit 1
         fi
+      # The secrets in deploy/.env.example are empty, and compose's ${VAR:?} rejects an empty
+      # value — so a copied-and-unedited file stops here rather than booting a public CTF on a
+      # password that ships in the repository.
       - "{{.DEPLOY_COMPOSE}} up -d --build --wait"
       - 'echo "  app is up. Finish first-run setup (mark setup done + promote an admin): see docs/ops/deploy.md"'
 
@@ -547,21 +550,35 @@ tasks:
   e2e:
     desc: Bring up the deploy stack, run the black-box E2E suite over HTTP, tear down
     cmds:
+      # deploy/.env.example ships EMPTY secrets so that copying it cannot boot a real
+      # deployment on a password printed in this repository. The e2e stack is ephemeral and
+      # bound to localhost, so it fills in throwaway ones — matching e2e-run's default DSN.
       - |
-        if [ ! -f deploy/.env ]; then cp deploy/.env.example deploy/.env; echo "  created deploy/.env from example (test secrets)"; fi
+        if [ ! -f deploy/.env ]; then
+          sed -e 's|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=e2e-postgres|' \
+              -e 's|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=e2e-minio-secret|' \
+              deploy/.env.example > deploy/.env
+          echo "  created deploy/.env with throwaway e2e secrets"
+        fi
       - defer: "{{.E2E_COMPOSE}} down --remove-orphans --volumes"
       - "{{.E2E_COMPOSE}} up -d --build --wait"
       - task: e2e-run
 
   e2e-run:
     desc: Run the E2E suite against an already-running flagfish (set E2E_BASE_URL, E2E_DATABASE_URL)
+    # The stack's Postgres password is whatever deploy/.env says — it is no longer a value
+    # printed in the repository — so the out-of-band DSN is derived from that file rather than
+    # hardcoded. An explicit E2E_DATABASE_URL still wins.
+    dotenv: ["deploy/.env"]
     # -race needs cgo; the global CGO_ENABLED=0 exists only for the static build.
     env:
       CGO_ENABLED: "1"
       E2E_BASE_URL: '{{.E2E_BASE_URL | default "http://localhost:8000"}}'
-      E2E_DATABASE_URL: '{{.E2E_DATABASE_URL | default "postgres://flagfish:change-me-postgres@localhost:55432/flagfish?sslmode=disable"}}'
     cmds:
-      - go test -race -count=1 -tags=e2e -timeout=10m ./e2e/...
+      - |
+        : "${E2E_DATABASE_URL:=postgres://${POSTGRES_USER:-flagfish}:${POSTGRES_PASSWORD:?deploy/.env has no POSTGRES_PASSWORD — the e2e stack cannot be reached}@localhost:${E2E_PG_PORT:-55432}/${POSTGRES_DB:-flagfish}?sslmode=disable}"
+        export E2E_DATABASE_URL
+        go test -race -count=1 -tags=e2e -timeout=10m ./e2e/...
 
   # ---------------------------------------------------------------- ci
 
@@ -581,22 +598,25 @@ tasks:
       - task: test-modesrc
 
   check-generated:
-    desc: Fail if generated code or openapi.yaml is stale (contract drift ⇒ build fails)
+    desc: Fail if generated code or the OpenAPI documents are stale (contract drift ⇒ build fails)
     deps: [tools]
     cmds:
       - task: generate
       - |
-        # The binary emits its own OpenAPI document (Huma derives it from the
-        # handlers), so the checked-in openapi.yaml is a contract, not an
-        # artifact: a handler change that silently alters the API surface has to
-        # show up as a diff a human approves.
+        # The binary emits its own OpenAPI documents (Huma derives them from the
+        # handlers), so the checked-in openapi.yaml / openapi.admin.yaml are a
+        # contract, not an artifact: a handler change that silently alters either
+        # API surface has to show up as a diff a human approves.
         if [ -f openapi.yaml ] && go run ./cmd/flagfish openapi >/dev/null 2>&1; then
           go run ./cmd/flagfish openapi > openapi.yaml
+        fi
+        if [ -f openapi.admin.yaml ] && go run ./cmd/flagfish openapi --admin >/dev/null 2>&1; then
+          go run ./cmd/flagfish openapi --admin > openapi.admin.yaml
         fi
       - |
         if ! git diff --exit-code -- ':!bin' ':!.env'; then
           echo
-          echo "  ✗ generated code / openapi.yaml is stale."
+          echo "  ✗ generated code / OpenAPI documents are stale."
           echo "    Run 'task generate' and commit the result."
           exit 1
         fi

@@ -1,0 +1,2318 @@
+components:
+  schemas:
+    AcAccountReportOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AcAccountReportOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_id:
+          format: int64
+          type: integer
+        ip_overlap:
+          items:
+            $ref: "#/components/schemas/AcIPNeighborBody"
+          type:
+            - array
+            - "null"
+        sharing:
+          items:
+            $ref: "#/components/schemas/AcSharingEdgeBody"
+          type:
+            - array
+            - "null"
+      required:
+        - account_id
+        - sharing
+        - ip_overlap
+      type: object
+    AcFlagSharingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AcFlagSharingOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        page:
+          format: int64
+          type: integer
+        pairs:
+          items:
+            $ref: "#/components/schemas/AcSharingPairBody"
+          type:
+            - array
+            - "null"
+        per_page:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+      required:
+        - pairs
+        - total
+        - page
+        - per_page
+      type: object
+    AcIPClusterBody:
+      additionalProperties: false
+      properties:
+        account_count:
+          format: int64
+          type: integer
+        account_ids:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        first_seen:
+          format: date-time
+          type: string
+        ip:
+          type: string
+        last_seen:
+          format: date-time
+          type: string
+      required:
+        - ip
+        - account_count
+        - account_ids
+        - first_seen
+        - last_seen
+      type: object
+    AcIPNeighborBody:
+      additionalProperties: false
+      properties:
+        first_seen:
+          format: date-time
+          type: string
+        ip:
+          type: string
+        last_seen:
+          format: date-time
+          type: string
+        other_account_id:
+          format: int64
+          type: integer
+        submission_count:
+          format: int64
+          type: integer
+      required:
+        - ip
+        - other_account_id
+        - submission_count
+        - first_seen
+        - last_seen
+      type: object
+    AcIPOverlapOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AcIPOverlapOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        clusters:
+          items:
+            $ref: "#/components/schemas/AcIPClusterBody"
+          type:
+            - array
+            - "null"
+        min_accounts:
+          format: int64
+          type: integer
+        page:
+          format: int64
+          type: integer
+        per_page:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+      required:
+        - clusters
+        - total
+        - min_accounts
+        - page
+        - per_page
+      type: object
+    AcSharingEdgeBody:
+      additionalProperties: false
+      properties:
+        challenge_ids:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        counterparty:
+          format: int64
+          type: integer
+        direction:
+          type: string
+        first_seen:
+          format: date-time
+          type: string
+        last_seen:
+          format: date-time
+          type: string
+        submission_count:
+          format: int64
+          type: integer
+      required:
+        - direction
+        - counterparty
+        - submission_count
+        - challenge_ids
+        - first_seen
+        - last_seen
+      type: object
+    AcSharingPairBody:
+      additionalProperties: false
+      properties:
+        challenge_count:
+          format: int64
+          type: integer
+        challenge_ids:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        first_seen:
+          format: date-time
+          type: string
+        issued_to:
+          format: int64
+          type: integer
+        last_seen:
+          format: date-time
+          type: string
+        submission_count:
+          format: int64
+          type: integer
+        submitter:
+          format: int64
+          type: integer
+      required:
+        - issued_to
+        - submitter
+        - submission_count
+        - challenge_count
+        - challenge_ids
+        - first_seen
+        - last_seen
+      type: object
+    AcUnissuedSolveBody:
+      additionalProperties: false
+      properties:
+        account_id:
+          format: int64
+          type: integer
+        challenge_id:
+          format: int64
+          type: integer
+        challenge_name:
+          type: string
+        date:
+          format: date-time
+          type: string
+        solve_id:
+          format: int64
+          type: integer
+        team_id:
+          format: int64
+          type: integer
+        user_id:
+          format: int64
+          type: integer
+        value:
+          format: int32
+          type: integer
+      required:
+        - solve_id
+        - challenge_id
+        - challenge_name
+        - account_id
+        - user_id
+        - date
+        - value
+      type: object
+    AcUnissuedSolvesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AcUnissuedSolvesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        page:
+          format: int64
+          type: integer
+        per_page:
+          format: int64
+          type: integer
+        solves:
+          items:
+            $ref: "#/components/schemas/AcUnissuedSolveBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - solves
+        - total
+        - page
+        - per_page
+      type: object
+    AdminAddFlagInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAddFlagInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        case_insensitive:
+          type: boolean
+        content:
+          minLength: 1
+          type: string
+        type:
+          enum:
+            - static
+            - regex
+          type: string
+      required:
+        - type
+        - content
+      type: object
+    AdminAddHintInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAddHintInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          minLength: 1
+          type: string
+        cost:
+          format: int32
+          minimum: 0
+          type: integer
+        position:
+          format: int32
+          type: integer
+        title:
+          maxLength: 256
+          type: string
+      required:
+        - content
+      type: object
+    AdminAssignBracketInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAssignBracketInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        bracket_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+      required:
+        - bracket_id
+      type: object
+    AdminAssignBracketOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAssignBracketOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_id:
+          format: int64
+          type: integer
+        bracket_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        name:
+          type: string
+      required:
+        - account_id
+        - name
+        - bracket_id
+      type: object
+    AdminAuditEntry:
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+        actor_id:
+          format: int64
+          type: integer
+        after: {}
+        at:
+          format: date-time
+          type: string
+        before: {}
+        id:
+          format: int64
+          type: integer
+        ip:
+          type: string
+        target_id:
+          format: int64
+          type: integer
+        target_table:
+          type: string
+      required:
+        - id
+        - action
+        - target_table
+        - at
+      type: object
+    AdminBanInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminBanInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        banned:
+          type: boolean
+      required:
+        - banned
+      type: object
+    AdminBanOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminBanOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        banned:
+          type: boolean
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - banned
+      type: object
+    AdminBracketBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminBracketBody.json
+          format: uri
+          readOnly: true
+          type: string
+        applies_to:
+          type: string
+        description:
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - applies_to
+      type: object
+    AdminChallengeBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminChallengeBody.json
+          format: uri
+          readOnly: true
+          type: string
+        attribution:
+          type: string
+        category:
+          type: string
+        connection_info:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        decay:
+          format: int32
+          type: integer
+        description:
+          type: string
+        function:
+          type: string
+        id:
+          format: int64
+          type: integer
+        initial:
+          format: int32
+          type: integer
+        logic:
+          type: string
+        max_attempts:
+          format: int32
+          type: integer
+        minimum:
+          format: int32
+          type: integer
+        name:
+          type: string
+        position:
+          format: int32
+          type: integer
+        state:
+          type: string
+        type:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - id
+        - name
+        - category
+        - description
+        - type
+        - state
+        - value
+        - function
+        - max_attempts
+        - logic
+        - position
+        - created_at
+        - updated_at
+      type: object
+    AdminChallengeStateInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminChallengeStateInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        state:
+          enum:
+            - visible
+            - hidden
+          type: string
+      required:
+        - state
+      type: object
+    AdminConfigInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminConfigInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_visibility:
+          enum:
+            - public
+            - private
+          type: string
+        challenge_visibility:
+          enum:
+            - public
+            - private
+          type: string
+        description:
+          type: string
+        end:
+          format: date-time
+          type:
+            - string
+            - "null"
+        freeze:
+          format: date-time
+          type:
+            - string
+            - "null"
+        name:
+          type: string
+        registration_visibility:
+          enum:
+            - public
+            - private
+            - mlc
+          type: string
+        score_visibility:
+          enum:
+            - public
+            - private
+            - hidden
+          type: string
+        start:
+          format: date-time
+          type:
+            - string
+            - "null"
+        theme:
+          type: string
+        theme_tokens:
+          type: string
+      type: object
+    AdminConfigOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminConfigOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_visibility:
+          type: string
+        challenge_visibility:
+          type: string
+        description:
+          type: string
+        end:
+          format: date-time
+          type: string
+        freeze:
+          format: date-time
+          type: string
+        name:
+          type: string
+        registration_visibility:
+          type: string
+        score_visibility:
+          type: string
+        start:
+          format: date-time
+          type: string
+        theme:
+          type: string
+        theme_tokens:
+          type: string
+      required:
+        - name
+        - description
+        - theme
+        - challenge_visibility
+        - score_visibility
+        - account_visibility
+        - registration_visibility
+      type: object
+    AdminCreateBracketInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminCreateBracketInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        applies_to:
+          enum:
+            - users
+            - teams
+          type: string
+        description:
+          type: string
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - name
+        - applies_to
+      type: object
+    AdminCreateChallengeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminCreateChallengeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        attribution:
+          type: string
+        category:
+          maxLength: 128
+          minLength: 1
+          type: string
+        connection_info:
+          type: string
+        decay:
+          format: int32
+          minimum: 1
+          type: integer
+        description:
+          type: string
+        function:
+          default: static
+          enum:
+            - static
+            - linear
+            - logarithmic
+          type: string
+        initial:
+          format: int32
+          minimum: 0
+          type: integer
+        logic:
+          default: any
+          enum:
+            - any
+            - all
+          type: string
+        max_attempts:
+          format: int32
+          minimum: 0
+          type: integer
+        minimum:
+          format: int32
+          minimum: 0
+          type: integer
+        name:
+          maxLength: 256
+          minLength: 1
+          type: string
+        position:
+          format: int32
+          type: integer
+        state:
+          default: visible
+          enum:
+            - visible
+            - hidden
+          type: string
+        value:
+          format: int32
+          minimum: 0
+          type: integer
+      required:
+        - name
+        - category
+        - value
+      type: object
+    AdminCreateNotificationInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminCreateNotificationInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          minLength: 1
+          type: string
+        title:
+          maxLength: 256
+          minLength: 1
+          type: string
+      required:
+        - title
+        - content
+      type: object
+    AdminFileBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminFileBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenge_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        sha256:
+          type: string
+        size_bytes:
+          format: int64
+          type: integer
+      required:
+        - id
+        - challenge_id
+        - name
+        - sha256
+        - size_bytes
+      type: object
+    AdminFlagBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminFlagBody.json
+          format: uri
+          readOnly: true
+          type: string
+        case_insensitive:
+          type: boolean
+        challenge_id:
+          format: int64
+          type: integer
+        content:
+          type: string
+        id:
+          format: int64
+          type: integer
+        type:
+          type: string
+      required:
+        - id
+        - challenge_id
+        - type
+        - content
+        - case_insensitive
+      type: object
+    AdminHintBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminHintBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenge_id:
+          format: int64
+          type: integer
+        content:
+          type: string
+        cost:
+          format: int32
+          type: integer
+        id:
+          format: int64
+          type: integer
+        position:
+          format: int32
+          type: integer
+        title:
+          type: string
+      required:
+        - id
+        - challenge_id
+        - content
+        - cost
+        - position
+      type: object
+    AdminListAuditOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListAuditOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        entries:
+          items:
+            $ref: "#/components/schemas/AdminAuditEntry"
+          type:
+            - array
+            - "null"
+        page:
+          format: int64
+          type: integer
+        per_page:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+      required:
+        - entries
+        - total
+        - page
+        - per_page
+      type: object
+    AdminListBracketsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListBracketsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        brackets:
+          items:
+            $ref: "#/components/schemas/AdminBracketBody"
+          type:
+            - array
+            - "null"
+      required:
+        - brackets
+      type: object
+    AdminListTagsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListTagsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        tags:
+          items:
+            $ref: "#/components/schemas/AdminTag"
+          type:
+            - array
+            - "null"
+      required:
+        - tags
+      type: object
+    AdminListUsersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListUsersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        page:
+          format: int64
+          type: integer
+        per_page:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+        users:
+          items:
+            $ref: "#/components/schemas/AdminUserBody"
+          type:
+            - array
+            - "null"
+      required:
+        - users
+        - total
+        - page
+        - per_page
+      type: object
+    AdminMergeTagInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminMergeTagInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        into:
+          minLength: 1
+          type: string
+      required:
+        - into
+      type: object
+    AdminReorderInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminReorderInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/Item"
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    AdminReorderOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminReorderOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        reordered:
+          format: int64
+          type: integer
+      required:
+        - reordered
+      type: object
+    AdminRoleInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminRoleInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        role:
+          enum:
+            - user
+            - admin
+          type: string
+      required:
+        - role
+      type: object
+    AdminRoleOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminRoleOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+      required:
+        - id
+        - name
+        - role
+      type: object
+    AdminTag:
+      additionalProperties: false
+      properties:
+        uses:
+          format: int64
+          type: integer
+        value:
+          type: string
+      required:
+        - value
+        - uses
+      type: object
+    AdminUpdateBracketInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUpdateBracketInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          type: string
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+      type: object
+    AdminUpdateChallengeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUpdateChallengeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        attribution:
+          type:
+            - string
+            - "null"
+        category:
+          maxLength: 128
+          minLength: 1
+          type: string
+        connection_info:
+          type:
+            - string
+            - "null"
+        decay:
+          format: int32
+          minimum: 1
+          type:
+            - integer
+            - "null"
+        description:
+          type: string
+        function:
+          enum:
+            - static
+            - linear
+            - logarithmic
+          type: string
+        initial:
+          format: int32
+          minimum: 0
+          type:
+            - integer
+            - "null"
+        logic:
+          enum:
+            - any
+            - all
+          type: string
+        max_attempts:
+          format: int32
+          minimum: 0
+          type: integer
+        minimum:
+          format: int32
+          minimum: 0
+          type:
+            - integer
+            - "null"
+        name:
+          maxLength: 256
+          minLength: 1
+          type: string
+        position:
+          format: int32
+          type: integer
+        value:
+          format: int32
+          minimum: 0
+          type: integer
+      type: object
+    AdminUpdateFlagInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUpdateFlagInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        case_insensitive:
+          type: boolean
+        content:
+          minLength: 1
+          type: string
+        type:
+          enum:
+            - static
+            - regex
+          type: string
+      type: object
+    AdminUpdateHintInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUpdateHintInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          minLength: 1
+          type: string
+        cost:
+          format: int32
+          minimum: 0
+          type: integer
+        position:
+          format: int32
+          type: integer
+        title:
+          maxLength: 256
+          type: string
+      type: object
+    AdminUserBody:
+      additionalProperties: false
+      properties:
+        banned:
+          type: boolean
+        created_at:
+          format: date-time
+          type: string
+        email:
+          type: string
+        hidden:
+          type: boolean
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+        team_id:
+          format: int64
+          type: integer
+        verified:
+          type: boolean
+      required:
+        - id
+        - name
+        - email
+        - role
+        - verified
+        - banned
+        - hidden
+        - created_at
+      type: object
+    ErrorDetail:
+      additionalProperties: false
+      properties:
+        location:
+          description: Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
+          type: string
+        message:
+          description: Error message text
+          type: string
+        value:
+          description: The value at the given location
+      type: object
+    ErrorModel:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/ErrorModel.json
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          description: A human-readable explanation specific to this occurrence of the problem.
+          examples:
+            - Property foo is required but is missing.
+          type: string
+        errors:
+          description: Optional list of individual error details
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+          type:
+            - array
+            - "null"
+        instance:
+          description: A URI reference that identifies the specific occurrence of the problem.
+          examples:
+            - https://example.com/error-log/abc123
+          format: uri
+          type: string
+        status:
+          description: HTTP status code
+          examples:
+            - 400
+          format: int64
+          type: integer
+        title:
+          description: A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+          examples:
+            - Bad Request
+          type: string
+        type:
+          default: about:blank
+          description: A URI reference to human-readable documentation for the error.
+          examples:
+            - https://example.com/errors/example
+          format: uri
+          type: string
+      type: object
+    Item:
+      additionalProperties: false
+      properties:
+        id:
+          format: int64
+          type: integer
+        position:
+          format: int32
+          type: integer
+      required:
+        - id
+        - position
+      type: object
+    NotificationBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/NotificationBody.json
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          type: string
+        date:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        title:
+          type: string
+      required:
+        - id
+        - title
+        - content
+        - date
+      type: object
+info:
+  title: flagfish (admin)
+  version: 1.0.0
+openapi: 3.1.0
+paths:
+  /accounts/{accountID}/bracket:
+    put:
+      operationId: admin-assign-bracket
+      parameters:
+        - in: path
+          name: accountID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAssignBracketInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAssignBracketOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Assign an account to a bracket (or clear it)
+      tags:
+        - admin/brackets
+  /anticheat/accounts/{id}:
+    get:
+      operationId: admin-anticheat-account
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcAccountReportOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One account's sharing and IP-overlap evidence
+      tags:
+        - admin/anticheat
+  /anticheat/flag-sharing:
+    get:
+      operationId: admin-anticheat-flag-sharing
+      parameters:
+        - explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            format: int64
+            maximum: 1000000
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcFlagSharingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Flag-sharing evidence grouped by offender pair (paginated)
+      tags:
+        - admin/anticheat
+  /anticheat/ip-overlap:
+    get:
+      operationId: admin-anticheat-ip-overlap
+      parameters:
+        - explode: false
+          in: query
+          name: min_accounts
+          schema:
+            default: 2
+            format: int64
+            maximum: 1000
+            minimum: 2
+            type: integer
+        - explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            format: int64
+            maximum: 1000000
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcIPOverlapOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Accounts sharing a submission IP (signal, not verdict; paginated)
+      tags:
+        - admin/anticheat
+  /anticheat/unissued-solves:
+    get:
+      operationId: admin-anticheat-unissued-solves
+      parameters:
+        - explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            format: int64
+            maximum: 1000000
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcUnissuedSolvesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Solves on unique-flag challenges by accounts never issued an instance (paginated)
+      tags:
+        - admin/anticheat
+  /audit:
+    get:
+      operationId: admin-list-audit
+      parameters:
+        - explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            format: int64
+            maximum: 1000000
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: actor
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+        - explode: false
+          in: query
+          name: action
+          schema:
+            enum:
+              - INSERT
+              - UPDATE
+              - DELETE
+            type: string
+        - explode: false
+          in: query
+          name: target_table
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: target_id
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListAuditOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read the audit trail (paginated, newest first, filterable)
+      tags:
+        - admin/audit
+  /brackets:
+    get:
+      operationId: admin-list-brackets
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListBracketsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List brackets
+      tags:
+        - admin/brackets
+    post:
+      operationId: admin-create-bracket
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateBracketInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBracketBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a bracket
+      tags:
+        - admin/brackets
+  /brackets/{id}:
+    delete:
+      operationId: admin-delete-bracket
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete a bracket (members are unassigned, not deleted)
+      tags:
+        - admin/brackets
+    patch:
+      operationId: admin-update-bracket
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateBracketInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBracketBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a bracket (partial)
+      tags:
+        - admin/brackets
+  /challenges:
+    post:
+      operationId: admin-create-challenge
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateChallengeInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChallengeBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a challenge
+      tags:
+        - admin/challenges
+  /challenges/order:
+    put:
+      operationId: admin-reorder-challenges
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReorderInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminReorderOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set the board position of many challenges at once
+      tags:
+        - admin/challenges
+  /challenges/{id}:
+    delete:
+      operationId: admin-delete-challenge
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete a challenge (refused while it has solves)
+      tags:
+        - admin/challenges
+    patch:
+      operationId: admin-update-challenge
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateChallengeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChallengeBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a challenge (partial)
+      tags:
+        - admin/challenges
+  /challenges/{id}/files:
+    post:
+      operationId: admin-upload-file
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                filename:
+                  contentMediaType: application/octet-stream
+                  description: filename of the file being uploaded
+                  format: binary
+                  type: string
+                name:
+                  description: general purpose name for multipart form value
+                  type: string
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminFileBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Attach a file to a challenge
+      tags:
+        - admin/files
+  /challenges/{id}/flags:
+    post:
+      operationId: admin-add-flag
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAddFlagInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminFlagBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a flag
+      tags:
+        - admin/flags
+  /challenges/{id}/flags/{flagID}:
+    delete:
+      operationId: admin-delete-flag
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: flagID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete a flag
+      tags:
+        - admin/flags
+    patch:
+      operationId: admin-update-flag
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: flagID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateFlagInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminFlagBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a flag (partial)
+      tags:
+        - admin/flags
+  /challenges/{id}/hints:
+    post:
+      operationId: admin-add-hint
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAddHintInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHintBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a hint
+      tags:
+        - admin/hints
+  /challenges/{id}/hints/{hintID}:
+    delete:
+      operationId: admin-delete-hint
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: hintID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete a hint
+      tags:
+        - admin/hints
+    patch:
+      operationId: admin-update-hint
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: hintID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateHintInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHintBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a hint (partial)
+      tags:
+        - admin/hints
+  /challenges/{id}/state:
+    put:
+      operationId: admin-set-challenge-state
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChallengeStateInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChallengeBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Show or hide a challenge
+      tags:
+        - admin/challenges
+  /config:
+    get:
+      operationId: admin-get-config
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfigOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read the editable config knobs
+      tags:
+        - admin/config
+    patch:
+      operationId: admin-update-config
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConfigInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfigOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update config knobs (partial)
+      tags:
+        - admin/config
+  /files/{fileID}:
+    delete:
+      operationId: admin-delete-file
+      parameters:
+        - in: path
+          name: fileID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete a challenge file
+      tags:
+        - admin/files
+  /notifications:
+    post:
+      operationId: admin-create-notification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateNotificationInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Publish a notification
+      tags:
+        - admin/notifications
+  /tags:
+    get:
+      operationId: admin-list-tags
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListTagsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List every tag with its usage count
+      tags:
+        - admin/tags
+  /tags/{value}:
+    delete:
+      operationId: admin-delete-tag
+      parameters:
+        - in: path
+          name: value
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: force
+          schema:
+            type: boolean
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a tag from every challenge (force required while in use)
+      tags:
+        - admin/tags
+  /tags/{value}/merge:
+    post:
+      operationId: admin-merge-tag
+      parameters:
+        - in: path
+          name: value
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminMergeTagInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Rename a tag, merging it into the destination
+      tags:
+        - admin/tags
+  /users:
+    get:
+      operationId: admin-list-users
+      parameters:
+        - explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            format: int64
+            maximum: 1000000
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListUsersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List users (paginated)
+      tags:
+        - admin/users
+  /users/{id}/ban:
+    put:
+      operationId: admin-set-user-banned
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBanInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBanOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ban or unban a user
+      tags:
+        - admin/users
+  /users/{id}/role:
+    put:
+      operationId: admin-set-user-role
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRoleInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRoleOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Promote or demote a user
+      tags:
+        - admin/users
+servers:
+  - url: /api/v1/admin

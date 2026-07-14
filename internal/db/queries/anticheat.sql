@@ -27,6 +27,20 @@ SELECT sub.id, sub.date, sub.challenge_id, sub.user_id, sub.team_id, sub.ip,
  ORDER BY sub.date DESC
  LIMIT sqlc.arg(lim)::int;
 
+-- name: CountUnissuedSolves :one
+-- The unissued-solve count behind FindUnissuedSolves, for pagination.
+SELECT count(*)
+  FROM solves s
+  JOIN challenges c ON c.id = s.challenge_id
+  CROSS JOIN instance i
+ WHERE c.flag_mode = 'unique'
+   AND NOT EXISTS (
+       SELECT 1
+         FROM flag_issues fi
+        WHERE fi.challenge_id = s.challenge_id
+          AND fi.account_id = (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)
+   );
+
 -- name: FindUnissuedSolves :many
 -- The provable detector, not a statistical signal.
 --
@@ -36,7 +50,9 @@ SELECT sub.id, sub.date, sub.challenge_id, sub.user_id, sub.team_id, sub.ip,
 -- row means the flag came from somewhere else. Full stop.
 --
 -- Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
-SELECT s.id AS solve_id, s.challenge_id, s.user_id, s.team_id, s.date, s.value
+SELECT s.id AS solve_id, s.challenge_id, c.name AS challenge_name,
+       (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)::bigint AS account_id,
+       s.user_id, s.team_id, s.date, s.value
   FROM solves s
   JOIN challenges c ON c.id = s.challenge_id
   CROSS JOIN instance i
@@ -47,8 +63,8 @@ SELECT s.id AS solve_id, s.challenge_id, s.user_id, s.team_id, s.date, s.value
         WHERE fi.challenge_id = s.challenge_id
           AND fi.account_id = (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)
    )
- ORDER BY s.date DESC
- LIMIT sqlc.arg(lim)::int;
+ ORDER BY s.date DESC, s.id DESC
+ LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
 
 -- name: CountFlagSharingPairs :one
 -- The distinct (issued-to, submitted-by) pair count behind FindFlagSharingPairs, for pagination.

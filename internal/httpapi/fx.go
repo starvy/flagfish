@@ -40,6 +40,7 @@ type serverParams struct {
 	fx.In
 
 	Config         *config.Manager
+	Env            config.Env
 	Auth           Authenticator
 	Limiter        Limiter
 	Log            *slog.Logger
@@ -72,6 +73,11 @@ func newServer(p serverParams) *Server {
 		Anticheat:      p.Anticheat,
 		Files:          p.Files,
 		TrustedProxies: p.TrustedProxies,
+
+		// The env says "secure cookies"; the router takes the inverted flag so that its zero
+		// value — a caller that never thought about it — is the secure one.
+		InsecureCookies: !p.Env.SecureCookies,
+		MaxUploadBytes:  p.Env.MaxUploadBytes,
 	})
 }
 

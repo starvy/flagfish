@@ -195,7 +195,11 @@ func Decide(p Policy) Outcome {
 			// The CTF is live. Fall through to the remaining gates.
 
 		case PhaseEnded:
-			if !e.ViewAfterCTF {
+			// view_after_ctf reopens the challenges for reading, never for scoring: the
+			// standings are final the moment the clock stops. Without this guard the
+			// courtesy setting that lets people browse afterwards also lets them keep
+			// solving — and taking first bloods — against a field that has gone home.
+			if r.Class.MutatesScore() || !e.ViewAfterCTF {
 				return Outcome{Status: 403, Reason: ReasonCTFEnded}
 			}
 
@@ -210,10 +214,10 @@ func Decide(p Policy) Outcome {
 		}
 	}
 
-	// 13. Pause. Reads e.Paused and r.Preview only — never pr.IsAdmin, and only on
-	//     the attempt class. Both look like bugs; neither is. See
-	//     PolicyPauseHasNoAdminExemption and PolicyPauseDoesNotBlockUnlocks.
-	if r.Class == ClassChallengeAttempt && e.Paused && !r.Preview {
+	// 13. Pause. Only the attempt class is gated — see PolicyPauseDoesNotBlockUnlocks.
+	//     Preview lifts the gate only for an admin: it arrives straight off the query
+	//     string, so honouring it for anyone would make `?preview=1` a pause bypass.
+	if r.Class == ClassChallengeAttempt && e.Paused && !(r.Preview && pr.IsAdmin) {
 		return Outcome{Status: 403, Reason: ReasonPaused}
 	}
 
