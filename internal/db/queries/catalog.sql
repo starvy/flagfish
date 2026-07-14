@@ -7,23 +7,57 @@
 -- first-blood exclusion, so a hidden admin test-solve does not inflate a challenge's count.
 -- cutoff is the freeze horizon (strict <, NULL = live): a frozen viewer's solve_count must not
 -- tick up on a post-freeze solve, or the count leaks what the frozen board hides.
+--
+-- `value` is clamped to the same horizon, and that is not cosmetic. challenges.value is the current
+-- asking price: RecalcChallengeValue rewrites it on every solve with no time predicate, and it has
+-- to — the price a player is quoted must be the price they will pay. But the decay curve is public,
+-- deterministic and integer-exact, so the solve count is directly invertible from the value: a
+-- frozen viewer who snapshots the price and watches it drop has counted the solves the freeze exists
+-- to hide. Clamping the count and serving the live value hides the reading and publishes its
+-- derivative.
+--
+-- So a frozen viewer is quoted the price at the FROZEN count. The curve is evaluated here, in SQL,
+-- from the same integer arithmetic RecalcChallengeValue writes — a second evaluation in Go is
+-- exactly how the two silently drift apart by a point. This costs the player nothing real: what a
+-- solve is actually worth is stamped on solves.value when it lands, not read off this column.
 WITH mode AS (
     SELECT user_mode FROM instance
+),
+-- One count per challenge, over visible accounts, clamped to the freeze horizon. solve_count and a
+-- frozen viewer's value are the same fact, so they are read from the same place and cannot disagree.
+counts AS (
+    SELECT s.challenge_id, count(*)::bigint AS n
+      FROM solves s
+      CROSS JOIN mode m
+      LEFT JOIN users su ON su.id = s.user_id
+      LEFT JOIN teams st ON st.id = s.team_id
+     WHERE (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
+       AND CASE WHEN m.user_mode = 'teams'
+                THEN st.hidden = false AND st.banned = false
+                ELSE su.hidden = false AND su.banned = false
+           END
+     GROUP BY s.challenge_id
 )
 SELECT
-    c.id, c.name, c.category, c.value, c.function, c.state, c.requirements,
-    (SELECT count(*)
-       FROM solves s
-       CROSS JOIN mode m
-       LEFT JOIN users su ON su.id = s.user_id
-       LEFT JOIN teams st ON st.id = s.team_id
-      WHERE s.challenge_id = c.id
-        AND (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
-        AND CASE WHEN m.user_mode = 'teams'
-                 THEN st.hidden = false AND st.banned = false
-                 ELSE su.hidden = false AND su.banned = false
+    c.id, c.name, c.category, c.function, c.state, c.requirements,
+    (CASE
+        WHEN sqlc.narg(cutoff)::timestamptz IS NULL OR c.function = 'static' THEN c.value
+        ELSE GREATEST(
+            c.minimum::bigint,
+            CASE c.function
+                WHEN 'linear' THEN
+                    c.initial::bigint - (c.decay::bigint * GREATEST(COALESCE(cnt.n, 0) - 1, 0)::bigint)
+                ELSE
+                    c.initial::bigint - (
+                        ((c.initial - c.minimum)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint)
+                        / (NULLIF(c.decay, 0)::bigint * NULLIF(c.decay, 0)::bigint)
+                    )
             END
-    )::bigint AS solve_count,
+        )
+     END)::int AS value,
+    COALESCE(cnt.n, 0)::bigint AS solve_count,
     EXISTS (
         SELECT 1 FROM solves s
         CROSS JOIN mode m
@@ -50,30 +84,52 @@ SELECT
          )
     ) AS prereqs_met
   FROM challenges c
+  LEFT JOIN counts cnt ON cnt.challenge_id = c.id
  WHERE c.state = 'visible'
  ORDER BY c.category, c.position, c.id;
 
 -- name: GetChallengeForView :one
--- A single visible challenge with the same solve_count / solved projection (and freeze cutoff)
--- as the board.
+-- A single visible challenge with the same solve_count / solved projection as the board, clamped to
+-- the same freeze horizon — including `value`, which is invertible to the solve count on a dynamic
+-- challenge and so is quoted at the frozen count for a frozen viewer. See ListChallenges.
 WITH mode AS (
     SELECT user_mode FROM instance
+),
+counts AS (
+    SELECT s.challenge_id, count(*)::bigint AS n
+      FROM solves s
+      CROSS JOIN mode m
+      LEFT JOIN users su ON su.id = s.user_id
+      LEFT JOIN teams st ON st.id = s.team_id
+     WHERE s.challenge_id = sqlc.arg(challenge_id)::bigint
+       AND (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
+       AND CASE WHEN m.user_mode = 'teams'
+                THEN st.hidden = false AND st.banned = false
+                ELSE su.hidden = false AND su.banned = false
+           END
+     GROUP BY s.challenge_id
 )
 SELECT
     c.id, c.name, c.category, c.description, c.attribution, c.connection_info,
-    c.type, c.value, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
-    (SELECT count(*)
-       FROM solves s
-       CROSS JOIN mode m
-       LEFT JOIN users su ON su.id = s.user_id
-       LEFT JOIN teams st ON st.id = s.team_id
-      WHERE s.challenge_id = c.id
-        AND (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
-        AND CASE WHEN m.user_mode = 'teams'
-                 THEN st.hidden = false AND st.banned = false
-                 ELSE su.hidden = false AND su.banned = false
+    c.type, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
+    (CASE
+        WHEN sqlc.narg(cutoff)::timestamptz IS NULL OR c.function = 'static' THEN c.value
+        ELSE GREATEST(
+            c.minimum::bigint,
+            CASE c.function
+                WHEN 'linear' THEN
+                    c.initial::bigint - (c.decay::bigint * GREATEST(COALESCE(cnt.n, 0) - 1, 0)::bigint)
+                ELSE
+                    c.initial::bigint - (
+                        ((c.initial - c.minimum)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint)
+                        / (NULLIF(c.decay, 0)::bigint * NULLIF(c.decay, 0)::bigint)
+                    )
             END
-    )::bigint AS solve_count,
+        )
+     END)::int AS value,
+    COALESCE(cnt.n, 0)::bigint AS solve_count,
     EXISTS (
         SELECT 1 FROM solves s
         CROSS JOIN mode m
@@ -99,7 +155,8 @@ SELECT
          )
     ) AS prereqs_met
   FROM challenges c
- WHERE c.id = @challenge_id AND c.state = 'visible';
+  LEFT JOIN counts cnt ON cnt.challenge_id = c.id
+ WHERE c.id = sqlc.arg(challenge_id)::bigint AND c.state = 'visible';
 
 -- name: ListChallengeTags :many
 SELECT value FROM tags WHERE challenge_id = @challenge_id ORDER BY value;

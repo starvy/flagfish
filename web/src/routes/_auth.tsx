@@ -1,13 +1,16 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { api } from "../api/client";
-import { meQuery } from "../queries";
+import { useState } from "react";
+import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { NotificationsBell, NotificationsDrawer } from "../notifications";
+import { instanceQuery, meQuery } from "../queries";
+import { ClockBanners, UserMenu, useInstanceState } from "../shell";
 
 export const Route = createFileRoute("/_auth")({
   beforeLoad: async ({ context, location }) => {
+    // The shell's whole shape — team nav, countdown, freeze, pause — comes from the instance,
+    // so it is warmed here rather than popping in a frame after the page it decorates.
+    void context.queryClient.prefetchQuery(instanceQuery);
     try {
-      const me = await context.queryClient.ensureQueryData(meQuery);
-      return { me };
+      return { me: await context.queryClient.ensureQueryData(meQuery) };
     } catch {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
@@ -17,35 +20,50 @@ export const Route = createFileRoute("/_auth")({
 
 function AuthLayout() {
   const { me } = Route.useRouteContext();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  const logout = useMutation({
-    mutationFn: () => api.logout(),
-    onSettled: async () => {
-      queryClient.clear();
-      await navigate({ to: "/login", search: { redirect: undefined } });
-    },
-  });
+  const { ctfName, teamsMode } = useInstanceState();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    <>
-      <header className="topbar">
-        <Link to="/challenges" className="brand">
-          flagfish<span className="cursor">_</span>
-        </Link>
-        <nav>
-          <Link to="/challenges">challenges</Link>
-          <Link to="/scoreboard">scoreboard</Link>
-          <Link to="/profile">profile</Link>
-        </nav>
-        <span className="spacer" />
-        <span className="who">{me.name}</span>
-        <button className="ghost" onClick={() => logout.mutate()} disabled={logout.isPending}>
-          logout
-        </button>
+    <div className="sh-app">
+      <a className="sh-skip" href="#main">
+        skip to content
+      </a>
+
+      <header className="sh-header">
+        <div className="sh-header__inner">
+          <Link to="/challenges" className="brand sh-brand">
+            {ctfName}
+            <span className="cursor">_</span>
+          </Link>
+
+          <nav className="sh-nav" aria-label="Primary">
+            <Link to="/challenges">challenges</Link>
+            <Link to="/scoreboard">scoreboard</Link>
+            <Link to="/notifications">notifications</Link>
+            {/* In users mode this route does not exist for anyone — the server answers 404. */}
+            {teamsMode && <Link to="/team">team</Link>}
+            <Link to="/settings">settings</Link>
+            {me.is_admin && (
+              <Link to="/admin" className="sh-nav__admin">
+                admin
+              </Link>
+            )}
+          </nav>
+
+          <span className="ff-spacer" />
+
+          <NotificationsBell onClick={() => setDrawerOpen(true)} />
+          <UserMenu me={me} />
+        </div>
       </header>
-      <Outlet />
-    </>
+
+      <ClockBanners />
+
+      <main className="sh-main" id="main">
+        <Outlet />
+      </main>
+
+      <NotificationsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+    </div>
   );
 }

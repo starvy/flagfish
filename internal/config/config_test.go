@@ -239,6 +239,33 @@ func TestUnknownKeysArePreservedVerbatim(t *testing.T) {
 	}
 }
 
+// Secret is what a shareable export consults, so the answer for a key nobody declared has to be
+// "withhold it". The key space is open — the importer carries foreign plugin keys in verbatim — and
+// a denylist over an open key space leaks the moment someone invents the next key.
+func TestSecretIsDefaultDeny(t *testing.T) {
+	secret := []string{
+		"mail_password", "mail_username", "mail_server", "webhook_url",
+		"ctftime_plugin_secret", "some_future_key", "",
+	}
+	public := []string{
+		"ctf_name", "ctf_description", "ctf_theme", "theme_tokens", "user_mode", "setup",
+		"challenge_visibility", "score_visibility", "account_visibility", "registration_visibility",
+		"verify_emails", "view_after_ctf", "paused", "team_creation",
+		"start", "end", "freeze", "num_users", "num_teams", "team_size",
+		"mail_port", "mail_tls", "mailfrom_addr", "webhook_enabled", "webhook_events",
+	}
+	for _, key := range secret {
+		if !config.Secret(key) {
+			t.Errorf("Secret(%q) = false, want true", key)
+		}
+	}
+	for _, key := range public {
+		if config.Secret(key) {
+			t.Errorf("Secret(%q) = true: withholding it would silently drop the operator's data", key)
+		}
+	}
+}
+
 func TestEmptyRowMeansDefault(t *testing.T) {
 	rows := sane()
 	rows["ctf_theme"] = ""

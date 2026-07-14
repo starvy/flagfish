@@ -1,10 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
-import { setUnauthorizedHandler } from "./api/client";
-import { ThemeProvider } from "./theme/provider";
+import { PendingScreen, RouteError } from "./shell";
 import { bootTheme } from "./theme/boot";
 import "./styles.css";
 
@@ -21,8 +20,8 @@ const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: "intent",
-  defaultPendingComponent: () => <div className="center">loading…</div>,
-  defaultErrorComponent: ({ error }) => <div className="center error">{error.message}</div>,
+  defaultPendingComponent: PendingScreen,
+  defaultErrorComponent: RouteError,
 });
 
 declare module "@tanstack/react-router" {
@@ -31,19 +30,8 @@ declare module "@tanstack/react-router" {
   }
 }
 
-// A 401 from any endpoint means the session died under us; drop the cached
-// identity so the auth guard re-checks instead of trusting a stale /me.
-setUnauthorizedHandler(() => {
-  queryClient.removeQueries({ queryKey: ["me"] });
-  void router.navigate({ to: "/login", search: { redirect: location.pathname } });
-});
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <RouterProvider router={router} />
-      </ThemeProvider>
-    </QueryClientProvider>
+    <RouterProvider router={router} />
   </StrictMode>,
 );

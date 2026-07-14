@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/brackets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List scoreboard brackets */
+        get: operations["brackets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/challenges": {
         parameters: {
             query?: never;
@@ -81,6 +98,23 @@ export interface paths {
         };
         /** List who solved a challenge */
         get: operations["challenge-solves"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a challenge file */
+        get: operations["download-file"];
         put?: never;
         post?: never;
         delete?: never;
@@ -202,6 +236,23 @@ export interface paths {
         put?: never;
         /** Leave the caller's team */
         post: operations["leave-team"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List notifications (paginated) */
+        get: operations["list-notifications"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -405,6 +456,21 @@ export interface components {
             /** Format: int32 */
             value: number;
         };
+        BracketBody: {
+            description?: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        BracketsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/BracketsOutputBody.json
+             */
+            readonly $schema?: string;
+            brackets: components["schemas"]["BracketBody"][] | null;
+        };
         ChallengeDetailOutputBody: {
             /**
              * Format: uri
@@ -417,10 +483,13 @@ export interface components {
             connection_info?: string;
             description: string;
             files: components["schemas"]["ChallengeFile"][] | null;
+            flag_mode: string;
             function: string;
             hints: components["schemas"]["ChallengeHint"][] | null;
             /** Format: int64 */
             id: number;
+            instance?: components["schemas"]["ChallengeInstance"];
+            locked: boolean;
             /** Format: int32 */
             max_attempts: number;
             name: string;
@@ -436,7 +505,7 @@ export interface components {
         ChallengeFile: {
             /** Format: int64 */
             id: number;
-            location: string;
+            name: string;
             /** Format: int64 */
             size_bytes: number;
         };
@@ -445,14 +514,25 @@ export interface components {
             cost: number;
             /** Format: int64 */
             id: number;
+            locked: boolean;
             title: string | null;
             unlocked: boolean;
+        };
+        ChallengeInstance: {
+            /** Format: int64 */
+            artifact_id?: number;
+            /** Format: int64 */
+            instance_id: number;
+            vars: {
+                [key: string]: unknown;
+            };
         };
         ChallengeListItem: {
             category: string;
             function: string;
             /** Format: int64 */
             id: number;
+            locked: boolean;
             name: string;
             /** Format: int64 */
             solve_count: number | null;
@@ -595,10 +675,23 @@ export interface components {
              */
             readonly $schema?: string;
             ctf_name: string;
+            /** Format: date-time */
+            end?: string;
+            /** Format: date-time */
+            freeze?: string;
+            /** @enum {string} */
+            mode: "users" | "teams";
+            paused: boolean;
+            /** @enum {string} */
+            registration_visibility: "public" | "private" | "mlc";
+            /** Format: date-time */
+            start?: string;
+            team_creation: boolean;
             theme: string;
             theme_tokens?: {
                 [key: string]: string;
             };
+            verify_emails: boolean;
         };
         JoinTeamInputBody: {
             /**
@@ -618,6 +711,21 @@ export interface components {
              */
             readonly $schema?: string;
             ok: boolean;
+        };
+        ListNotificationsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ListNotificationsOutputBody.json
+             */
+            readonly $schema?: string;
+            notifications: components["schemas"]["NotificationBody"][] | null;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            per_page: number;
+            /** Format: int64 */
+            total: number;
         };
         ListTokensOutputBody: {
             /**
@@ -646,6 +754,7 @@ export interface components {
              * @example /api/v1/schemas/MeOutputBody.json
              */
             readonly $schema?: string;
+            csrf_token: string;
             email: string;
             is_admin: boolean;
             name: string;
@@ -655,6 +764,14 @@ export interface components {
             /** Format: int64 */
             user_id: number;
             verified: boolean;
+        };
+        NotificationBody: {
+            content: string;
+            /** Format: date-time */
+            date: string;
+            /** Format: int64 */
+            id: number;
+            title: string;
         };
         OkOutputBody: {
             /**
@@ -800,6 +917,35 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    brackets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BracketsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-challenges": {
         parameters: {
             query?: never;
@@ -946,6 +1092,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SolvesOutputBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "download-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -1174,6 +1349,38 @@ export interface operations {
             };
         };
     };
+    "list-notifications": {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListNotificationsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     register: {
         parameters: {
             query?: never;
@@ -1278,6 +1485,9 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                as_of?: string;
+                preview?: boolean;
+                bracket?: number;
             };
             header?: never;
             path?: never;

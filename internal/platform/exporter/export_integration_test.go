@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -346,18 +348,57 @@ func TestSafeExportIsMasked(t *testing.T) {
 	// The archive is a zip; secrets could hide compressed. Grep the concatenation of every member's
 	// decompressed bytes, not the zip container.
 	plain := decompressAll(t, buf.Bytes())
-	for _, secret := range []string{
-		userHashMarker, teamHashMarker, "USER_SECRET_MARKER", "TEAM_SECRET_MARKER",
-		flagMarker, configSecretVal,
+	for name, marker := range map[string]string{
+		"users.password_hash":  userHashMarker,
+		"teams.password_hash":  teamHashMarker,
+		"users.secret":         "USER_SECRET_MARKER",
+		"teams.secret":         "TEAM_SECRET_MARKER",
+		"flags.content":        flagMarker,
+		"hints.content":        hintMarker,
+		"config mail_password": mailPasswordVal,
+		"config mail_username": mailUsernameVal,
+		"config mail_server":   mailServerVal,
+		"config webhook_url":   webhookURLVal,
+		// The point of default-deny: nothing in the codebase knows this key, and it still must not ship.
+		"config " + pluginSecretKey: pluginSecretVal,
 	} {
-		if bytes.Contains(plain, []byte(secret)) {
-			t.Fatalf("safe archive leaked a secret: %q", secret)
+		if bytes.Contains(plain, []byte(marker)) {
+			t.Errorf("safe archive leaked %s: %q", name, marker)
 		}
 	}
 	// The value hash (sha256 of the flag surrogate) must not appear either.
 	vhash := sha256.Sum256([]byte("value-hash"))
 	if bytes.Contains(plain, []byte(hex.EncodeToString(vhash[:]))) {
-		t.Fatal("safe archive leaked a challenge-instance value hash")
+		t.Error("safe archive leaked a challenge-instance value hash")
+	}
+
+	// Masking is not blanket redaction: theme_tokens is branding and must survive. A substring
+	// denylist nulls it (the key contains "token"), which is how a "safe" export quietly loses the
+	// operator's data while still shipping their webhook URL.
+	cfg := configRows(t, buf.Bytes())
+	if got := cfg["theme_tokens"]; string(got) != strconv.Quote(themeTokensVal) {
+		t.Errorf("theme_tokens value = %s, want it exported verbatim (%s)", got, strconv.Quote(themeTokensVal))
+	}
+	for _, key := range []string{"mail_password", "mail_username", "mail_server", "webhook_url", pluginSecretKey} {
+		got, ok := cfg[key]
+		if !ok {
+			t.Errorf("config key %q is missing from the archive: the row must ship with a null value, not vanish", key)
+			continue
+		}
+		if string(got) != "null" {
+			t.Errorf("config key %q value = %s, want null", key, got)
+		}
+	}
+
+	// The hint row itself still ships (a third party can see there was a hint, and its cost) — only
+	// its body is withheld.
+	for _, row := range jsonlRows(t, buf.Bytes(), "data/hints.jsonl") {
+		if _, present := row["content"]; present {
+			t.Error("safe archive carries hints.content")
+		}
+		if _, present := row["cost"]; !present {
+			t.Error("safe archive dropped more of the hint than its content")
+		}
 	}
 
 	// The manifest must declare the profile and the mask.
@@ -367,6 +408,11 @@ func TestSafeExportIsMasked(t *testing.T) {
 	}
 	if len(m.Omitted) == 0 {
 		t.Fatal("manifest.omitted is empty on a safe export")
+	}
+	for _, want := range []string{"hints.content", "flags.content", "config.secret_keys"} {
+		if !slices.Contains(m.Omitted, want) {
+			t.Errorf("manifest.omitted does not declare %q: it is %v", want, m.Omitted)
+		}
 	}
 
 	// A safe archive is not restorable.
@@ -468,6 +514,54 @@ func decompressAll(t *testing.T, zipBytes []byte) []byte {
 		rc.Close()
 	}
 	return all.Bytes()
+}
+
+// jsonlRows decodes one data/<table>.jsonl member as decoded rows.
+func jsonlRows(t *testing.T, zipBytes []byte, member string) []map[string]json.RawMessage {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	for _, f := range zr.File {
+		if f.Name != member {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rc.Close()
+		var out []map[string]json.RawMessage
+		dec := json.NewDecoder(rc)
+		for {
+			var row map[string]json.RawMessage
+			if err := dec.Decode(&row); err == io.EOF {
+				break
+			} else if err != nil {
+				t.Fatalf("decode %s: %v", member, err)
+			}
+			out = append(out, row)
+		}
+		return out
+	}
+	t.Fatalf("no %s in archive", member)
+	return nil
+}
+
+// configRows maps each exported config key to the raw JSON of its value, so a test can tell "nulled"
+// from "absent" from "shipped verbatim".
+func configRows(t *testing.T, zipBytes []byte) map[string]json.RawMessage {
+	t.Helper()
+	out := map[string]json.RawMessage{}
+	for _, row := range jsonlRows(t, zipBytes, "data/config.jsonl") {
+		var key string
+		if err := json.Unmarshal(row["key"], &key); err != nil {
+			t.Fatalf("config row has no key: %v", err)
+		}
+		out[key] = row["value"]
+	}
+	return out
 }
 
 func readManifest(t *testing.T, zipBytes []byte) exporter.Manifest {
