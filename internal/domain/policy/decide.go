@@ -120,7 +120,7 @@ func Decide(p Policy) Outcome {
 
 	// 4. Forced password change.
 	if pr.Authed && pr.ForcePasswordChange && !r.Class.ExemptFromPasswordChange() {
-		return Outcome{Redirect: "/reset_password", Reason: ReasonPasswordChangeRequired}
+		return Outcome{Redirect: "/reset-password", Reason: ReasonPasswordChangeRequired}
 	}
 
 	// 5. The route may not exist in this mode at all.

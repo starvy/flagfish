@@ -61,7 +61,7 @@ const GOLDEN: ReadonlyArray<[Reason, { tone: string; transient: boolean; action:
   ["setup-incomplete", { tone: "info", transient: false, action: "/setup" }],
   ["banned", { tone: "danger", transient: false, action: null }],
   ["team-banned", { tone: "danger", transient: false, action: null }],
-  ["password-change-required", { tone: "warning", transient: false, action: "/reset_password" }],
+  ["password-change-required", { tone: "warning", transient: false, action: "/reset-password" }],
   ["not-found", { tone: "info", transient: false, action: null }],
   ["auth-required", { tone: "info", transient: false, action: "/login" }],
   ["authentication-required", { tone: "info", transient: false, action: "/login" }],

@@ -30,7 +30,7 @@ export const teamQuery = (id: number) =>
     staleTime: 60_000,
   });
 
-function useTeamMutation<TVars>(fn: (vars: TVars) => Promise<unknown>) {
+function useTeamMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,

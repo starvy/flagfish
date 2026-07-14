@@ -222,7 +222,9 @@ function BracketDialog({ mode, bracket, busy, onClose, onSubmit }: BracketDialog
   const editing = bracket !== undefined;
   const [name, setName] = useState(bracket?.name ?? "");
   const [description, setDescription] = useState(bracket?.description ?? "");
-  const [appliesTo, setAppliesTo] = useState<AccountMode>(bracket?.applies_to ?? mode ?? "users");
+  const [appliesTo, setAppliesTo] = useState<AccountMode>(
+    asAccountMode(bracket?.applies_to) ?? mode ?? "users",
+  );
   const [errors, setErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -465,8 +467,11 @@ function nameOf(brackets: readonly AdminBracket[], id: number): string {
 // `mode` ships on /instance but predates the checked-in schema, and a wrong guess here would
 // offer a bracket that can never match an account. Unknown widens the choice; it never picks.
 function accountMode(instance: unknown): AccountMode | null {
-  const mode = (instance as { mode?: unknown } | undefined)?.mode;
-  return mode === "users" || mode === "teams" ? mode : null;
+  return asAccountMode((instance as { mode?: unknown } | undefined)?.mode);
+}
+
+function asAccountMode(value: unknown): AccountMode | null {
+  return value === "users" || value === "teams" ? value : null;
 }
 
 function fieldErrorsOf(error: unknown): FieldErrors {

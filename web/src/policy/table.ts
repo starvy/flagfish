@@ -47,7 +47,7 @@ export const TREATMENTS: Record<Reason, Treatment> = {
     message: "You must set a new password before you can continue.",
     tone: "warning",
     transient: false,
-    action: { label: "Change password", to: "/reset_password" },
+    action: { label: "Change password", to: "/reset-password" },
   },
   "not-found": {
     title: "Not found",

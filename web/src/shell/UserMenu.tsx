@@ -25,7 +25,7 @@ function useMyScore(me: Me): number | null {
   });
 
   if (teamsMode) return team.data?.score ?? null;
-  const mine = board.data?.standings.find((row) => row.account_id === me.user_id);
+  const mine = board.data?.standings?.find((row) => row.account_id === me.user_id);
   return mine?.score ?? null;
 }
 
@@ -87,6 +87,7 @@ export function UserMenu({ me }: { me: Me }) {
           </div>
           <Link
             to="/settings"
+            search={{ tab: "profile" }}
             role="menuitem"
             className="sh-usermenu__item"
             onClick={() => setOpen(false)}
@@ -97,7 +98,7 @@ export function UserMenu({ me }: { me: Me }) {
             <Button
               variant="ghost"
               size="sm"
-              block
+              fullWidth
               role="menuitem"
               onClick={signOut}
               loading={logout.isPending}

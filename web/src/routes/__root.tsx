@@ -5,7 +5,7 @@ import { setUnauthorizedHandler } from "../api/client";
 import { qk } from "../queries";
 import { AnnouncerProvider, NotFoundScreen, RouteError } from "../shell";
 import { ThemeProvider } from "../theme/provider";
-import { ToastContainer, ToastProvider } from "../ui";
+import { ToastProvider } from "../ui";
 import "../shell/shell.css";
 
 export interface RouterContext {
@@ -48,7 +48,6 @@ function RootLayout() {
           <AnnouncerProvider>
             <SessionWatch />
             <Outlet />
-            <ToastContainer />
           </AnnouncerProvider>
         </ToastProvider>
       </ThemeProvider>

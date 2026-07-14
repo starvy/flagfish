@@ -1,6 +1,5 @@
-import { useState } from "react";
 import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-import { NotificationsBell, NotificationsDrawer } from "../notifications";
+import { NotificationBell, NotificationsDrawer } from "../notifications";
 import { instanceQuery, meQuery } from "../queries";
 import { ClockBanners, UserMenu, useInstanceState } from "../shell";
 
@@ -21,7 +20,6 @@ export const Route = createFileRoute("/_auth")({
 function AuthLayout() {
   const { me } = Route.useRouteContext();
   const { ctfName, teamsMode } = useInstanceState();
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
     <div className="sh-app">
@@ -39,10 +37,14 @@ function AuthLayout() {
           <nav className="sh-nav" aria-label="Primary">
             <Link to="/challenges">challenges</Link>
             <Link to="/scoreboard">scoreboard</Link>
-            <Link to="/notifications">notifications</Link>
+            <Link to="/notifications" search={{ page: 1 }}>
+              notifications
+            </Link>
             {/* In users mode this route does not exist for anyone — the server answers 404. */}
             {teamsMode && <Link to="/team">team</Link>}
-            <Link to="/settings">settings</Link>
+            <Link to="/settings" search={{ tab: "profile" }}>
+              settings
+            </Link>
             {me.is_admin && (
               <Link to="/admin" className="sh-nav__admin">
                 admin
@@ -52,7 +54,7 @@ function AuthLayout() {
 
           <span className="ff-spacer" />
 
-          <NotificationsBell onClick={() => setDrawerOpen(true)} />
+          <NotificationBell />
           <UserMenu me={me} />
         </div>
       </header>
@@ -63,7 +65,8 @@ function AuthLayout() {
         <Outlet />
       </main>
 
-      <NotificationsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      {/* Mounted unconditionally: it is the session's single subscriber to the event stream. */}
+      <NotificationsDrawer />
     </div>
   );
 }

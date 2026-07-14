@@ -47,6 +47,7 @@ export function NotificationsDrawer() {
       footer={
         <Link
           to="/notifications"
+          search={{ page: 1 }}
           className="ff-btn ff-btn--secondary ff-btn--sm"
           onClick={closeNotifications}
         >
