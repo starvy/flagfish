@@ -30,7 +30,8 @@ func (s *Server) registerFiles() {
 }
 
 func (s *Server) downloadFile(ctx context.Context, in *downloadFileInput) (*huma.StreamResponse, error) {
-	meta, err := s.opts.Files.Meta(ctx, in.ID)
+	a := s.actor(ctx)
+	meta, err := s.opts.Files.Meta(ctx, in.ID, a.UserID, a.TeamID)
 	if errors.Is(err, files.ErrNotFound) {
 		return nil, huma.Error404NotFound("file not found")
 	}
@@ -39,9 +40,11 @@ func (s *Server) downloadFile(ctx context.Context, in *downloadFileInput) (*huma
 		return nil, huma.Error500InternalServerError("could not load file")
 	}
 
-	// A hidden challenge's file does not exist for anyone but an admin — a 404, not a 403, so its
-	// existence is not disclosed.
-	if meta.Hidden && !AuthOf(ctx).Principal.IsAdmin {
+	// The file of a challenge this account cannot open does not exist for it: a hidden challenge's,
+	// and one whose prerequisites are unsolved. Both are a 404, not a 403 — the detail view lists no
+	// files in either case, and file ids are sequential, so a 403 would confirm by exhaustion exactly
+	// what the board is withholding. Admins see everything.
+	if !AuthOf(ctx).Principal.IsAdmin && (meta.Hidden || !meta.PrereqsMet) {
 		return nil, huma.Error404NotFound("file not found")
 	}
 

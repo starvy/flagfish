@@ -54,13 +54,15 @@ type NewFile struct {
 }
 
 // FileMeta is what a download resolves before it is allowed to stream: the name and address of the
-// object, plus whether its challenge is hidden so the handler can 404 it for non-admins.
+// object, plus the two facts that decide whether this caller may have it — whether the owning
+// challenge is hidden, and whether the caller has solved its prerequisites.
 type FileMeta struct {
 	ID          int64
 	Name        string
 	SHA         string
 	Size        int64
 	Hidden      bool
+	PrereqsMet  bool
 	ChallengeID int64
 }
 
@@ -163,9 +165,12 @@ func (s *Service) Delete(ctx context.Context, actor audit.Actor, fileID int64) e
 }
 
 // Meta resolves the metadata a download needs and enforces nothing itself: the caller decides whether
-// this principal may see a hidden challenge's file.
-func (s *Service) Meta(ctx context.Context, fileID int64) (FileMeta, error) {
-	row, err := s.q.GetChallengeFileForDownload(ctx, fileID)
+// this principal may see a hidden challenge's file, or one behind prerequisites it has not solved.
+// The prerequisite projection is account-scoped, so the account asking is part of the question.
+func (s *Service) Meta(ctx context.Context, fileID, userID int64, teamID *int64) (FileMeta, error) {
+	row, err := s.q.GetChallengeFileForDownload(ctx, db.GetChallengeFileForDownloadParams{
+		ID: fileID, UserID: userID, TeamID: teamID,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return FileMeta{}, fmt.Errorf("%w: id=%d", ErrNotFound, fileID)
 	}
@@ -174,7 +179,8 @@ func (s *Service) Meta(ctx context.Context, fileID int64) (FileMeta, error) {
 	}
 	return FileMeta{
 		ID: row.ID, Name: row.Name, SHA: hex.EncodeToString(row.Sha256sum),
-		Size: row.SizeBytes, Hidden: row.State == "hidden", ChallengeID: row.ChallengeID,
+		Size: row.SizeBytes, Hidden: row.State == "hidden", PrereqsMet: row.PrereqsMet,
+		ChallengeID: row.ChallengeID,
 	}, nil
 }
 

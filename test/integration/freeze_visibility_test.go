@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
@@ -270,6 +271,7 @@ type challengeList struct {
 	Challenges []struct {
 		Name       string `json:"name"`
 		Category   string `json:"category"`
+		Value      int32  `json:"value"`
 		SolveCount *int64 `json:"solve_count"`
 		Solved     bool   `json:"solved"`
 	} `json:"challenges"`
