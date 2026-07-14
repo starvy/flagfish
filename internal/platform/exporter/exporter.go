@@ -32,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/storage"
 )
 
@@ -111,8 +112,9 @@ type table struct {
 	dropInSafe []string
 	// setInSafe forces these columns to a fixed JSON value in a safe export.
 	setInSafe map[string]string
-	// secretConfigKeys nulls the value of a config row whose key names a secret, in a safe export.
-	secretConfigKeys bool
+	// maskConfigValues nulls the value of every config row whose key the config package does not
+	// declare public, in a safe export.
+	maskConfigValues bool
 }
 
 // registry is the ordered set of tables an export carries. Order is FK-topological so the restore
@@ -121,7 +123,7 @@ type table struct {
 // asserts every table at schema head is either here or in the deliberately-excluded set.
 var registry = []table{
 	{name: "instance", orderBy: "id"},
-	{name: "config", orderBy: "id", hasSerialID: true, secretConfigKeys: true},
+	{name: "config", orderBy: "id", hasSerialID: true, maskConfigValues: true},
 	{name: "brackets", orderBy: "id", hasSerialID: true},
 	{name: "teams", orderBy: "id", hasSerialID: true, dropInSafe: []string{"password_hash", "secret"}},
 	{
@@ -135,7 +137,9 @@ var registry = []table{
 	{name: "files", orderBy: "id", hasSerialID: true},
 	{name: "tags", orderBy: "id", hasSerialID: true},
 	{name: "flags", orderBy: "id", hasSerialID: true, dropInSafe: []string{"content"}},
-	{name: "hints", orderBy: "id", hasSerialID: true},
+	// A hint is bought with points. Handing a mirror or a sponsor an archive mid-event must not hand
+	// them the answers the players are paying for.
+	{name: "hints", orderBy: "id", hasSerialID: true, dropInSafe: []string{"content"}},
 	{name: "challenge_instances", orderBy: "id", hasSerialID: true, dropInSafe: []string{"value_hash"}},
 	{name: "flag_issues", orderBy: "challenge_id, account_id"},
 	{name: "submissions", orderBy: "id", hasSerialID: true, dropInSafe: []string{"provided", "ip"}},
@@ -152,19 +156,6 @@ var registry = []table{
 // forgotten. River's own tables are not ours and are not listed.
 var excludedTables = []string{
 	"api_tokens", "sessions", "email_tokens", "rate_limits", "tasks",
-}
-
-// secretConfigSubstrings name a config value that must never leave in a safe export.
-var secretConfigSubstrings = []string{"password", "secret", "api_key", "token", "private_key"}
-
-func isSecretConfigKey(key string) bool {
-	k := strings.ToLower(key)
-	for _, s := range secretConfigSubstrings {
-		if strings.Contains(k, s) {
-			return true
-		}
-	}
-	return false
 }
 
 // querier is the read surface Export needs — satisfied by *pgxpool.Pool.
@@ -244,7 +235,7 @@ func Export(ctx context.Context, pool *pgxpool.Pool, store storage.Store, profil
 		manifest.Omitted = append(manifest.Omitted,
 			"api_tokens", "sessions", "email_tokens",
 			"users.password_hash", "users.secret", "teams.password_hash", "teams.secret",
-			"flags.content", "challenge_instances.value_hash",
+			"flags.content", "challenge_instances.value_hash", "hints.content",
 			"submissions.provided", "submissions.ip", "config.secret_keys")
 	}
 	sort.Strings(manifest.Omitted)
@@ -296,13 +287,14 @@ func readTable(ctx context.Context, q querier, t table) ([][]byte, error) {
 }
 
 // applyMask returns the row as it belongs in the archive. A backup carries the row verbatim; a safe
-// export drops the secret columns, forces the reset flags, and nulls secret config values. Because a
-// safe archive is never restorable, the masked row need not be a legal insert — only free of secrets.
+// export drops the secret columns, forces the reset flags, and nulls every config value the config
+// package does not declare public. Because a safe archive is never restorable, the masked row need
+// not be a legal insert — only free of secrets.
 func applyMask(t table, profile Profile, raw []byte) ([]byte, error) {
 	if profile == ProfileBackup {
 		return raw, nil
 	}
-	if len(t.dropInSafe) == 0 && len(t.setInSafe) == 0 && !t.secretConfigKeys {
+	if len(t.dropInSafe) == 0 && len(t.setInSafe) == 0 && !t.maskConfigValues {
 		return raw, nil
 	}
 	var obj map[string]json.RawMessage
@@ -315,9 +307,15 @@ func applyMask(t table, profile Profile, raw []byte) ([]byte, error) {
 	for k, v := range t.setInSafe {
 		obj[k] = json.RawMessage(v)
 	}
-	if t.secretConfigKeys {
+	if t.maskConfigValues {
+		// Default-deny: a key we cannot even read is certainly not one we can vouch for. The
+		// importer preserves foreign and plugin keys verbatim, so the key space here is open and
+		// only config gets to say which of them are safe to disclose.
 		var key string
-		if err := json.Unmarshal(obj["key"], &key); err == nil && isSecretConfigKey(key) {
+		if err := json.Unmarshal(obj["key"], &key); err != nil {
+			return nil, fmt.Errorf("config row has no readable key (refusing to guess whether its value is a secret): %w", err)
+		}
+		if config.Secret(key) {
 			obj["value"] = json.RawMessage("null")
 		}
 	}

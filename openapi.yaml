@@ -623,6 +623,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        csrf_token:
+          type: string
         email:
           type: string
         is_admin:
@@ -646,6 +648,7 @@ components:
         - role
         - verified
         - is_admin
+        - csrf_token
       type: object
     NotificationBody:
       additionalProperties: false
@@ -1406,8 +1409,10 @@ paths:
           in: query
           name: limit
           schema:
+            default: 100
             format: int64
-            minimum: 0
+            maximum: 1000
+            minimum: 1
             type: integer
         - explode: false
           in: query

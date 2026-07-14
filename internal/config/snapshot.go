@@ -133,8 +133,18 @@ func (s WebhookEventSet) Enabled(e WebhookEvent) bool { return s[e] }
 // still valid: it is preserved verbatim in raw. The importer uses this only to name
 // preserved keys in its report, never to decide whether to keep one.
 func Modelled(key string) bool {
-	_, ok := registry[key]
-	return ok
+	def, ok := registry[key]
+	return ok && def.set != nil
+}
+
+// Secret reports whether a key's value must never leave the instance in a shareable
+// artifact. It is default-deny: only a key this package declares public is public, so
+// an unknown key — a plugin key, a key carried in from a foreign archive, a key some
+// future version adds — is a secret until someone here says otherwise. A leak then
+// requires a deliberate act, not an omission.
+func Secret(key string) bool {
+	def, ok := registry[key]
+	return !ok || def.secret
 }
 
 // Event projects the snapshot onto the policy layer's view of the world. `now`
@@ -178,53 +188,77 @@ func defaults() Snapshot {
 // understands the value or it returns an error that names the key and the value.
 type setter func(*Snapshot, string) error
 
+// keyDef is what this package knows about one config key: how to parse it, and
+// whether its value may leave the instance. Sensitivity is declared here because this
+// is the only place that knows what a key MEANS — a substring guess elsewhere ("does
+// it contain 'token'?") both misses webhook_url, a live bearer capability, and
+// withholds theme_tokens, which is branding.
+type keyDef struct {
+	// set is nil for a key we recognise but do not source from the config table.
+	set    setter
+	secret bool
+}
+
+// public and secret declare a key's sensitivity at its definition, so adding a key is
+// a choice about disclosure, not an oversight. Anything absent from the registry is
+// secret by default — see Secret.
+func public(s setter) keyDef { return keyDef{set: s} }
+func secret(s setter) keyDef { return keyDef{set: s, secret: true} }
+
 // registry is the declared schema. A key in here is typed; a key not in here is a
 // string in raw.
-var registry = map[string]setter{
-	"ctf_name":        func(s *Snapshot, v string) error { s.CTFName = v; return nil },
-	"ctf_description": func(s *Snapshot, v string) error { s.CTFDescription = v; return nil },
-	"ctf_theme":       func(s *Snapshot, v string) error { s.Theme = v; return nil },
-	"theme_tokens":    themeTokensSetter,
+var registry = map[string]keyDef{
+	"ctf_name":        public(func(s *Snapshot, v string) error { s.CTFName = v; return nil }),
+	"ctf_description": public(func(s *Snapshot, v string) error { s.CTFDescription = v; return nil }),
+	"ctf_theme":       public(func(s *Snapshot, v string) error { s.Theme = v; return nil }),
+	"theme_tokens":    public(themeTokensSetter),
 
-	// user_mode is deliberately absent: the account model lives in the instance
-	// singleton, not here. A stray config user_mode key is preserved verbatim in raw
-	// and checked for agreement in Build, never used to source Mode.
-	"setup": boolSetter(func(s *Snapshot, b bool) { s.SetupDone = b }),
+	// user_mode has no setter: the account model lives in the instance singleton, not
+	// here. A stray config user_mode key is preserved verbatim in raw and checked for
+	// agreement in Build, never used to source Mode. It is listed only to say it is not
+	// a secret; without an entry, default-deny would withhold it.
+	"user_mode": public(nil),
 
-	"challenge_visibility":    visSetter(policy.VisChallenge, func(s *Snapshot, v policy.Vis) { s.ChallengeVis = v }),
-	"score_visibility":        visSetter(policy.VisScore, func(s *Snapshot, v policy.Vis) { s.ScoreVis = v }),
-	"account_visibility":      visSetter(policy.VisAccount, func(s *Snapshot, v policy.Vis) { s.AccountVis = v }),
-	"registration_visibility": visSetter(policy.VisRegistration, func(s *Snapshot, v policy.Vis) { s.RegistrationVis = v }),
+	"setup": public(boolSetter(func(s *Snapshot, b bool) { s.SetupDone = b })),
 
-	"verify_emails":  boolSetter(func(s *Snapshot, b bool) { s.VerifyEmails = b }),
-	"view_after_ctf": boolSetter(func(s *Snapshot, b bool) { s.ViewAfterCTF = b }),
-	"paused":         boolSetter(func(s *Snapshot, b bool) { s.Paused = b }),
-	"team_creation":  boolSetter(func(s *Snapshot, b bool) { s.TeamCreation = b }),
+	"challenge_visibility":    public(visSetter(policy.VisChallenge, func(s *Snapshot, v policy.Vis) { s.ChallengeVis = v })),
+	"score_visibility":        public(visSetter(policy.VisScore, func(s *Snapshot, v policy.Vis) { s.ScoreVis = v })),
+	"account_visibility":      public(visSetter(policy.VisAccount, func(s *Snapshot, v policy.Vis) { s.AccountVis = v })),
+	"registration_visibility": public(visSetter(policy.VisRegistration, func(s *Snapshot, v policy.Vis) { s.RegistrationVis = v })),
 
-	"start":  timeSetter(func(s *Snapshot, t *time.Time) { s.Start = t }),
-	"end":    timeSetter(func(s *Snapshot, t *time.Time) { s.End = t }),
-	"freeze": timeSetter(func(s *Snapshot, t *time.Time) { s.Freeze = t }),
+	"verify_emails":  public(boolSetter(func(s *Snapshot, b bool) { s.VerifyEmails = b })),
+	"view_after_ctf": public(boolSetter(func(s *Snapshot, b bool) { s.ViewAfterCTF = b })),
+	"paused":         public(boolSetter(func(s *Snapshot, b bool) { s.Paused = b })),
+	"team_creation":  public(boolSetter(func(s *Snapshot, b bool) { s.TeamCreation = b })),
 
-	"num_users": intSetter(func(s *Snapshot, n int) { s.NumUsers = n }),
-	"num_teams": intSetter(func(s *Snapshot, n int) { s.NumTeams = n }),
-	"team_size": intSetter(func(s *Snapshot, n int) { s.TeamSize = n }),
+	"start":  public(timeSetter(func(s *Snapshot, t *time.Time) { s.Start = t })),
+	"end":    public(timeSetter(func(s *Snapshot, t *time.Time) { s.End = t })),
+	"freeze": public(timeSetter(func(s *Snapshot, t *time.Time) { s.Freeze = t })),
 
-	"mail_server":   func(s *Snapshot, v string) error { s.MailServer = v; return nil },
-	"mail_port":     intSetter(func(s *Snapshot, n int) { s.MailPort = n }),
-	"mail_username": func(s *Snapshot, v string) error { s.MailUsername = v; return nil },
-	"mail_password": func(s *Snapshot, v string) error { s.MailPassword = v; return nil },
-	"mail_tls":      boolSetter(func(s *Snapshot, b bool) { s.MailTLS = b }),
-	"mailfrom_addr": func(s *Snapshot, v string) error {
+	"num_users": public(intSetter(func(s *Snapshot, n int) { s.NumUsers = n })),
+	"num_teams": public(intSetter(func(s *Snapshot, n int) { s.NumTeams = n })),
+	"team_size": public(intSetter(func(s *Snapshot, n int) { s.TeamSize = n })),
+
+	// The SMTP triple is one credential: the host it authenticates to is as much a part
+	// of it as the password, and a username alone is half a login.
+	"mail_server":   secret(func(s *Snapshot, v string) error { s.MailServer = v; return nil }),
+	"mail_username": secret(func(s *Snapshot, v string) error { s.MailUsername = v; return nil }),
+	"mail_password": secret(func(s *Snapshot, v string) error { s.MailPassword = v; return nil }),
+	"mail_port":     public(intSetter(func(s *Snapshot, n int) { s.MailPort = n })),
+	"mail_tls":      public(boolSetter(func(s *Snapshot, b bool) { s.MailTLS = b })),
+	"mailfrom_addr": public(func(s *Snapshot, v string) error {
 		if _, err := stdmail.ParseAddress(v); err != nil {
 			return fmt.Errorf("want an email address, got %q: %w", v, err)
 		}
 		s.MailFrom = v
 		return nil
-	},
+	}),
 
-	"webhook_url":     webhookURLSetter,
-	"webhook_enabled": boolSetter(func(s *Snapshot, b bool) { s.WebhookEnabled = b }),
-	"webhook_events":  webhookEventsSetter,
+	// The webhook URL embeds its token in the path: whoever holds the URL can post as
+	// the CTF. It is a credential that happens to be spelled like a link.
+	"webhook_url":     secret(webhookURLSetter),
+	"webhook_enabled": public(boolSetter(func(s *Snapshot, b bool) { s.WebhookEnabled = b })),
+	"webhook_events":  public(webhookEventsSetter),
 }
 
 // webhookURLSetter accepts only an absolute http(s) URL. A malformed endpoint fails
@@ -365,14 +399,14 @@ func Build(rows map[string]string, instanceMode *account.Mode) (*Snapshot, error
 	for key, value := range rows {
 		snap.raw[key] = value
 
-		set, known := registry[key]
-		if !known {
-			continue // an unknown key is a string, preserved. Not an error.
+		def, known := registry[key]
+		if !known || def.set == nil {
+			continue // an unknown or unsourced key is a string, preserved. Not an error.
 		}
 		if strings.TrimSpace(value) == "" {
 			continue // an empty row means "unset": take the default.
 		}
-		if err := set(&snap, value); err != nil {
+		if err := def.set(&snap, value); err != nil {
 			problems = append(problems, fmt.Errorf("config key %q: %w", key, err))
 		}
 	}

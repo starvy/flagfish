@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/starvy/flagfish/internal/accounts"
@@ -41,19 +41,17 @@ import (
 // is every real deployment — you need a trusted-proxy list, and the list has to be
 // consulted, so it has to be here.
 func realIP(trusted []*net.IPNet, secureCookies bool, log *slog.Logger) func(http.Handler) http.Handler {
-	var warnOnce sync.Once
+	var warned atomic.Bool
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// A proxy is forwarding to us and we trust none: every request now presents the
-			// proxy's address, so the rate limiter sees the whole internet as one client and
-			// the recorded submission IP is the proxy's. Say so, once, in full.
-			if len(trusted) == 0 && r.Header.Get("X-Forwarded-For") != "" {
-				warnOnce.Do(func() {
-					log.WarnContext(r.Context(), "requests carry X-Forwarded-For but no proxy is trusted: "+
-						"the header is ignored, so every client behind the proxy shares ONE rate-limit bucket "+
-						"and every recorded IP is the proxy's. Set FLAGFISH_TRUSTED_PROXIES to the proxy's address(es).",
-						"peer", r.RemoteAddr)
-				})
+			// Something is forwarding to us and we trust nobody: every request now presents the
+			// forwarder's address, so the rate limiter sees the whole internet as one client and
+			// the recorded submission IP is the proxy's. Say so — once, and in full.
+			if len(trusted) == 0 && r.Header.Get("X-Forwarded-For") != "" && warned.CompareAndSwap(false, true) {
+				log.WarnContext(r.Context(), "requests carry X-Forwarded-For but no proxy is trusted: "+
+					"the header is ignored, so every client behind that proxy shares ONE rate-limit bucket "+
+					"and every recorded IP is the proxy's. Set FLAGFISH_TRUSTED_PROXIES to the proxy's address(es).",
+					"peer", r.RemoteAddr)
 			}
 
 			// Peer trust is read before clientIP rewrites RemoteAddr — afterwards the socket

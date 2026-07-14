@@ -1,3 +1,4 @@
+import { Select } from "../ui";
 import { useTheme } from "./provider";
 
 // The picker: built-in themes plus a "system" option that follows the OS. Choosing
@@ -7,16 +8,16 @@ export function ThemeSwitcher() {
   const value = preference ?? system;
 
   return (
-    <label className="theme-switcher field">
+    <label className="theme-switcher">
       theme
-      <select value={value} onChange={(e) => setPreference(e.target.value)}>
+      <Select value={value} onChange={(e) => setPreference(e.target.value)}>
         <option value={system}>system ({resolved.theme.label})</option>
         {themes.map((t) => (
           <option key={t.name} value={t.name}>
             {t.label}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

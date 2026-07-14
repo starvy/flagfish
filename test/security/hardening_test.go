@@ -98,6 +98,18 @@ func TestS13_OversizedBodiesAreRefused(t *testing.T) {
 		}
 	})
 
+	t.Run("a body is bounded even on a route that declares none", func(t *testing.T) {
+		// Huma bounds the body of an operation that reads one. An operation that reads none has
+		// nothing to bound, so without an outer limit the bytes are ours to swallow regardless of
+		// what the route says it accepts.
+		r := f.do(http.MethodPost, "/api/v1/probe",
+			withBody("application/json", bytes.Repeat([]byte("A"), 2<<20)))
+		if r.StatusCode != http.StatusRequestEntityTooLarge {
+			t.Errorf("status = %d, want 413 — the body limit has to sit in front of the router, "+
+				"not inside the operations that happen to read a body", r.StatusCode)
+		}
+	})
+
 	t.Run("an upload over the upload cap is a 413", func(t *testing.T) {
 		r := f.do(http.MethodPost, "/api/v1/admin/challenges/1/files",
 			withBody(multipartContentType, multipartBody(t, uploadMax+(1<<20))))

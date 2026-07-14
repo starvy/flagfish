@@ -1,49 +1,80 @@
-import { queryOptions } from "@tanstack/react-query";
-import { api } from "./api/client";
+// The query layer's public surface. Screens import from here; the split under `queries/` is an
+// organisational detail, not a contract.
+export { qk, ADMIN_STALE_TIME } from "./queries/keys";
 
-// Public branding drives the theme resolution. It rarely changes and must not spam
-// the server, so it stays fresh for a long while and survives a background refetch.
-export const instanceQuery = queryOptions({
-  queryKey: ["instance"],
-  queryFn: () => api.instance(),
-  staleTime: 5 * 60_000,
-  retry: false,
-});
+export { instanceQuery } from "./queries/instance";
 
-export const meQuery = queryOptions({
-  queryKey: ["me"],
-  queryFn: () => api.me(),
-  staleTime: 60_000,
-  retry: false,
-});
+export {
+  meQuery,
+  useLogin,
+  useRegister,
+  useLogout,
+  useChangePassword,
+  useResetRequest,
+  useResetApply,
+  useVerifyResend,
+  useVerifyConfirm,
+} from "./queries/auth";
 
-export const challengesQuery = queryOptions({
-  queryKey: ["challenges"],
-  queryFn: () => api.challenges(),
-  staleTime: 15_000,
-});
+export {
+  challengesQuery,
+  challengeQuery,
+  challengeSolvesQuery,
+  // The name this query shipped under before it grew a sibling; kept so the board keeps building.
+  challengeSolvesQuery as solvesQuery,
+  useAttempt,
+  useUnlockHint,
+  useDownloadFile,
+  type AttemptVars,
+  type UnlockVars,
+} from "./queries/challenges";
 
-export const challengeQuery = (id: number) =>
-  queryOptions({
-    queryKey: ["challenges", id],
-    queryFn: () => api.challenge(id),
-    staleTime: 15_000,
-  });
+export { scoreboardQuery, bracketsQuery } from "./queries/scoreboard";
 
-export const solvesQuery = (id: number) =>
-  queryOptions({
-    queryKey: ["challenges", id, "solves"],
-    queryFn: () => api.challengeSolves(id),
-    staleTime: 15_000,
-  });
+export { myTeamQuery, teamQuery, useCreateTeam, useJoinTeam, useLeaveTeam } from "./queries/teams";
 
-export const scoreboardQuery = queryOptions({
-  queryKey: ["scoreboard"],
-  queryFn: () => api.scoreboard(),
-  refetchInterval: 10_000,
-});
+export { notificationsQuery } from "./queries/notifications";
 
-export const tokensQuery = queryOptions({
-  queryKey: ["tokens"],
-  queryFn: () => api.tokens(),
-});
+export { tokensQuery, useCreateToken, useDeleteToken } from "./queries/tokens";
+
+export { adminConfigQuery, useUpdateConfig } from "./queries/admin/config";
+
+export {
+  useCreateChallenge,
+  useUpdateChallenge,
+  useSetChallengeState,
+  useReorderChallenges,
+  useDeleteChallenge,
+  useAddFlag,
+  useUpdateFlag,
+  useDeleteFlag,
+  useAddHint,
+  useUpdateHint,
+  useDeleteHint,
+  useUploadFile,
+  useDeleteFile,
+} from "./queries/admin/challenges";
+
+export {
+  adminUsersQuery,
+  useSetUserBanned,
+  useSetUserRole,
+  useAssignBracket,
+} from "./queries/admin/users";
+
+export { adminTagsQuery, useMergeTag, useDeleteTag } from "./queries/admin/tags";
+
+export {
+  adminBracketsQuery,
+  useCreateBracket,
+  useUpdateBracket,
+  useDeleteBracket,
+} from "./queries/admin/brackets";
+
+export {
+  adminAuditQuery,
+  flagSharingQuery,
+  ipOverlapQuery,
+  accountReportQuery,
+  useCreateNotification,
+} from "./queries/admin/moderation";

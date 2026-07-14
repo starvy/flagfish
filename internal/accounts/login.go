@@ -175,7 +175,8 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, current, nex
 // HttpOnly: JavaScript must not be able to read it, which is what stops an XSS from
 // becoming a session theft. SameSite=Lax: the cookie is not attached to cross-site POSTs
 // at all, which is defence in depth behind the CSRF token rather than a replacement for
-// it. Secure is set unless we are plainly on localhost.
+// it. Secure is the caller's decision: TLS usually dies at a proxy, so the transport layer is the
+// only place that can tell whether the browser will be speaking HTTPS to us.
 func SessionCookieFor(sess Session, secure bool) *http.Cookie {
 	//nolint:gosec // G124 fires on any cookie literal; HttpOnly/SameSite are set right below.
 	return &http.Cookie{

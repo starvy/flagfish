@@ -12,6 +12,11 @@ change to the auth path.
 | CSRF exemption | exempt on `Authorization` header present, not on identity | ✅ FAILS: stapled-header bypass |
 | Rate limit | atomic upsert → read-then-write | ✅ FAILS: lost increments, allowed > limit |
 | User enumeration | drop the dummy-verify on unknown email | ✅ FAILS: timing ratio blows the oracle assertion |
+| Secure cookie | `isSecure` derives Secure from TLS/proxy trust only | ✅ FAILS: session cookie issued without `Secure` |
+| Per-client rate limit | `realIP` keeps the socket peer, ignoring a trusted `X-Forwarded-For` | ✅ FAILS: one client's flood limits the next client |
+| Body limit | drop `limitBody` from the chain | ✅ FAILS: an unbounded body and an unbounded upload are both accepted |
+| Auth error leak | auth failure → `401` with `err.Error()` | ✅ FAILS: 401 instead of 503, driver text in the body |
+| Admin spec exposure | let Huma register the admin docs/schema (it bypasses the middleware) | ✅ FAILS: anonymous and player both read the admin OpenAPI document |
 
 **Note the ban is enforced twice** — the middleware wall *and* `policy.Decide` — so a
 single-point mutation still trips the other. That is defense in depth, not redundancy:

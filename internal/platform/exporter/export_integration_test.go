@@ -130,10 +130,24 @@ func envOr(key, def string) string {
 
 // Distinctive markers so the masked-export test can grep the raw archive bytes for a leak.
 const (
-	userHashMarker  = "argon2id$USER_SEEDHASH_MARKER"
-	teamHashMarker  = "argon2id$TEAM_SEEDHASH_MARKER"
-	flagMarker      = "flag{SUPER_SECRET_MARKER}"
-	configSecretVal = "smtp-password-MARKER"
+	userHashMarker = "argon2id$USER_SEEDHASH_MARKER"
+	teamHashMarker = "argon2id$TEAM_SEEDHASH_MARKER"
+	flagMarker     = "flag{SUPER_SECRET_MARKER}"
+	hintMarker     = "hint-content-MARKER"
+
+	mailPasswordVal = "smtp-password-MARKER"
+	mailUsernameVal = "smtp-user-MARKER"
+	mailServerVal   = "smtp.internal-MARKER.example"
+	// A Discord webhook carries its token in the path: the whole URL is a bearer capability.
+	webhookURLVal = "https://discord.com/api/webhooks/1234/WEBHOOK-TOKEN-MARKER"
+	// An unmodelled key, exactly as the importer preserves one from a foreign archive. Nothing in
+	// this repo knows what it is — which is precisely why it must not ship.
+	pluginSecretKey = "some_plugin_secret"
+	pluginSecretVal = "plugin-credential-MARKER"
+
+	// Branding, not a credential. It must survive a safe export: the old substring denylist nulled it
+	// because the key contains "token".
+	themeTokensVal = `{"color-brand":"THEME-TOKENS-MARKER"}`
 )
 
 var blobBytes = []byte("challenge-attachment-contents-MARKER")
@@ -144,8 +158,9 @@ func blobSHA() string {
 }
 
 // seed installs a representative instance under the replica role so no audit/cap triggers fire and
-// the state is deterministic. It exercises every mask: password hashes, a flag secret, a value hash,
-// a token hash, a secret config value.
+// the state is deterministic. It exercises every mask: password hashes, a flag secret, a hint body,
+// a value hash, a token hash, and the config table's full spread — modelled secrets, an unmodelled
+// key, and a public key that a substring denylist would wrongly withhold.
 func seed(t *testing.T, ctx context.Context, p *pgxpool.Pool, store storage.Store) {
 	t.Helper()
 	sha := blobSHA()
@@ -173,7 +188,16 @@ func seed(t *testing.T, ctx context.Context, p *pgxpool.Pool, store storage.Stor
 		email_tokens, rate_limits RESTART IDENTITY CASCADE`)
 
 	exec(`INSERT INTO instance (id, user_mode, version) VALUES (true, 'teams', 'seed')`)
-	exec(`INSERT INTO config (id, key, value) VALUES (1,'user_mode','teams'), (2,'mail_password',$1)`, configSecretVal)
+	exec(`INSERT INTO config (id, key, value) VALUES
+		(1,'user_mode','teams'),
+		(2,'mail_password',$1),
+		(3,'mail_username',$2),
+		(4,'mail_server',$3),
+		(5,'webhook_url',$4),
+		(6,$5,$6),
+		(7,'theme_tokens',$7)`,
+		mailPasswordVal, mailUsernameVal, mailServerVal, webhookURLVal,
+		pluginSecretKey, pluginSecretVal, themeTokensVal)
 	exec(`INSERT INTO brackets (id, name, applies_to) VALUES (1,'open','teams')`)
 	exec(`INSERT INTO teams (id, name, email, password_hash, secret, bracket_id, captain_id)
 		VALUES (1,'redteam','team@x.ctf',$1,'TEAM_SECRET_MARKER',1,1)`, teamHashMarker)
@@ -187,7 +211,7 @@ func seed(t *testing.T, ctx context.Context, p *pgxpool.Pool, store storage.Stor
 		VALUES (1,'chal/f.bin', decode($1,'hex'), $2, 1, 'f.bin')`, sha, len(blobBytes))
 	exec(`INSERT INTO tags (id, challenge_id, value) VALUES (1,1,'pwn')`)
 	exec(`INSERT INTO flags (id, challenge_id, type, content) VALUES (1,1,'static',$1)`, flagMarker)
-	exec(`INSERT INTO hints (id, challenge_id, content, cost) VALUES (1,1,'try harder',10)`)
+	exec(`INSERT INTO hints (id, challenge_id, content, cost) VALUES (1,1,$1,10)`, hintMarker)
 	exec(`INSERT INTO challenge_instances (id, challenge_id, value_hash, artifact_id)
 		VALUES (1,1,$1,1)`, vhash[:])
 	exec(`INSERT INTO flag_issues (challenge_id, account_id, instance_id) VALUES (1,1,1)`)

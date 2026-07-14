@@ -42,14 +42,24 @@ UPDATE teams t
 
 -- name: GetTeamPublicProfile :one
 -- Hidden and banned teams 404 publicly, matching the board and the solve lists. The score sums
--- the stamped solves.team_id ledger — the same legs the scoreboard reads.
+-- the stamped solves.team_id ledger — the same legs the scoreboard reads, and it takes the same
+-- freeze horizon: cutoff is strict `<`, NULL = live. Both legs carry it, because a public team
+-- page that sums live is the frozen board read one team at a time.
 SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at,
-       (COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id), 0)
-      + COALESCE((SELECT sum(a.value) FROM awards a WHERE a.team_id = t.id), 0))::bigint AS score
+       (COALESCE((SELECT sum(s.value) FROM solves s
+                   WHERE s.team_id = t.id
+                     AND (sqlc.narg(cutoff)::timestamptz IS NULL
+                          OR s.date < sqlc.narg(cutoff)::timestamptz)), 0)
+      + COALESCE((SELECT sum(a.value) FROM awards a
+                   WHERE a.team_id = t.id
+                     AND (sqlc.narg(cutoff)::timestamptz IS NULL
+                          OR a.date < sqlc.narg(cutoff)::timestamptz)), 0))::bigint AS score
   FROM teams t
  WHERE t.id = @team_id AND t.hidden = false AND t.banned = false;
 
 -- name: GetOwnTeam :one
+-- No cutoff: an account always sees its own live score, freeze or not. Withholding it would tell
+-- the team nothing an attacker wants and everything they already know.
 SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at, t.captain_id,
        (COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id), 0)
       + COALESCE((SELECT sum(a.value) FROM awards a WHERE a.team_id = t.id), 0))::bigint AS score
@@ -60,11 +70,18 @@ SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at, t.captai
 -- name: ListTeamMembers :many
 -- Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 -- scored them regardless of later roster churn. include_masked lifts the hidden/banned member
--- filter for the team's own view.
+-- filter for the team's own view; cutoff is the freeze horizon (strict `<`, NULL = live) for the
+-- public one, where an unclamped per-member breakdown says who scored what during the freeze.
 SELECT u.id, u.name,
        COALESCE(u.id = t.captain_id, false)::boolean AS captain,
-       (SELECT count(*) FROM solves s WHERE s.team_id = t.id AND s.user_id = u.id)::bigint AS solve_count,
-       COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id AND s.user_id = u.id), 0)::bigint AS points
+       (SELECT count(*) FROM solves s
+         WHERE s.team_id = t.id AND s.user_id = u.id
+           AND (sqlc.narg(cutoff)::timestamptz IS NULL
+                OR s.date < sqlc.narg(cutoff)::timestamptz))::bigint AS solve_count,
+       COALESCE((SELECT sum(s.value) FROM solves s
+                  WHERE s.team_id = t.id AND s.user_id = u.id
+                    AND (sqlc.narg(cutoff)::timestamptz IS NULL
+                         OR s.date < sqlc.narg(cutoff)::timestamptz)), 0)::bigint AS points
   FROM users u
   JOIN teams t ON t.id = u.team_id
  WHERE u.team_id = @team_id

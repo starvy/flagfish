@@ -163,7 +163,7 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 	}
 
 	c := d.Challenge
-	inst, err := s.issueForView(ctx, c)
+	inst, err := s.issueForView(ctx, &c)
 	switch {
 	case errors.Is(err, flags.ErrPoolExhausted):
 		// Loud, and never a challenge body with no flag in it: a silent fallback would destroy
@@ -224,7 +224,7 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 //
 // The write happens once per (challenge, account): every later view finds the existing row and
 // returns it. Idempotence is the primary key's, not this function's.
-func (s *Server) issueForView(ctx context.Context, ch catalog.Challenge) (*challengeInstance, error) {
+func (s *Server) issueForView(ctx context.Context, ch *catalog.Challenge) (*challengeInstance, error) {
 	pr := AuthOf(ctx).Principal
 	if ch.FlagMode != flags.ModeUnique || ch.Locked || !pr.Authed || pr.IsAdmin {
 		return nil, nil
