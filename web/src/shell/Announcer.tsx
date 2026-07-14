@@ -1,4 +1,4 @@
-import { createContext, use, useCallback, useMemo, useState, type ReactNode } from "react";
+import { createContext, use, useCallback, useRef, useState, type ReactNode } from "react";
 
 type Announce = (message: string) => void;
 
@@ -17,22 +17,16 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
   // Two slots, written alternately: a live region only speaks when its text *changes*, so the
   // same message twice in a row would be silent the second time.
   const [slots, setSlots] = useState<[string, string]>(["", ""]);
-  const [next, setNext] = useState(0);
+  const next = useRef(0);
 
-  const announce = useCallback<Announce>(
-    (message) => {
-      setSlots((current) =>
-        next === 0 ? [message, current[1]] : [current[0], message],
-      );
-      setNext((i) => (i === 0 ? 1 : 0));
-    },
-    [next],
-  );
-
-  const value = useMemo(() => announce, [announce]);
+  const announce = useCallback<Announce>((message) => {
+    const slot = next.current;
+    next.current = slot === 0 ? 1 : 0;
+    setSlots((current) => (slot === 0 ? [message, current[1]] : [current[0], message]));
+  }, []);
 
   return (
-    <AnnouncerContext value={value}>
+    <AnnouncerContext value={announce}>
       {children}
       <div className="ff-sr-only" aria-live="polite" aria-atomic="true">
         {slots[0]}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/starvy/flagfish/internal/db"
 )
@@ -190,15 +191,21 @@ func (s *Service) rehashTeamPassword(ctx context.Context, teamID int64, password
 
 // TeamProfile is the public team page. Hidden and banned teams do not exist here, and
 // hidden or banned members are absent from the roster, matching the solve lists.
-func (s *Service) TeamProfile(ctx context.Context, teamID int64) (Team, error) {
-	row, err := s.q.GetTeamPublicProfile(ctx, teamID)
+//
+// cutoff is the caller's freeze horizon (nil = live), and it clamps both the team score and the
+// per-member breakdown. This page is a scoreboard row: served live during a freeze it hands over
+// the post-freeze standings — and who scored what to earn them — one team id at a time.
+func (s *Service) TeamProfile(ctx context.Context, teamID int64, cutoff *time.Time) (Team, error) {
+	row, err := s.q.GetTeamPublicProfile(ctx, db.GetTeamPublicProfileParams{
+		TeamID: teamID, Cutoff: cutoffArg(cutoff),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Team{}, fmt.Errorf("%w: id=%d", ErrTeamNotFound, teamID)
 	} else if err != nil {
 		return Team{}, fmt.Errorf("accounts: team profile: %w", err)
 	}
 
-	members, err := s.teamMembers(ctx, teamID, false)
+	members, err := s.teamMembers(ctx, teamID, false, cutoff)
 	if err != nil {
 		return Team{}, fmt.Errorf("accounts: team profile: %w", err)
 	}
@@ -211,6 +218,9 @@ func (s *Service) TeamProfile(ctx context.Context, teamID int64) (Team, error) {
 }
 
 // OwnTeam is the caller's team, roster unmasked — it is their own.
+//
+// No freeze cutoff, deliberately: an account always sees its own live score. It tells them nothing
+// they could not count themselves, and a team that cannot see its own solves land reads as a bug.
 func (s *Service) OwnTeam(ctx context.Context, userID int64) (Team, error) {
 	row, err := s.q.GetOwnTeam(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -219,7 +229,7 @@ func (s *Service) OwnTeam(ctx context.Context, userID int64) (Team, error) {
 		return Team{}, fmt.Errorf("accounts: own team: %w", err)
 	}
 
-	members, err := s.teamMembers(ctx, row.ID, true)
+	members, err := s.teamMembers(ctx, row.ID, true, nil)
 	if err != nil {
 		return Team{}, fmt.Errorf("accounts: own team: %w", err)
 	}
@@ -233,9 +243,17 @@ func (s *Service) OwnTeam(ctx context.Context, userID int64) (Team, error) {
 	}, nil
 }
 
-func (s *Service) teamMembers(ctx context.Context, teamID int64, includeMasked bool) ([]TeamMember, error) {
+// cutoff is the freeze horizon: a non-nil value hides solves at or after it. nil means live.
+func cutoffArg(cutoff *time.Time) pgtype.Timestamptz {
+	if cutoff == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: *cutoff, Valid: true}
+}
+
+func (s *Service) teamMembers(ctx context.Context, teamID int64, includeMasked bool, cutoff *time.Time) ([]TeamMember, error) {
 	rows, err := s.q.ListTeamMembers(ctx, db.ListTeamMembersParams{
-		TeamID: &teamID, IncludeMasked: includeMasked,
+		TeamID: &teamID, IncludeMasked: includeMasked, Cutoff: cutoffArg(cutoff),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", err)

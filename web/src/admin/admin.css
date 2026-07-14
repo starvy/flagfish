@@ -1,0 +1,389 @@
+/* The console's own layout. Colour comes from the token contract only — a theme repaints
+   the console exactly as it repaints the game, because there is nothing here to repaint it
+   separately with. Loaded by the console shell, so it ships in the lazy chunk with it. */
+
+.admin {
+  display: grid;
+  grid-template-columns: 15rem 1fr;
+  min-height: 100vh;
+  align-items: start;
+}
+
+.admin__sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1rem;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.admin__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: var(--font-mono);
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.admin__brand-name {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.admin__brand-tag {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+}
+
+.admin__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.admin__nav-link {
+  display: block;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius);
+  border-left: 2px solid transparent;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.admin__nav-link:hover {
+  background: var(--color-inset);
+  color: var(--color-text);
+}
+
+.admin__nav-link[data-status="active"] {
+  background: var(--color-inset);
+  border-left-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.admin__nav-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.admin__nav-group {
+  margin-top: 0.75rem;
+  padding: 0 0.6rem 0.25rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-muted);
+}
+
+.admin__sidebar-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.admin__main {
+  min-width: 0;
+  padding: 1.5rem 1.75rem 4rem;
+  background: var(--color-bg);
+}
+
+.admin-page__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-page__titles {
+  min-width: 0;
+}
+
+.admin-page__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  color: var(--color-text);
+}
+
+.admin-page__desc {
+  margin: 0.35rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  max-width: 60ch;
+}
+
+.admin-page__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.admin-page__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+}
+
+.admin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.admin-stat__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+.admin-stat__value {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  line-height: 1.2;
+  color: var(--color-text);
+}
+
+.admin-stat__value--accent {
+  color: var(--color-accent);
+}
+
+.admin-stat__value--warn {
+  color: var(--color-warn);
+}
+
+.admin-stat__value--danger {
+  color: var(--color-danger);
+}
+
+.admin-stat__hint {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.admin-defs {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.admin-defs dt {
+  color: var(--color-text-muted);
+}
+
+.admin-defs dd {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.admin-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.admin-links a {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.admin-links a:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Tri-state control: keep / clear / set. */
+
+.admin-tri__modes {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.15rem;
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  width: max-content;
+}
+
+.admin-tri__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.admin-tri__mode:hover {
+  color: var(--color-text);
+}
+
+.admin-tri__mode input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.admin-tri__mode--on {
+  background: var(--color-accent-dim);
+  color: var(--color-accent-contrast);
+}
+
+.admin-tri__mode:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.admin-tri__control {
+  margin-top: 0.45rem;
+}
+
+.admin-tri__note {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.admin-tri__note--clear {
+  color: var(--color-warn);
+}
+
+/* Theme token overrides + the live preview. */
+
+.admin-tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 26rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.admin-token {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(9rem, 12rem) 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-token__key {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-token--set .admin-token__key {
+  color: var(--color-accent);
+}
+
+.admin-token__swatch {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 3px;
+  border: 1px solid var(--color-border-strong);
+}
+
+.admin-token__input {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.admin-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+.admin-preview__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.admin-preview__panel {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow);
+}
+
+.admin-preview__title {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+
+.admin-preview__muted {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 60rem) {
+  .admin {
+    grid-template-columns: 1fr;
+  }
+
+  .admin__sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .admin__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

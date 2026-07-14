@@ -287,8 +287,9 @@ type Querier interface {
 	// short-circuiting: stopping at the first match would leak, through response latency, which flag
 	// matched. The whole point of crypto/subtle is lost if the loop above it branches on the result.
 	GetChallengeFlags(ctx context.Context, challengeID int64) ([]Flag, error)
-	// A single visible challenge with the same solve_count / solved projection (and freeze cutoff)
-	// as the board.
+	// A single visible challenge with the same solve_count / solved projection as the board, clamped to
+	// the same freeze horizon — including `value`, which is invertible to the solve count on a dynamic
+	// challenge and so is quoted at the frozen count for a frozen viewer. See ListChallenges.
 	GetChallengeForView(ctx context.Context, arg GetChallengeForViewParams) (GetChallengeForViewRow, error)
 	GetFileByLocation(ctx context.Context, location string) (File, error)
 	// The challenge id from the URL is part of the key: a hint reached through the wrong challenge —
@@ -313,6 +314,8 @@ type Querier interface {
 	// The listen pump carries only an id in the 8 kB NOTIFY payload and reloads the row here, so the
 	// content it fans out is the committed row rather than a copy that could disagree with it.
 	GetNotification(ctx context.Context, id int64) (Notification, error)
+	// No cutoff: an account always sees its own live score, freeze or not. Withholding it would tell
+	// the team nothing an attacker wants and everything they already know.
 	GetOwnTeam(ctx context.Context, userID int64) (GetOwnTeamRow, error)
 	// Expiry is a WHERE clause, not a Go comparison: an expired session must be indistinguishable from
 	// a missing one, and it must be so at the only place that can be tricked into disagreeing — the
@@ -335,8 +338,10 @@ type Querier interface {
 	GetStandingsAsOf(ctx context.Context, arg GetStandingsAsOfParams) ([]GetStandingsAsOfRow, error)
 	GetTeamForJoin(ctx context.Context, name string) (GetTeamForJoinRow, error)
 	// Hidden and banned teams 404 publicly, matching the board and the solve lists. The score sums
-	// the stamped solves.team_id ledger — the same legs the scoreboard reads.
-	GetTeamPublicProfile(ctx context.Context, teamID int64) (GetTeamPublicProfileRow, error)
+	// the stamped solves.team_id ledger — the same legs the scoreboard reads, and it takes the same
+	// freeze horizon: cutoff is strict `<`, NULL = live. Both legs carry it, because a public team
+	// page that sums live is the frozen board read one team at a time.
+	GetTeamPublicProfile(ctx context.Context, arg GetTeamPublicProfileParams) (GetTeamPublicProfileRow, error)
 	GetTeamStandings(ctx context.Context, arg GetTeamStandingsParams) ([]GetTeamStandingsRow, error)
 	// ── credentials ─────────────────────────────────────────────────────────────────
 	// Case-insensitive, matching users_email_uniq: lookup and the uniqueness constraint must
@@ -450,13 +455,29 @@ type Querier interface {
 	// first-blood exclusion, so a hidden admin test-solve does not inflate a challenge's count.
 	// cutoff is the freeze horizon (strict <, NULL = live): a frozen viewer's solve_count must not
 	// tick up on a post-freeze solve, or the count leaks what the frozen board hides.
+	//
+	// `value` is clamped to the same horizon, and that is not cosmetic. challenges.value is the current
+	// asking price: RecalcChallengeValue rewrites it on every solve with no time predicate, and it has
+	// to — the price a player is quoted must be the price they will pay. But the decay curve is public,
+	// deterministic and integer-exact, so the solve count is directly invertible from the value: a
+	// frozen viewer who snapshots the price and watches it drop has counted the solves the freeze exists
+	// to hide. Clamping the count and serving the live value hides the reading and publishes its
+	// derivative.
+	//
+	// So a frozen viewer is quoted the price at the FROZEN count. The curve is evaluated here, in SQL,
+	// from the same integer arithmetic RecalcChallengeValue writes — a second evaluation in Go is
+	// exactly how the two silently drift apart by a point. This costs the player nothing real: what a
+	// solve is actually worth is stamped on solves.value when it lands, not read off this column.
+	// One count per challenge, over visible accounts, clamped to the freeze horizon. solve_count and a
+	// frozen viewer's value are the same fact, so they are read from the same place and cannot disagree.
 	ListChallenges(ctx context.Context, arg ListChallengesParams) ([]ListChallengesRow, error)
 	// COUNT(*) OVER () returns the total in the same round trip rather than a second query. Ordered by
 	// a total key (date then id) so pages are stable when two rows share a timestamp.
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]ListNotificationsRow, error)
 	// Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 	// scored them regardless of later roster churn. include_masked lifts the hidden/banned member
-	// filter for the team's own view.
+	// filter for the team's own view; cutoff is the freeze horizon (strict `<`, NULL = live) for the
+	// public one, where an unclamped per-member breakdown says who scored what during the freeze.
 	ListTeamMembers(ctx context.Context, arg ListTeamMembersParams) ([]ListTeamMembersRow, error)
 	// Authentication: sessions, API tokens, and the one query that resolves a caller to a Principal.
 	// THE authentication query. Sessions and API tokens both converge here before any

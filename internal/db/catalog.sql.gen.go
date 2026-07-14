@@ -15,22 +15,42 @@ import (
 const getChallengeForView = `-- name: GetChallengeForView :one
 WITH mode AS (
     SELECT user_mode FROM instance
+),
+counts AS (
+    SELECT s.challenge_id, count(*)::bigint AS n
+      FROM solves s
+      CROSS JOIN mode m
+      LEFT JOIN users su ON su.id = s.user_id
+      LEFT JOIN teams st ON st.id = s.team_id
+     WHERE s.challenge_id = $4::bigint
+       AND ($1::timestamptz IS NULL OR s.date < $1::timestamptz)
+       AND CASE WHEN m.user_mode = 'teams'
+                THEN st.hidden = false AND st.banned = false
+                ELSE su.hidden = false AND su.banned = false
+           END
+     GROUP BY s.challenge_id
 )
 SELECT
     c.id, c.name, c.category, c.description, c.attribution, c.connection_info,
-    c.type, c.value, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
-    (SELECT count(*)
-       FROM solves s
-       CROSS JOIN mode m
-       LEFT JOIN users su ON su.id = s.user_id
-       LEFT JOIN teams st ON st.id = s.team_id
-      WHERE s.challenge_id = c.id
-        AND ($1::timestamptz IS NULL OR s.date < $1::timestamptz)
-        AND CASE WHEN m.user_mode = 'teams'
-                 THEN st.hidden = false AND st.banned = false
-                 ELSE su.hidden = false AND su.banned = false
+    c.type, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
+    (CASE
+        WHEN $1::timestamptz IS NULL OR c.function = 'static' THEN c.value
+        ELSE GREATEST(
+            c.minimum::bigint,
+            CASE c.function
+                WHEN 'linear' THEN
+                    c.initial::bigint - (c.decay::bigint * GREATEST(COALESCE(cnt.n, 0) - 1, 0)::bigint)
+                ELSE
+                    c.initial::bigint - (
+                        ((c.initial - c.minimum)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint)
+                        / (NULLIF(c.decay, 0)::bigint * NULLIF(c.decay, 0)::bigint)
+                    )
             END
-    )::bigint AS solve_count,
+        )
+     END)::int AS value,
+    COALESCE(cnt.n, 0)::bigint AS solve_count,
     EXISTS (
         SELECT 1 FROM solves s
         CROSS JOIN mode m
@@ -56,7 +76,8 @@ SELECT
          )
     ) AS prereqs_met
   FROM challenges c
- WHERE c.id = $4 AND c.state = 'visible'
+  LEFT JOIN counts cnt ON cnt.challenge_id = c.id
+ WHERE c.id = $4::bigint AND c.state = 'visible'
 `
 
 type GetChallengeForViewParams struct {
@@ -74,19 +95,20 @@ type GetChallengeForViewRow struct {
 	Attribution    *string
 	ConnectionInfo *string
 	Type           string
-	Value          int32
 	Function       string
 	MaxAttempts    int32
 	State          string
 	Requirements   json.RawMessage
 	FlagMode       string
+	Value          int32
 	SolveCount     int64
 	Solved         bool
 	PrereqsMet     bool
 }
 
-// A single visible challenge with the same solve_count / solved projection (and freeze cutoff)
-// as the board.
+// A single visible challenge with the same solve_count / solved projection as the board, clamped to
+// the same freeze horizon — including `value`, which is invertible to the solve count on a dynamic
+// challenge and so is quoted at the frozen count for a frozen viewer. See ListChallenges.
 func (q *Queries) GetChallengeForView(ctx context.Context, arg GetChallengeForViewParams) (GetChallengeForViewRow, error) {
 	row := q.db.QueryRow(ctx, getChallengeForView,
 		arg.Cutoff,
@@ -103,12 +125,12 @@ func (q *Queries) GetChallengeForView(ctx context.Context, arg GetChallengeForVi
 		&i.Attribution,
 		&i.ConnectionInfo,
 		&i.Type,
-		&i.Value,
 		&i.Function,
 		&i.MaxAttempts,
 		&i.State,
 		&i.Requirements,
 		&i.FlagMode,
+		&i.Value,
 		&i.SolveCount,
 		&i.Solved,
 		&i.PrereqsMet,
@@ -319,21 +341,40 @@ const listChallenges = `-- name: ListChallenges :many
 
 WITH mode AS (
     SELECT user_mode FROM instance
+),
+counts AS (
+    SELECT s.challenge_id, count(*)::bigint AS n
+      FROM solves s
+      CROSS JOIN mode m
+      LEFT JOIN users su ON su.id = s.user_id
+      LEFT JOIN teams st ON st.id = s.team_id
+     WHERE ($1::timestamptz IS NULL OR s.date < $1::timestamptz)
+       AND CASE WHEN m.user_mode = 'teams'
+                THEN st.hidden = false AND st.banned = false
+                ELSE su.hidden = false AND su.banned = false
+           END
+     GROUP BY s.challenge_id
 )
 SELECT
-    c.id, c.name, c.category, c.value, c.function, c.state, c.requirements,
-    (SELECT count(*)
-       FROM solves s
-       CROSS JOIN mode m
-       LEFT JOIN users su ON su.id = s.user_id
-       LEFT JOIN teams st ON st.id = s.team_id
-      WHERE s.challenge_id = c.id
-        AND ($1::timestamptz IS NULL OR s.date < $1::timestamptz)
-        AND CASE WHEN m.user_mode = 'teams'
-                 THEN st.hidden = false AND st.banned = false
-                 ELSE su.hidden = false AND su.banned = false
+    c.id, c.name, c.category, c.function, c.state, c.requirements,
+    (CASE
+        WHEN $1::timestamptz IS NULL OR c.function = 'static' THEN c.value
+        ELSE GREATEST(
+            c.minimum::bigint,
+            CASE c.function
+                WHEN 'linear' THEN
+                    c.initial::bigint - (c.decay::bigint * GREATEST(COALESCE(cnt.n, 0) - 1, 0)::bigint)
+                ELSE
+                    c.initial::bigint - (
+                        ((c.initial - c.minimum)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint
+                         * LEAST(GREATEST(COALESCE(cnt.n, 0) - 1, 0), c.decay)::bigint)
+                        / (NULLIF(c.decay, 0)::bigint * NULLIF(c.decay, 0)::bigint)
+                    )
             END
-    )::bigint AS solve_count,
+        )
+     END)::int AS value,
+    COALESCE(cnt.n, 0)::bigint AS solve_count,
     EXISTS (
         SELECT 1 FROM solves s
         CROSS JOIN mode m
@@ -360,6 +401,7 @@ SELECT
          )
     ) AS prereqs_met
   FROM challenges c
+  LEFT JOIN counts cnt ON cnt.challenge_id = c.id
  WHERE c.state = 'visible'
  ORDER BY c.category, c.position, c.id
 `
@@ -374,10 +416,10 @@ type ListChallengesRow struct {
 	ID           int64
 	Name         string
 	Category     string
-	Value        int32
 	Function     string
 	State        string
 	Requirements json.RawMessage
+	Value        int32
 	SolveCount   int64
 	Solved       bool
 	PrereqsMet   bool
@@ -390,6 +432,21 @@ type ListChallengesRow struct {
 // first-blood exclusion, so a hidden admin test-solve does not inflate a challenge's count.
 // cutoff is the freeze horizon (strict <, NULL = live): a frozen viewer's solve_count must not
 // tick up on a post-freeze solve, or the count leaks what the frozen board hides.
+//
+// `value` is clamped to the same horizon, and that is not cosmetic. challenges.value is the current
+// asking price: RecalcChallengeValue rewrites it on every solve with no time predicate, and it has
+// to — the price a player is quoted must be the price they will pay. But the decay curve is public,
+// deterministic and integer-exact, so the solve count is directly invertible from the value: a
+// frozen viewer who snapshots the price and watches it drop has counted the solves the freeze exists
+// to hide. Clamping the count and serving the live value hides the reading and publishes its
+// derivative.
+//
+// So a frozen viewer is quoted the price at the FROZEN count. The curve is evaluated here, in SQL,
+// from the same integer arithmetic RecalcChallengeValue writes — a second evaluation in Go is
+// exactly how the two silently drift apart by a point. This costs the player nothing real: what a
+// solve is actually worth is stamped on solves.value when it lands, not read off this column.
+// One count per challenge, over visible accounts, clamped to the freeze horizon. solve_count and a
+// frozen viewer's value are the same fact, so they are read from the same place and cannot disagree.
 func (q *Queries) ListChallenges(ctx context.Context, arg ListChallengesParams) ([]ListChallengesRow, error) {
 	rows, err := q.db.Query(ctx, listChallenges, arg.Cutoff, arg.TeamID, arg.UserID)
 	if err != nil {
@@ -403,10 +460,10 @@ func (q *Queries) ListChallenges(ctx context.Context, arg ListChallengesParams) 
 			&i.ID,
 			&i.Name,
 			&i.Category,
-			&i.Value,
 			&i.Function,
 			&i.State,
 			&i.Requirements,
+			&i.Value,
 			&i.SolveCount,
 			&i.Solved,
 			&i.PrereqsMet,

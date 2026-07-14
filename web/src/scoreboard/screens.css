@@ -1,0 +1,162 @@
+/*
+ * Screen-local styling for the scoreboard and the public team profile.
+ *
+ * Everything a primitive already draws (`ff-table`, `ff-card`, `ff-badge`, `ff-alert`) is left to
+ * the design system; only the two things it has no opinion about live here — the board's toolbar
+ * and the team profile's solve timeline. Colour is read from the token contract, never written.
+ */
+
+/* ---------------------------------------------------------------- board */
+
+.ff-board-toolbar {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.ff-board-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ff-board-control__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.ff-board-travel {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 18rem;
+}
+
+.ff-board-travel__range {
+  accent-color: var(--color-accent);
+  cursor: pointer;
+  flex: 1;
+  min-width: 8rem;
+}
+
+.ff-board-travel__value {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ff-board-countdown {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.ff-board__rank,
+.ff-board__score {
+  font-variant-numeric: tabular-nums;
+}
+
+.ff-board__rank {
+  color: var(--color-text-muted);
+}
+
+.ff-board__score {
+  font-weight: 700;
+}
+
+/* The viewer's own row. Specific enough to survive the table's hover rule, which is the one
+   place it would otherwise be repainted out from under them. */
+.ff-table tbody tr.ff-board__row--self td,
+.ff-table tbody tr.ff-board__row--self:hover td {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.ff-table tbody tr.ff-board__row--self td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/* ---------------------------------------------------------- team profile */
+
+.ff-team-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.ff-team-meta {
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.ff-team-score {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.ff-timeline {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ff-timeline__item {
+  align-items: center;
+  border-left: 2px solid var(--color-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-left: var(--space-2);
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  position: relative;
+}
+
+.ff-timeline__item::before {
+  background: var(--color-border-strong);
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  left: -4px;
+  position: absolute;
+  width: 7px;
+}
+
+.ff-timeline__item--blood {
+  border-left-color: var(--color-blood);
+}
+
+.ff-timeline__item--blood::before {
+  background: var(--color-blood);
+}
+
+.ff-timeline__name {
+  font-weight: 600;
+}
+
+.ff-timeline__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.ff-timeline__when {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin-left: auto;
+}

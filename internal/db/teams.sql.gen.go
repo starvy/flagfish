@@ -97,6 +97,8 @@ type GetOwnTeamRow struct {
 	Score       int64
 }
 
+// No cutoff: an account always sees its own live score, freeze or not. Withholding it would tell
+// the team nothing an attacker wants and everything they already know.
 func (q *Queries) GetOwnTeam(ctx context.Context, userID int64) (GetOwnTeamRow, error) {
 	row := q.db.QueryRow(ctx, getOwnTeam, userID)
 	var i GetOwnTeamRow
@@ -132,11 +134,22 @@ func (q *Queries) GetTeamForJoin(ctx context.Context, name string) (GetTeamForJo
 
 const getTeamPublicProfile = `-- name: GetTeamPublicProfile :one
 SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at,
-       (COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id), 0)
-      + COALESCE((SELECT sum(a.value) FROM awards a WHERE a.team_id = t.id), 0))::bigint AS score
+       (COALESCE((SELECT sum(s.value) FROM solves s
+                   WHERE s.team_id = t.id
+                     AND ($1::timestamptz IS NULL
+                          OR s.date < $1::timestamptz)), 0)
+      + COALESCE((SELECT sum(a.value) FROM awards a
+                   WHERE a.team_id = t.id
+                     AND ($1::timestamptz IS NULL
+                          OR a.date < $1::timestamptz)), 0))::bigint AS score
   FROM teams t
- WHERE t.id = $1 AND t.hidden = false AND t.banned = false
+ WHERE t.id = $2 AND t.hidden = false AND t.banned = false
 `
+
+type GetTeamPublicProfileParams struct {
+	Cutoff pgtype.Timestamptz
+	TeamID int64
+}
 
 type GetTeamPublicProfileRow struct {
 	ID          int64
@@ -149,9 +162,11 @@ type GetTeamPublicProfileRow struct {
 }
 
 // Hidden and banned teams 404 publicly, matching the board and the solve lists. The score sums
-// the stamped solves.team_id ledger — the same legs the scoreboard reads.
-func (q *Queries) GetTeamPublicProfile(ctx context.Context, teamID int64) (GetTeamPublicProfileRow, error) {
-	row := q.db.QueryRow(ctx, getTeamPublicProfile, teamID)
+// the stamped solves.team_id ledger — the same legs the scoreboard reads, and it takes the same
+// freeze horizon: cutoff is strict `<`, NULL = live. Both legs carry it, because a public team
+// page that sums live is the frozen board read one team at a time.
+func (q *Queries) GetTeamPublicProfile(ctx context.Context, arg GetTeamPublicProfileParams) (GetTeamPublicProfileRow, error) {
+	row := q.db.QueryRow(ctx, getTeamPublicProfile, arg.Cutoff, arg.TeamID)
 	var i GetTeamPublicProfileRow
 	err := row.Scan(
 		&i.ID,
@@ -190,16 +205,23 @@ func (q *Queries) LeaveTeam(ctx context.Context, arg LeaveTeamParams) (int64, er
 const listTeamMembers = `-- name: ListTeamMembers :many
 SELECT u.id, u.name,
        COALESCE(u.id = t.captain_id, false)::boolean AS captain,
-       (SELECT count(*) FROM solves s WHERE s.team_id = t.id AND s.user_id = u.id)::bigint AS solve_count,
-       COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id AND s.user_id = u.id), 0)::bigint AS points
+       (SELECT count(*) FROM solves s
+         WHERE s.team_id = t.id AND s.user_id = u.id
+           AND ($1::timestamptz IS NULL
+                OR s.date < $1::timestamptz))::bigint AS solve_count,
+       COALESCE((SELECT sum(s.value) FROM solves s
+                  WHERE s.team_id = t.id AND s.user_id = u.id
+                    AND ($1::timestamptz IS NULL
+                         OR s.date < $1::timestamptz)), 0)::bigint AS points
   FROM users u
   JOIN teams t ON t.id = u.team_id
- WHERE u.team_id = $1
-   AND ($2::boolean OR (u.hidden = false AND u.banned = false))
+ WHERE u.team_id = $2
+   AND ($3::boolean OR (u.hidden = false AND u.banned = false))
  ORDER BY u.id
 `
 
 type ListTeamMembersParams struct {
+	Cutoff        pgtype.Timestamptz
 	TeamID        *int64
 	IncludeMasked bool
 }
@@ -214,9 +236,10 @@ type ListTeamMembersRow struct {
 
 // Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 // scored them regardless of later roster churn. include_masked lifts the hidden/banned member
-// filter for the team's own view.
+// filter for the team's own view; cutoff is the freeze horizon (strict `<`, NULL = live) for the
+// public one, where an unclamped per-member breakdown says who scored what during the freeze.
 func (q *Queries) ListTeamMembers(ctx context.Context, arg ListTeamMembersParams) ([]ListTeamMembersRow, error) {
-	rows, err := q.db.Query(ctx, listTeamMembers, arg.TeamID, arg.IncludeMasked)
+	rows, err := q.db.Query(ctx, listTeamMembers, arg.Cutoff, arg.TeamID, arg.IncludeMasked)
 	if err != nil {
 		return nil, err
 	}

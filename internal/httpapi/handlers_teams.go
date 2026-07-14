@@ -144,8 +144,10 @@ func (s *Server) joinTeam(ctx context.Context, in *joinTeamInput) (*teamOutput, 
 	return &teamOutput{Body: teamBodyOf(t)}, nil
 }
 
+// teamDetail is a public scoreboard row with a roster attached, so it clamps to the freeze exactly
+// as the board does. myTeam below does not: an account's own live score is the deliberate exception.
 func (s *Server) teamDetail(ctx context.Context, in *teamIDInput) (*teamOutput, error) {
-	t, err := s.opts.Accounts.TeamProfile(ctx, in.ID)
+	t, err := s.opts.Accounts.TeamProfile(ctx, in.ID, freezeCutoff(PolicyOf(ctx)))
 	switch {
 	case errors.Is(err, accounts.ErrTeamNotFound):
 		return nil, huma.Error404NotFound("team not found")
