@@ -9,7 +9,9 @@ import { solveCountLabel, type BoardChallenge } from "./types";
  * focus ring, the middle-click and the context menu for free.
  */
 export function ChallengeCard({ challenge }: { challenge: BoardChallenge }) {
-  const { name, value, solved, locked, solve_count, tags } = challenge;
+  // No tags here: `list-challenges` does not return them, and the board will not invent a fact the
+  // server did not send. They are on the detail body, and the card links to it.
+  const { name, value, solved, locked, solve_count } = challenge;
 
   return (
     <Link
@@ -26,16 +28,6 @@ export function ChallengeCard({ challenge }: { challenge: BoardChallenge }) {
         <span className="chal-card__name">{name}</span>
         <span className="chal-card__value">{value}</span>
       </div>
-
-      {(tags ?? []).length > 0 && (
-        <div className="chal-card__tags">
-          {(tags ?? []).map((tag) => (
-            <Badge key={tag} tone="neutral">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
 
       <div className="chal-card__foot">
         {/* A redacted count is null and renders as an em dash. Zero means nobody has solved it. */}
