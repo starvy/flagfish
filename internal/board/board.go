@@ -34,7 +34,9 @@ func clampLimit(n int) int32 {
 	return int32(n)
 }
 
-// Entry is one row of standings; rank is positional, so the first entry is rank 1.
+// Entry is one row of standings; rank is positional, so the first entry is rank 1. Hidden and Banned
+// carry the account's visibility state — always false on the public board (those rows never appear),
+// meaningful only when admin=true, where an organiser export needs to see and flag them.
 type Entry struct {
 	AccountID   int64
 	Name        string
@@ -42,6 +44,8 @@ type Entry struct {
 	BracketName *string
 	Score       int64
 	LastEvent   time.Time
+	Hidden      bool
+	Banned      bool
 }
 
 // Top returns the live standings, highest first. admin includes hidden and banned accounts; a
@@ -59,6 +63,7 @@ func (s *Service) Top(ctx context.Context, admin bool, bracketID *int64, limit i
 			out[i] = Entry{
 				AccountID: r.AccountID, Name: r.Name, BracketID: r.BracketID,
 				BracketName: r.BracketName, Score: r.Score, LastEvent: asTime(r.LastEvent),
+				Hidden: r.Hidden, Banned: r.Banned,
 			}
 		}
 		return out, nil
@@ -72,6 +77,7 @@ func (s *Service) Top(ctx context.Context, admin bool, bracketID *int64, limit i
 			out[i] = Entry{
 				AccountID: r.AccountID, Name: r.Name, BracketID: r.BracketID,
 				BracketName: r.BracketName, Score: r.Score, LastEvent: asTime(r.LastEvent),
+				Hidden: r.Hidden, Banned: r.Banned,
 			}
 		}
 		return out, nil
@@ -93,7 +99,10 @@ func (s *Service) AsOf(ctx context.Context, asOf time.Time, admin bool, bracketI
 	}
 	out := make([]Entry, len(rows))
 	for i, r := range rows {
-		out[i] = Entry{AccountID: r.AccountID, Name: r.Name, BracketID: r.BracketID, Score: r.Score, LastEvent: asTime(r.LastEvent)}
+		out[i] = Entry{
+			AccountID: r.AccountID, Name: r.Name, BracketID: r.BracketID,
+			Score: r.Score, LastEvent: asTime(r.LastEvent), Hidden: r.Hidden, Banned: r.Banned,
+		}
 	}
 	return out, nil
 }

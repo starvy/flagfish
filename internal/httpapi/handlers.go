@@ -64,6 +64,7 @@ func (s *Server) registerRoutes() {
 		s.registerAdminAwards()
 		s.registerAdminFields()
 		s.registerAdminAudit()
+		s.registerAdminExport()
 	}
 	if s.opts.Anticheat != nil {
 		s.registerAdminAnticheat()

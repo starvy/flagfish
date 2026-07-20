@@ -551,8 +551,6 @@ components:
         first_blood_bonus:
           format: int32
           type: integer
-        flag_mode:
-          type: string
         function:
           type: string
         id:
@@ -571,9 +569,6 @@ components:
           type: integer
         name:
           type: string
-        next_id:
-          format: int64
-          type: integer
         position:
           format: int32
           type: integer
@@ -600,30 +595,11 @@ components:
         - function
         - max_attempts
         - logic
-        - flag_mode
         - position
         - first_blood
         - created_at
         - updated_at
         - requirements
-      type: object
-    AdminChallengeFlagModeInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminChallengeFlagModeInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        flag_mode:
-          enum:
-            - static
-            - unique
-          type: string
-      required:
-        - flag_mode
       type: object
     AdminChallengeStateInputBody:
       additionalProperties: false
@@ -982,51 +958,6 @@ components:
         - category
         - value
       type: object
-    AdminCreateFieldInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminCreateFieldInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        applies_to:
-          enum:
-            - user
-            - team
-          type: string
-        description:
-          maxLength: 500
-          type: string
-        editable:
-          default: false
-          type: boolean
-        field_type:
-          enum:
-            - text
-            - boolean
-          type: string
-        name:
-          maxLength: 128
-          minLength: 1
-          type: string
-        position:
-          default: 0
-          format: int32
-          type: integer
-        public:
-          default: false
-          type: boolean
-        required:
-          default: false
-          type: boolean
-      required:
-        - name
-        - applies_to
-        - field_type
-      type: object
     AdminCreateNotificationInputBody:
       additionalProperties: false
       properties:
@@ -1080,46 +1011,6 @@ components:
           type: string
       required:
         - name
-      type: object
-    AdminFieldBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminFieldBody.json
-          format: uri
-          readOnly: true
-          type: string
-        applies_to:
-          type: string
-        description:
-          type: string
-        editable:
-          type: boolean
-        field_type:
-          type: string
-        id:
-          format: int64
-          type: integer
-        name:
-          type: string
-        position:
-          format: int32
-          type: integer
-        public:
-          type: boolean
-        required:
-          type: boolean
-      required:
-        - id
-        - name
-        - applies_to
-        - field_type
-        - required
-        - public
-        - editable
-        - position
       type: object
     AdminFileBody:
       additionalProperties: false
@@ -1271,33 +1162,6 @@ components:
         - position
         - prerequisites
       type: object
-    AdminInstanceBody:
-      additionalProperties: false
-      properties:
-        artifact_id:
-          format: int64
-          type: integer
-        assigned_at:
-          format: date-time
-          type: string
-        generation:
-          format: int32
-          type: integer
-        id:
-          format: int64
-          type: integer
-        issued_to:
-          format: int64
-          type: integer
-        value_hash:
-          type: string
-        vars: {}
-      required:
-        - id
-        - value_hash
-        - vars
-        - generation
-      type: object
     AdminListAuditOutputBody:
       additionalProperties: false
       properties:
@@ -1366,56 +1230,6 @@ components:
             - "null"
       required:
         - brackets
-      type: object
-    AdminListFieldsOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminListFieldsOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        fields:
-          items:
-            $ref: "#/components/schemas/AdminFieldBody"
-          type:
-            - array
-            - "null"
-      required:
-        - fields
-      type: object
-    AdminListInstancesOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminListInstancesOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        instances:
-          items:
-            $ref: "#/components/schemas/AdminInstanceBody"
-          type:
-            - array
-            - "null"
-        page:
-          format: int64
-          type: integer
-        per_page:
-          format: int64
-          type: integer
-        total:
-          format: int64
-          type: integer
-      required:
-        - instances
-        - total
-        - page
-        - per_page
       type: object
     AdminListTagsOutputBody:
       additionalProperties: false
@@ -1513,91 +1327,6 @@ components:
           type: string
       required:
         - into
-      type: object
-    AdminPoolInstanceInput:
-      additionalProperties: false
-      properties:
-        artifact_id:
-          format: int64
-          type: integer
-        value_hash:
-          description: sha256(flag) as lowercase hex
-          pattern: ^[0-9a-fA-F]{64}$
-          type: string
-        vars:
-          description: arbitrary per-account JSON for the description template; never the flag
-      required:
-        - value_hash
-      type: object
-    AdminPoolStatsOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminPoolStatsOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        pools:
-          items:
-            $ref: "#/components/schemas/PoolStatBody"
-          type:
-            - array
-            - "null"
-      required:
-        - pools
-      type: object
-    AdminPoolUploadInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminPoolUploadInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        instances:
-          items:
-            $ref: "#/components/schemas/AdminPoolInstanceInput"
-          maxItems: 10000
-          minItems: 1
-          type:
-            - array
-            - "null"
-      required:
-        - instances
-      type: object
-    AdminPoolUploadOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminPoolUploadOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        generation:
-          format: int32
-          type: integer
-        idempotent:
-          description: true when the upload matched the newest generation and nothing was written
-          type: boolean
-        inserted:
-          format: int64
-          type: integer
-        warnings:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-      required:
-        - generation
-        - inserted
-        - idempotent
       type: object
     AdminReorderInputBody:
       additionalProperties: false
@@ -1968,11 +1697,6 @@ components:
           maxLength: 256
           minLength: 1
           type: string
-        next_id:
-          format: int64
-          type:
-            - integer
-            - "null"
         position:
           format: int32
           type: integer
@@ -1980,33 +1704,6 @@ components:
           format: int32
           minimum: 0
           type: integer
-      type: object
-    AdminUpdateFieldInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/admin/schemas/AdminUpdateFieldInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        description:
-          maxLength: 500
-          type: string
-        editable:
-          type: boolean
-        name:
-          maxLength: 128
-          minLength: 1
-          type: string
-        position:
-          format: int32
-          type: integer
-        public:
-          type: boolean
-        required:
-          type: boolean
       type: object
     AdminUpdateFlagInputBody:
       additionalProperties: false
@@ -2311,30 +2008,6 @@ components:
         - title
         - content
         - date
-      type: object
-    PoolStatBody:
-      additionalProperties: false
-      properties:
-        challenge_id:
-          format: int64
-          type: integer
-        issued:
-          format: int64
-          type: integer
-        name:
-          type: string
-        total:
-          format: int64
-          type: integer
-        utilization:
-          format: double
-          type: number
-      required:
-        - challenge_id
-        - name
-        - total
-        - issued
-        - utilization
       type: object
 info:
   title: flagfish (admin)
@@ -2901,38 +2574,6 @@ paths:
       summary: Attach a file to a challenge
       tags:
         - admin/files
-  /challenges/{id}/flag-mode:
-    put:
-      operationId: admin-set-challenge-flag-mode
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            format: int64
-            type: integer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminChallengeFlagModeInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminChallengeBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Switch a challenge between static and unique flags (guarded)
-      tags:
-        - admin/challenges
   /challenges/{id}/flags:
     post:
       operationId: admin-add-flag
@@ -3127,81 +2768,6 @@ paths:
       summary: Update a hint (partial)
       tags:
         - admin/hints
-  /challenges/{id}/instances:
-    get:
-      operationId: admin-list-instances
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            format: int64
-            type: integer
-        - explode: false
-          in: query
-          name: page
-          schema:
-            default: 1
-            format: int64
-            maximum: 1000000
-            minimum: 1
-            type: integer
-        - explode: false
-          in: query
-          name: per_page
-          schema:
-            default: 50
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminListInstancesOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: List a challenge's instance pool
-      tags:
-        - admin/instances
-    put:
-      operationId: admin-upload-instances
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            format: int64
-            type: integer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminPoolUploadInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminPoolUploadOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Upload a challenge's unique-flag instance pool (new generation)
-      tags:
-        - admin/instances
   /challenges/{id}/requirements:
     put:
       operationId: admin-set-challenge-requirements
@@ -3368,15 +2934,11 @@ paths:
       summary: Update config knobs (partial)
       tags:
         - admin/config
-  /fields:
+  /export/standings.csv:
     get:
-      operationId: admin-list-fields
+      operationId: admin-export-standings
       responses:
         "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminListFieldsOutputBody"
           description: OK
         default:
           content:
@@ -3384,76 +2946,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: List custom registration fields
+      summary: Export the final standings as CSV
       tags:
-        - admin/fields
-    post:
-      operationId: admin-create-field
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminCreateFieldInputBody"
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminFieldBody"
-          description: Created
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Create a custom registration field
-      tags:
-        - admin/fields
-  /fields/{id}:
-    delete:
-      operationId: admin-delete-field
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            format: int64
-            type: integer
-      responses:
-        "204":
-          description: No Content
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Delete a custom field (its answers are removed with it)
-      tags:
-        - admin/fields
-    patch:
-      operationId: admin-update-field
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            format: int64
-            type: integer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminUpdateFieldInputBody"
-        required: true
+        - admin/export
+  /export/teams.csv:
+    get:
+      operationId: admin-export-teams
       responses:
         "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminFieldBody"
           description: OK
         default:
           content:
@@ -3461,9 +2961,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Update a custom field (partial)
+      summary: Export the team roster as CSV
       tags:
-        - admin/fields
+        - admin/export
+  /export/users.csv:
+    get:
+      operationId: admin-export-users
+      responses:
+        "200":
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Export the user roster as CSV
+      tags:
+        - admin/export
   /files/{fileID}:
     delete:
       operationId: admin-delete-file
@@ -3511,25 +3026,6 @@ paths:
       summary: Publish a notification
       tags:
         - admin/notifications
-  /pool/stats:
-    get:
-      operationId: admin-pool-stats
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminPoolStatsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Pool utilisation for every unique-flag challenge
-      tags:
-        - admin/instances
   /tags:
     get:
       operationId: admin-list-tags
