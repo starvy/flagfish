@@ -280,7 +280,21 @@ func checkStatic(ctx context.Context, q *db.Queries, ch *db.Challenge, provided 
 		fs = append(fs, flags.Flag{Type: t, Content: r.Content, CaseInsensitive: r.CaseInsensitive})
 	}
 
-	ok, err := flags.MatchAny(fs, provided)
+	// Both folds run on this pre-lock, no-write leg and swap one pure in-memory
+	// comparison for another: no new query, no branch below the challenge lock, so
+	// the lazy-lock property the wrong-answer path rests on is untouched. A corrupt
+	// logic value is a hard error, like an unparseable flag_mode above — never a
+	// silent fall back to 'any', which would quietly weaken an 'all' challenge.
+	logic, err := flags.ParseLogic(ch.Logic)
+	if err != nil {
+		return match{}, err
+	}
+	var ok bool
+	if logic == flags.LogicAll {
+		ok, err = flags.MatchAll(fs, provided)
+	} else {
+		ok, err = flags.MatchAny(fs, provided)
+	}
 	if err != nil {
 		return match{}, err
 	}
