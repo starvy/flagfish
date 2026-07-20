@@ -161,7 +161,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, current, nex
 	if err != nil {
 		return Session{}, err
 	}
-	if err := s.q.UpdatePasswordHash(ctx, db.UpdatePasswordHashParams{
+	// A real change also discharges a pending forced change — unlike the login rehash, which
+	// re-mints the same password and must leave the flag alone.
+	if err := s.q.UpdatePasswordAndClearForcedChange(ctx, db.UpdatePasswordAndClearForcedChangeParams{
 		UserID: userID, PasswordHash: &hash,
 	}); err != nil {
 		return Session{}, fmt.Errorf("accounts: change password: %w", err)

@@ -25,6 +25,10 @@ change to the auth path.
 | Masked teams off the public board | team-scoreboard `WHERE (admin OR NOT masked)` → `true` | ✅ FAILS: `public scoreboard shows map[ghost… outlaw…], want honest only` |
 | Team PATCH mass assignment | wire `banned` through the PATCH (body field + `SET banned = COALESCE(…)`) | ✅ FAILS: `PATCH {"banned":true} was accepted` + landed in the row |
 | User PATCH mass assignment | wire `role` through the PATCH (body field + `SET role = COALESCE(…)`) | ✅ FAILS: `PATCH {"role":"admin"} was accepted` + row changed |
+| Forced-change wall | `Decide` forced-change gate → `if false` | ✅ FAILS: `forced user reached an ordinary route: 200, want 403` |
+| Forced-change exit | drop `exemptFromPasswordChange` from `ClassPasswordChange` | ✅ FAILS: `the forced-change exit is walled: 403 … password-change-required` |
+| Forced-change discharge | ChangePassword back to `UpdatePasswordHash` (hash only, no clear) | ✅ FAILS: flag survives the change, post-change session still walled |
+| Login rehash leaves the flag | rehash path switched to the clearing query | ✅ FAILS: `the login rehash cleared must_change_password` |
 | File download prerequisites | `downloadFile` checks only `meta.Hidden`, not `meta.PrereqsMet` | ✅ FAILS: the file of a prerequisite-locked challenge downloads by id (200, exact bytes) |
 | Hint unlock prerequisites | drop the `challengePrereqsMet` gate from `UnlockHint` | ✅ FAILS: the hint of a prerequisite-locked challenge is sold, content and all |
 

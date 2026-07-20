@@ -40,6 +40,10 @@ const (
 	ClassAccountList
 	ClassAccountDetail
 	ClassAccountSelf
+	// ClassPasswordChange is POST /me/password alone. It must be exempt from the forced-change
+	// wall or a forced user loops forever: every route redirects them to change a password on
+	// an endpoint the redirect itself blocks.
+	ClassPasswordChange
 
 	ClassTeamEnrollment
 	ClassTeamCreate
@@ -127,6 +131,9 @@ var classAttrs = map[RouteClass]attrs{
 	ClassAccountList:   {visGates: []VisKind{VisAccount}},
 	ClassAccountDetail: {visGates: []VisKind{VisAccount}},
 	ClassAccountSelf:   {requiresAuth: true},
+	// NOT ban-exempt: a banned user has no password-changing to do here. Only the wall that
+	// would otherwise trap its own exit is lifted.
+	ClassPasswordChange: {requiresAuth: true, exemptFromPasswordChange: true},
 
 	ClassTeamEnrollment: {requiresAuth: true, modes: []account.Mode{account.ModeTeams}},
 	ClassTeamCreate:     {requiresAuth: true, modes: []account.Mode{account.ModeTeams}},
@@ -185,6 +192,7 @@ var classNames = map[RouteClass]string{
 	ClassHintUnlock: "hint-unlock", ClassSolutionUnlock: "solution-unlock",
 	ClassScoreboard: "scoreboard", ClassScoreboardDetail: "scoreboard-detail",
 	ClassAccountList: "account-list", ClassAccountDetail: "account-detail", ClassAccountSelf: "account-self",
+	ClassPasswordChange: "password-change",
 	ClassTeamEnrollment: "team-enrollment", ClassTeamCreate: "team-create", ClassTeamDetail: "team-detail",
 	ClassTokens: "tokens", ClassSSE: "sse", ClassNotifications: "notifications",
 	ClassAdmin: "admin", ClassAdminScoreboard: "admin-scoreboard",

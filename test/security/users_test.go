@@ -6,7 +6,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // S20b — the user profile PATCH cannot touch identity or moderation state.
@@ -46,6 +49,100 @@ func TestS20b_UserPatchMassAssignmentIsRefused(t *testing.T) {
 		if after := f.userRow(uid); after != before {
 			t.Errorf("PATCH %s changed the row:\n before %+v\n after  %+v", payload, before, after)
 		}
+	}
+}
+
+// S21 — the forced-password-change wall is real, and so is its exit.
+//
+// A forced user is refused everywhere except the password-change endpoint itself; changing the
+// password clears the flag and the new session plays normally. Without the exemption the wall
+// redirects the user to change a password on an endpoint the wall itself blocks — an unrecoverable
+// loop; without the clear, the change "succeeds" and the wall stays up anyway.
+func TestS21_ForcedPasswordChangeWallHasAnExit(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+
+	uid := f.user("forced", pw)
+	f.forcePasswordChange(uid)
+
+	sess, err := f.acct.Login(ctx, "forced@ctf.test", pw)
+	if err != nil {
+		t.Fatalf("login while forced must work (the login route is exempt): %v", err)
+	}
+
+	// The wall: an ordinary authenticated route is refused.
+	if got := f.do(http.MethodGet, "/api/v1/probe", withCookie(sess.ID)).StatusCode; got != http.StatusForbidden {
+		t.Fatalf("forced user reached an ordinary route: %d, want 403", got)
+	}
+
+	// The exit: the password-change endpoint answers.
+	r := f.do(http.MethodPost, "/api/v1/me/password",
+		withCookie(sess.ID), withCSRF(sess.CSRFToken),
+		withBody("application/json",
+			[]byte(`{"current_password":"`+pw+`","new_password":"a brand new passphrase"}`)))
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("the forced-change exit is walled: %d (%s) — the user is trapped in a loop", r.StatusCode, r.Body)
+	}
+
+	// The change discharged the order…
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND must_change_password`, uid); n != 0 {
+		t.Error("must_change_password survived a real password change — the gate is a one-way door again")
+	}
+	// …and the fresh session plays.
+	fresh := r.cookie("flagfish_session")
+	if fresh == nil {
+		t.Fatal("the password change minted no session cookie")
+	}
+	if got := f.do(http.MethodGet, "/api/v1/probe", withCookie(fresh.Value)).StatusCode; got != http.StatusOK {
+		t.Errorf("the post-change session is still walled: %d, want 200", got)
+	}
+}
+
+// S22 — the login rehash does NOT clear the forced-change flag.
+//
+// The rehash re-mints the same password: an imported bcrypt hash upgrades to Argon2id the first
+// time its owner logs in. If that write went through the clearing query, every imported user with
+// a pending forced change would discharge it by logging in — with the very password the order
+// exists to retire.
+func TestS22_LoginRehashDoesNotClearForcedChange(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+
+	bh, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("bcrypt: %v", err)
+	}
+	uid := f.user("imported-forced", pw, withHash(string(bh)))
+	f.forcePasswordChange(uid)
+
+	sess, err := f.acct.Login(ctx, "imported-forced@ctf.test", pw)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	// The rehash happened…
+	var hash string
+	if err := f.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, uid).Scan(&hash); err != nil {
+		t.Fatalf("read hash: %v", err)
+	}
+	if !strings.HasPrefix(hash, "$argon2id$") {
+		t.Fatalf("the rehash did not run (hash %q) — this test would pass vacuously", hash)
+	}
+
+	// …and the flag survived it, so the wall still stands for the session it minted.
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND must_change_password`, uid); n != 1 {
+		t.Error("the login rehash cleared must_change_password — logging in with the OLD password discharged the forced change")
+	}
+	if got := f.do(http.MethodGet, "/api/v1/probe", withCookie(sess.ID)).StatusCode; got != http.StatusForbidden {
+		t.Errorf("forced user plays on after a rehashing login: %d, want 403", got)
+	}
+}
+
+func (f *fixture) forcePasswordChange(uid int64) {
+	f.t.Helper()
+	if _, err := f.pool.Exec(context.Background(),
+		`UPDATE users SET must_change_password = true WHERE id = $1`, uid); err != nil {
+		f.t.Fatalf("force password change: %v", err)
 	}
 }
 

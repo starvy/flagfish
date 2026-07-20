@@ -122,7 +122,9 @@ func (s *Server) registerAuth() {
 		Summary: "Get the current account", Tags: []string{"auth"},
 	}, s.me)
 
-	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
+	// Its own class, not ClassAccountSelf: the forced-change wall must exempt exactly this
+	// route, or the wall traps its own exit.
+	Register(s.Public, policy.ClassPasswordChange, huma.Operation{
 		OperationID: "change-password", Method: http.MethodPost, Path: "/me/password",
 		Summary: "Change the current account's password", Tags: []string{"auth"},
 	}, s.changePassword)

@@ -58,6 +58,17 @@ func TestDecideTable(t *testing.T) {
 			name: "forced password change exempts the reset route itself",
 			p:    mustChange, r: policy.Request{Class: policy.ClassReset}, allow: true,
 		},
+		{
+			// The exit. Without this row the wall redirects a forced user to change a password
+			// on an endpoint the wall itself blocks, and they loop forever.
+			name: "forced password change exempts the password-change endpoint",
+			p:    mustChange, r: policy.Request{Class: policy.ClassPasswordChange}, allow: true,
+		},
+		{
+			name: "the password-change endpoint still requires auth",
+			p:    anon(), r: policy.Request{Class: policy.ClassPasswordChange},
+			status: 403, redirect: "/login", reason: policy.ReasonAuthRequired,
+		},
 
 		// --- mode -------------------------------------------------------------
 		{

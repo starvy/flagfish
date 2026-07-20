@@ -539,6 +539,23 @@ func (q *Queries) TouchSession(ctx context.Context, idHash []byte) error {
 	return err
 }
 
+const updatePasswordAndClearForcedChange = `-- name: UpdatePasswordAndClearForcedChange :exec
+UPDATE users SET password_hash = $1, must_change_password = false
+ WHERE id = $2
+`
+
+type UpdatePasswordAndClearForcedChangeParams struct {
+	PasswordHash *string
+	UserID       int64
+}
+
+// A real password change: the user chose a new password, so a pending forced change is satisfied.
+// One statement, so the flag can never clear without the hash that justifies it.
+func (q *Queries) UpdatePasswordAndClearForcedChange(ctx context.Context, arg UpdatePasswordAndClearForcedChangeParams) error {
+	_, err := q.db.Exec(ctx, updatePasswordAndClearForcedChange, arg.PasswordHash, arg.UserID)
+	return err
+}
+
 const updatePasswordHash = `-- name: UpdatePasswordHash :exec
 UPDATE users SET password_hash = $1 WHERE id = $2
 `
@@ -548,8 +565,9 @@ type UpdatePasswordHashParams struct {
 	UserID       int64
 }
 
-// Used by both the rehash-on-login path (a bcrypt hash from an import, silently upgraded to Argon2id
-// while we hold the plaintext) and by a real password change.
+// The rehash-on-login path only: a bcrypt hash from an import, silently upgraded to Argon2id while
+// we hold the plaintext. The password itself has not changed, so must_change_password stays put —
+// a forced user logging in must not discharge the order by the act of logging in.
 func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error {
 	_, err := q.db.Exec(ctx, updatePasswordHash, arg.PasswordHash, arg.UserID)
 	return err

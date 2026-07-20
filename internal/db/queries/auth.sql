@@ -131,9 +131,16 @@ SELECT id, name, email, password_hash, role, verified, banned, must_change_passw
   FROM users WHERE id = @user_id;
 
 -- name: UpdatePasswordHash :exec
--- Used by both the rehash-on-login path (a bcrypt hash from an import, silently upgraded to Argon2id
--- while we hold the plaintext) and by a real password change.
+-- The rehash-on-login path only: a bcrypt hash from an import, silently upgraded to Argon2id while
+-- we hold the plaintext. The password itself has not changed, so must_change_password stays put —
+-- a forced user logging in must not discharge the order by the act of logging in.
 UPDATE users SET password_hash = @password_hash WHERE id = @user_id;
+
+-- name: UpdatePasswordAndClearForcedChange :exec
+-- A real password change: the user chose a new password, so a pending forced change is satisfied.
+-- One statement, so the flag can never clear without the hash that justifies it.
+UPDATE users SET password_hash = @password_hash, must_change_password = false
+ WHERE id = @user_id;
 
 -- name: CreateUser :one
 -- Registration. The unique email and the num_users/team_size caps are enforced by the index and the

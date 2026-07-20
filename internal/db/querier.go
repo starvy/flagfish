@@ -649,8 +649,12 @@ type Querier interface {
 	// without paging. The caller emits them oldest-first.
 	RecentNotifications(ctx context.Context, lim int32) ([]Notification, error)
 	TouchSession(ctx context.Context, idHash []byte) error
-	// Used by both the rehash-on-login path (a bcrypt hash from an import, silently upgraded to Argon2id
-	// while we hold the plaintext) and by a real password change.
+	// A real password change: the user chose a new password, so a pending forced change is satisfied.
+	// One statement, so the flag can never clear without the hash that justifies it.
+	UpdatePasswordAndClearForcedChange(ctx context.Context, arg UpdatePasswordAndClearForcedChangeParams) error
+	// The rehash-on-login path only: a bcrypt hash from an import, silently upgraded to Argon2id while
+	// we hold the plaintext. The password itself has not changed, so must_change_password stays put —
+	// a forced user logging in must not discharge the order by the act of logging in.
 	UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error
 	// Rehash-on-join: an imported bcrypt join password is upgraded while the plaintext is in hand.
 	UpdateTeamPasswordHash(ctx context.Context, arg UpdateTeamPasswordHashParams) error

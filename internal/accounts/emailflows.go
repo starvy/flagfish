@@ -142,7 +142,8 @@ func (s *Service) ResetPassword(ctx context.Context, token, password string) err
 		return fmt.Errorf("accounts: reset password: %w", err)
 	}
 
-	if err := q.UpdatePasswordHash(ctx, db.UpdatePasswordHashParams{
+	// A reset is a real password change, so it also discharges a pending forced change.
+	if err := q.UpdatePasswordAndClearForcedChange(ctx, db.UpdatePasswordAndClearForcedChangeParams{
 		UserID: userID, PasswordHash: &hash,
 	}); err != nil {
 		return fmt.Errorf("accounts: reset password: %w", err)
