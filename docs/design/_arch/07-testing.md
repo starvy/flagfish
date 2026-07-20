@@ -150,7 +150,7 @@ and are not — the ones someone will otherwise "fix" in year two.
 | **Visibility** | entity shapes × roles (anon / unverified / verified / banned / hidden / admin) × config (public / private / hidden) |
 | **Freeze** | `date < freeze` (strict `<`); admins see frozen data on the *public* board and live data on the *admin* board. Call-site-driven, not role-driven. |
 | **Tiebreak** | earliest *last* non-zero scoring event; `MAX(id)` across two id spaces; accounts with only zero-valued solves are absent from the board entirely |
-| **Deliberately-odd behaviors** | a pause has no admin exemption and does not block hint purchases; unverified logged-in users are *more* restricted than anonymous ones; removing a member hard-deletes their submissions while deleting a team detaches them — asymmetric on purpose |
+| **Deliberately-odd behaviors** | a pause has no admin exemption and does not block hint purchases; unverified logged-in users are *more* restricted than anonymous ones; leaving a team is refused outright once the team has scored (`ErrTeamHasScored`) — the ledger keeps its rows and the roster keeps its player |
 
 Every entry in that last row needs a test whose name says *"this looks like a bug and is not."* The
 test is the comment that cannot rot.

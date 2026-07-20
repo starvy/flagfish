@@ -514,8 +514,9 @@ CREATE TABLE solves (
     -- RESTRICT, not CASCADE: deleting a challenge must not silently destroy its solves. The
     -- standings, the time-travel view and the gameplay audit trail are all sums over this table; a
     -- CASCADE would let one admin DELETE rewrite all three with no trace of what was lost. The API
-    -- turns the violation into a 409 that names the problem. `submissions` keeps its CASCADE — a
-    -- never-solved challenge can be deleted along with its failed attempts.
+    -- turns the violation into a 409 that names the problem. `submissions` RESTRICTs too: failed
+    -- attempts are anticheat evidence (ip, attributed account), so a challenge with any recorded
+    -- attempts can only be hidden, never deleted.
     challenge_id  bigint      NOT NULL REFERENCES challenges(id) ON DELETE RESTRICT,
     user_id       bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     team_id       bigint      REFERENCES teams(id) ON DELETE CASCADE,
