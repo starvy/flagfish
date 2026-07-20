@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -51,6 +53,21 @@ type adminConfigInput struct {
 		NumUsers *int `json:"num_users,omitempty" minimum:"0"`
 		NumTeams *int `json:"num_teams,omitempty" minimum:"0"`
 		TeamSize *int `json:"team_size,omitempty" minimum:"0"`
+
+		// SMTP. Server, username and password are secrets and set-only: a value
+		// writes, "" clears, absent keeps. They are never echoed back — the GET
+		// carries presence booleans instead, and rotation is overwrite.
+		MailServer   *string `json:"mail_server,omitempty"`
+		MailUsername *string `json:"mail_username,omitempty"`
+		MailPassword *string `json:"mail_password,omitempty"`
+		MailPort     *int    `json:"mail_port,omitempty" minimum:"0" maximum:"65535"`
+		MailTLS      *bool   `json:"mail_tls,omitempty"`
+		MailFrom     *string `json:"mailfrom_addr,omitempty"`
+
+		// The webhook URL embeds its token, so it is a credential and set-only too.
+		WebhookURL     *string   `json:"webhook_url,omitempty"`
+		WebhookEnabled *bool     `json:"webhook_enabled,omitempty"`
+		WebhookEvents  *[]string `json:"webhook_events,omitempty" enum:"first_blood,solve" minItems:"1"`
 	}
 }
 
@@ -79,6 +96,19 @@ type adminConfigOutput struct {
 		NumUsers int `json:"num_users"`
 		NumTeams int `json:"num_teams"`
 		TeamSize int `json:"team_size"`
+
+		MailPort int    `json:"mail_port"`
+		MailTLS  bool   `json:"mail_tls"`
+		MailFrom string `json:"mailfrom_addr"`
+
+		// Presence booleans, never values: the secrets are set-only.
+		MailServerSet   bool `json:"mail_server_set"`
+		MailUsernameSet bool `json:"mail_username_set"`
+		MailPasswordSet bool `json:"mail_password_set"`
+
+		WebhookEnabled bool     `json:"webhook_enabled"`
+		WebhookEvents  []string `json:"webhook_events"`
+		WebhookURLSet  bool     `json:"webhook_url_set"`
 
 		// Problems are coherence violations the instance is currently serving with.
 		// They can only arrive out of band — the write path refuses to create them —
@@ -151,6 +181,17 @@ func (s *Server) adminUpdateConfig(ctx context.Context, in *adminConfigInput) (*
 	putInt("num_users", in.Body.NumUsers)
 	putInt("num_teams", in.Body.NumTeams)
 	putInt("team_size", in.Body.TeamSize)
+	putString("mail_server", in.Body.MailServer)
+	putString("mail_username", in.Body.MailUsername)
+	putString("mail_password", in.Body.MailPassword)
+	putInt("mail_port", in.Body.MailPort)
+	putBool("mail_tls", in.Body.MailTLS)
+	putString("mailfrom_addr", in.Body.MailFrom)
+	putString("webhook_url", in.Body.WebhookURL)
+	putBool("webhook_enabled", in.Body.WebhookEnabled)
+	if in.Body.WebhookEvents != nil {
+		kv["webhook_events"] = strings.Join(*in.Body.WebhookEvents, ",")
+	}
 
 	// Set validates the merged result before it writes, so an incoherent combination (freeze after
 	// end, say) is refused whole rather than stored and then found broken on the next boot. The
@@ -188,6 +229,28 @@ func configOutput(cfg *config.Manager) *adminConfigOutput {
 	out.Body.NumUsers = snap.NumUsers
 	out.Body.NumTeams = snap.NumTeams
 	out.Body.TeamSize = snap.TeamSize
+	out.Body.MailPort = snap.MailPort
+	out.Body.MailTLS = snap.MailTLS
+	out.Body.MailFrom = snap.MailFrom
+	out.Body.MailServerSet = snap.MailServer != ""
+	out.Body.MailUsernameSet = snap.MailUsername != ""
+	out.Body.MailPasswordSet = snap.MailPassword != ""
+	out.Body.WebhookEnabled = snap.WebhookEnabled
+	out.Body.WebhookEvents = webhookEventNames(snap.WebhookEvents)
+	out.Body.WebhookURLSet = snap.WebhookURL != ""
 	out.Body.Problems = cfg.Problems()
+	return out
+}
+
+// webhookEventNames flattens the set into a sorted list; only enabled events count,
+// because the defaults keep disabled entries in the map.
+func webhookEventNames(set config.WebhookEventSet) []string {
+	out := make([]string, 0, len(set))
+	for e, on := range set {
+		if on {
+			out = append(out, string(e))
+		}
+	}
+	slices.Sort(out)
 	return out
 }

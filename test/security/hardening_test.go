@@ -5,10 +5,12 @@ package security
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -248,6 +250,80 @@ func TestS15_AdminOpenAPIIsNotAnonymous(t *testing.T) {
 	}
 	if !strings.Contains(r.Body, "openapi") {
 		t.Errorf("the admin spec does not look like an OpenAPI document:\n%s", snippet(r.Body))
+	}
+}
+
+// A stored secret never appears in any admin GET body.
+//
+// mail_server/mail_username/mail_password and webhook_url are credentials an admin hands the
+// instance; the round-trip contract is set-only. The sweep is driven by the served admin OpenAPI
+// document, so an admin GET added later is covered without anyone remembering this test exists —
+// and the assertion runs on the raw bytes, because "the field is absent" says nothing about a
+// secret embedded in a message, a problems list, or an error.
+func TestS17_AdminGETsNeverEchoASetSecret(t *testing.T) {
+	f := setup(t)
+	f.user("secret-admin", pw, asAdmin)
+	sess, err := f.acct.Login(context.Background(), "secret-admin@ctf.test", pw)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	auth := []func(*http.Request){withCookie(sess.ID)}
+
+	secrets := []string{
+		"smtp.s17-secret-host.example",
+		"s17-mailer-username",
+		"s17-hunter2-password",
+		"https://discord.example/api/webhooks/99/s17-token-value",
+	}
+	patch := `{
+		"mail_server":   "` + secrets[0] + `",
+		"mail_username": "` + secrets[1] + `",
+		"mail_password": "` + secrets[2] + `",
+		"mail_port":     587,
+		"mailfrom_addr": "noreply@ctf.test",
+		"webhook_url":   "` + secrets[3] + `",
+		"webhook_enabled": true
+	}`
+	r := f.do(http.MethodPatch, "/api/v1/admin/config",
+		withBody("application/json", []byte(patch)), withCookie(sess.ID), withCSRF(sess.CSRFToken))
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("seed secrets via PATCH: %d (%s)", r.StatusCode, r.Body)
+	}
+
+	spec := f.do(http.MethodGet, "/api/v1/admin/openapi.json", auth...)
+	if spec.StatusCode != http.StatusOK {
+		t.Fatalf("admin openapi: %d", spec.StatusCode)
+	}
+	var doc struct {
+		Paths map[string]map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal([]byte(spec.Body), &doc); err != nil {
+		t.Fatalf("decode admin openapi: %v", err)
+	}
+
+	pathParam := regexp.MustCompile(`\{[^}]+\}`)
+	swept := 0
+	for p, ops := range doc.Paths {
+		if _, ok := ops["get"]; !ok {
+			continue
+		}
+		swept++
+		url := "/api/v1/admin" + pathParam.ReplaceAllString(p, "1")
+		body := f.do(http.MethodGet, url, auth...).Body
+		for _, secret := range secrets {
+			if strings.Contains(body, secret) {
+				t.Errorf("GET %s echoes the stored secret %q:\n%s", url, secret, snippet(body))
+			}
+		}
+	}
+	if swept == 0 {
+		t.Fatal("the admin OpenAPI document lists no GET operations — the sweep swept nothing")
+	}
+
+	// The sweep must include the config endpoint itself, or a doc regression could
+	// quietly reduce this test to sweeping nothing that matters.
+	if _, ok := doc.Paths["/config"]; !ok {
+		t.Error("/config is missing from the admin OpenAPI document")
 	}
 }
 

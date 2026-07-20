@@ -130,6 +130,196 @@ func TestAdminConfigTeamSizeRefusedInUsersMode(t *testing.T) {
 	}
 }
 
+func TestAdminConfigMailRoundTripAndSecrets(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	cookie, csrf, adminID := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	const (
+		secretServer   = "smtp.secret-host.example"
+		secretUser     = "mailer-user-7"
+		secretPassword = "hunter2-secret-value"
+	)
+
+	res, body := f.do(http.MethodGet, "/api/v1/admin/config", nil, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("get: got %d (%s)", res.StatusCode, body)
+	}
+	if got := decodeConfig(t, body); got.MailServerSet || got.MailUsernameSet || got.MailPasswordSet {
+		t.Fatalf("presence booleans true on a fresh instance: %+v", got)
+	}
+
+	before := f.configAuditRows(adminID)
+	res, body = f.do(http.MethodPatch, "/api/v1/admin/config", map[string]any{
+		"mail_server":   secretServer,
+		"mail_username": secretUser,
+		"mail_password": secretPassword,
+		"mail_port":     2525,
+		"mail_tls":      true,
+		"mailfrom_addr": "CTF <noreply@ctf.example>",
+	}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("patch mail: got %d, want 200 (%s)", res.StatusCode, body)
+	}
+	got := decodeConfig(t, body)
+	if got.MailPort != 2525 || !got.MailTLS || got.MailFrom != "CTF <noreply@ctf.example>" {
+		t.Errorf("public mail fields did not round-trip: %+v", got)
+	}
+	if !got.MailServerSet || !got.MailUsernameSet || !got.MailPasswordSet {
+		t.Errorf("presence booleans did not flip on set: %+v", got)
+	}
+	if f.configAuditRows(adminID) <= before {
+		t.Error("no audit row for the mail write")
+	}
+
+	// The values themselves must never come back — not as fields, not embedded in
+	// anything. The raw body is the only honest place to check.
+	for _, secret := range []string{secretServer, secretUser, secretPassword} {
+		if strings.Contains(string(body), secret) {
+			t.Errorf("the PATCH echo carries the secret %q:\n%s", secret, body)
+		}
+	}
+	res, body = f.do(http.MethodGet, "/api/v1/admin/config", nil, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("get after set: got %d (%s)", res.StatusCode, body)
+	}
+	for _, secret := range []string{secretServer, secretUser, secretPassword} {
+		if strings.Contains(string(body), secret) {
+			t.Errorf("GET /admin/config carries the secret %q:\n%s", secret, body)
+		}
+	}
+
+	// "" clears: the password's presence boolean drops, the username's stays.
+	res, body = f.do(http.MethodPatch, "/api/v1/admin/config", map[string]any{"mail_password": ""}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear password: got %d (%s)", res.StatusCode, body)
+	}
+	got = decodeConfig(t, body)
+	if got.MailPasswordSet {
+		t.Error("mail_password_set still true after the clear")
+	}
+	if !got.MailUsernameSet || !got.MailServerSet {
+		t.Errorf("clearing the password disturbed its neighbours: %+v", got)
+	}
+}
+
+func TestAdminConfigWebhookRoundTripAndSecrets(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	cookie, csrf, _ := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	const secretURL = "https://discord.example/api/webhooks/1234/tok-3ce9f1-secret"
+
+	res, body := f.do(http.MethodPatch, "/api/v1/admin/config", map[string]any{
+		"webhook_url":     secretURL,
+		"webhook_enabled": true,
+		"webhook_events":  []string{"first_blood", "solve"},
+	}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("patch webhook: got %d, want 200 (%s)", res.StatusCode, body)
+	}
+	got := decodeConfig(t, body)
+	if !got.WebhookEnabled || !got.WebhookURLSet {
+		t.Errorf("webhook fields did not round-trip: %+v", got)
+	}
+	if len(got.WebhookEvents) != 2 || got.WebhookEvents[0] != "first_blood" || got.WebhookEvents[1] != "solve" {
+		t.Errorf("webhook_events = %v, want [first_blood solve]", got.WebhookEvents)
+	}
+	if strings.Contains(string(body), secretURL) {
+		t.Errorf("the webhook URL is a credential and came back anyway:\n%s", body)
+	}
+
+	// An unknown event name dies at schema validation.
+	res, body = f.do(http.MethodPatch, "/api/v1/admin/config",
+		map[string]any{"webhook_events": []string{"bogus"}}, auth...)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("bogus webhook event: got %d, want 422 (%s)", res.StatusCode, body)
+	}
+
+	// Clearing the URL requires disabling the feed in the same write — and then the
+	// presence boolean drops.
+	res, body = f.do(http.MethodPatch, "/api/v1/admin/config",
+		map[string]any{"webhook_enabled": false, "webhook_url": ""}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear webhook: got %d (%s)", res.StatusCode, body)
+	}
+	if got = decodeConfig(t, body); got.WebhookURLSet || got.WebhookEnabled {
+		t.Errorf("webhook clear did not land: %+v", got)
+	}
+}
+
+func TestAdminConfigCoherenceRefusals(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	cookie, csrf, _ := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	cases := []struct {
+		name   string
+		patch  map[string]any
+		wantIn string
+	}{
+		{"mail_server without mailfrom_addr", map[string]any{"mail_server": "smtp.example.com", "mail_port": 587}, "mailfrom_addr"},
+		{"webhook_enabled without webhook_url", map[string]any{"webhook_enabled": true}, "webhook_url"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, body := f.do(http.MethodPatch, "/api/v1/admin/config", tc.patch, auth...)
+			if res.StatusCode != http.StatusUnprocessableEntity {
+				t.Fatalf("got %d, want 422 (%s)", res.StatusCode, body)
+			}
+			if !strings.Contains(string(body), tc.wantIn) {
+				t.Errorf("the refusal does not name %q — the operator cannot act on it: %s", tc.wantIn, body)
+			}
+		})
+	}
+}
+
+// The footgun this phase removes: config rows seeded out of band with half an
+// SMTP config used to make EVERY PATCH — even a rename — come back 422, with no
+// route able to supply the missing key. Now the unrelated write lands, the
+// incoherence is surfaced as problems, and the mail group can be repaired
+// through the same API.
+func TestAdminConfigSeededIncoherenceDoesNotBrickTheAPI(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	cookie, csrf, _ := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	// Out of band, after boot: the state a broken import or a stray UPDATE leaves.
+	if _, err := f.pool.Exec(context.Background(),
+		`INSERT INTO config (key, value) VALUES ('mail_server', 'smtp.seeded.example')`); err != nil {
+		t.Fatalf("seed incoherent mail: %v", err)
+	}
+
+	res, body := f.do(http.MethodPatch, "/api/v1/admin/config", map[string]any{"name": "still alive"}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("a rename was refused over mail incoherence it did not touch: got %d (%s)", res.StatusCode, body)
+	}
+	got := decodeConfig(t, body)
+	if got.Name != "still alive" {
+		t.Errorf("name = %q, the write did not land", got.Name)
+	}
+	if len(got.Problems) == 0 {
+		t.Fatal("problems is empty: the tolerated incoherence is invisible to the operator who can repair it")
+	}
+	if !strings.Contains(strings.Join(got.Problems, "\n"), "mailfrom_addr") {
+		t.Errorf("problems does not name the missing key: %q", got.Problems)
+	}
+
+	// And the same API repairs the group.
+	res, body = f.do(http.MethodPatch, "/api/v1/admin/config",
+		map[string]any{"mailfrom_addr": "noreply@ctf.example", "mail_port": 587}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("repair: got %d, want 200 (%s)", res.StatusCode, body)
+	}
+	got = decodeConfig(t, body)
+	if len(got.Problems) != 0 {
+		t.Errorf("problems = %q after the repair, want none", got.Problems)
+	}
+	if !got.MailServerSet {
+		t.Error("mail_server_set = false — the seeded server vanished during the repair")
+	}
+}
+
 // Pausing is incident response, and it must actually stop the game: the toggle
 // lands through the config PATCH, the policy layer refuses submissions for
 // everyone including the admin who paused it, and the public instance endpoint
