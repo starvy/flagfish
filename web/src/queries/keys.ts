@@ -46,6 +46,13 @@ export const qk = {
     tags: () => ["admin", "tags"] as const,
     brackets: () => ["admin", "brackets"] as const,
     awards: (accountId: number) => ["admin", "awards", accountId] as const,
+    poolStats: () => ["admin", "pool", "stats"] as const,
+    instances: (challengeId: number, params?: PageParams) =>
+      (params === undefined
+        ? ["admin", "challenges", challengeId, "instances"]
+        : ["admin", "challenges", challengeId, "instances", params]) as
+        | readonly ["admin", "challenges", number, "instances"]
+        | readonly ["admin", "challenges", number, "instances", PageParams],
     audit: (params?: AuditParams) =>
       (params === undefined ? ["admin", "audit"] : ["admin", "audit", params]) as
         | readonly ["admin", "audit"]

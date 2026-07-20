@@ -29,6 +29,9 @@ export type AdminNotification = Schemas["NotificationBody"];
 export type AcSharingPair = Schemas["AcSharingPairBody"];
 export type AcIPCluster = Schemas["AcIPClusterBody"];
 export type AcAccountReport = Schemas["AcAccountReportOutputBody"];
+export type AdminInstance = Schemas["AdminInstanceBody"];
+export type PoolStat = Schemas["PoolStatBody"];
+export type AdminPoolUploadResult = Schemas["AdminPoolUploadOutputBody"];
 
 export interface PageParams {
   page?: number;
@@ -68,6 +71,23 @@ export const adminApi = {
 
   setChallengeState: (id: number, state: "visible" | "hidden") =>
     request<AdminChallenge>("PUT", `${P}/challenges/${id}/state`, { state }),
+
+  // The guarded static ↔ unique switch: the server refuses it while the challenge has solves, has a
+  // regex flag (→ unique), or has no flags (→ static), and surfaces those as a 422.
+  setChallengeFlagMode: (id: number, flagMode: "static" | "unique") =>
+    request<AdminChallenge>("PUT", `${P}/challenges/${id}/flag-mode`, { flag_mode: flagMode }),
+
+  // Unique-flag instance pool. The client uploads sha256(flag) hashes — never the plaintext.
+  poolStats: () => request<Schemas["AdminPoolStatsOutputBody"]>("GET", `${P}/pool/stats`),
+
+  listInstances: (challengeId: number, params: PageParams = {}) =>
+    request<Schemas["AdminListInstancesOutputBody"]>(
+      "GET",
+      `${P}/challenges/${challengeId}/instances${query({ ...params })}`,
+    ),
+
+  uploadInstances: (challengeId: number, body: Body<Schemas["AdminPoolUploadInputBody"]>) =>
+    request<AdminPoolUploadResult>("PUT", `${P}/challenges/${challengeId}/instances`, body),
 
   // Whole-value replace: what you send is the entire prerequisite set.
   setChallengeRequirements: (id: number, body: Body<Schemas["AdminSetRequirementsInputBody"]>) =>

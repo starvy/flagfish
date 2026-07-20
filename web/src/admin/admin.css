@@ -452,3 +452,73 @@
 .ff-award-row:first-child {
   border-top: none;
 }
+
+/* Instance-pool utilisation gauges: the pre-event "issued/total" bars. */
+.pool-gauges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pool-gauge {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pool-gauge:last-child {
+  border-bottom: none;
+}
+
+.pool-gauge__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  justify-content: space-between;
+}
+
+.pool-gauge__name {
+  font-weight: 600;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.pool-gauge__name:hover {
+  color: var(--color-accent);
+}
+
+.pool-gauge__track {
+  height: 0.6rem;
+  border-radius: var(--radius);
+  background: var(--color-inset);
+  overflow: hidden;
+}
+
+.pool-gauge__fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.2s ease;
+}
+
+.pool-gauge__fill--hot {
+  background: var(--color-warn);
+}
+
+.pool-gauge__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+/* The pool tab on the challenge editor: upload textarea result + hint rows. */
+.pool-upload__result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}

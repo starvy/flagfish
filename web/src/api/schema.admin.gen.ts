@@ -246,6 +246,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/challenges/{id}/flag-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Switch a challenge between static and unique flags (guarded) */
+        put: operations["admin-set-challenge-flag-mode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/challenges/{id}/flags": {
         parameters: {
             query?: never;
@@ -314,6 +331,24 @@ export interface paths {
         head?: never;
         /** Update a hint (partial) */
         patch: operations["admin-update-hint"];
+        trace?: never;
+    };
+    "/challenges/{id}/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a challenge's instance pool */
+        get: operations["admin-list-instances"];
+        /** Upload a challenge's unique-flag instance pool (new generation) */
+        put: operations["admin-upload-instances"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/challenges/{id}/requirements": {
@@ -430,6 +465,23 @@ export interface paths {
         put?: never;
         /** Publish a notification */
         post: operations["admin-create-notification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pool/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pool utilisation for every unique-flag challenge */
+        get: operations["admin-pool-stats"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -931,6 +983,7 @@ export interface components {
             first_blood: string;
             /** Format: int32 */
             first_blood_bonus?: number;
+            flag_mode: string;
             function: string;
             /** Format: int64 */
             id: number;
@@ -951,6 +1004,16 @@ export interface components {
             updated_at: string;
             /** Format: int32 */
             value: number;
+        };
+        AdminChallengeFlagModeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminChallengeFlagModeInputBody.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            flag_mode: "static" | "unique";
         };
         AdminChallengeStateInputBody: {
             /**
@@ -1223,6 +1286,20 @@ export interface components {
             prerequisites: number[] | null;
             title?: string;
         };
+        AdminInstanceBody: {
+            /** Format: int64 */
+            artifact_id?: number;
+            /** Format: date-time */
+            assigned_at?: string;
+            /** Format: int32 */
+            generation: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            issued_to?: number;
+            value_hash: string;
+            vars: unknown;
+        };
         AdminListAuditOutputBody: {
             /**
              * Format: uri
@@ -1255,6 +1332,21 @@ export interface components {
              */
             readonly $schema?: string;
             brackets: components["schemas"]["AdminBracketBody"][] | null;
+        };
+        AdminListInstancesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminListInstancesOutputBody.json
+             */
+            readonly $schema?: string;
+            instances: components["schemas"]["AdminInstanceBody"][] | null;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            per_page: number;
+            /** Format: int64 */
+            total: number;
         };
         AdminListTagsOutputBody: {
             /**
@@ -1303,6 +1395,47 @@ export interface components {
              */
             readonly $schema?: string;
             into: string;
+        };
+        AdminPoolInstanceInput: {
+            /** Format: int64 */
+            artifact_id?: number;
+            /** @description sha256(flag) as lowercase hex */
+            value_hash: string;
+            /** @description arbitrary per-account JSON for the description template; never the flag */
+            vars?: unknown;
+        };
+        AdminPoolStatsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminPoolStatsOutputBody.json
+             */
+            readonly $schema?: string;
+            pools: components["schemas"]["PoolStatBody"][] | null;
+        };
+        AdminPoolUploadInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminPoolUploadInputBody.json
+             */
+            readonly $schema?: string;
+            instances: components["schemas"]["AdminPoolInstanceInput"][] | null;
+        };
+        AdminPoolUploadOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminPoolUploadOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            generation: number;
+            /** @description true when the upload matched the newest generation and nothing was written */
+            idempotent: boolean;
+            /** Format: int64 */
+            inserted: number;
+            warnings?: string[] | null;
         };
         AdminReorderInputBody: {
             /**
@@ -1654,6 +1787,17 @@ export interface components {
             /** Format: int64 */
             id: number;
             title: string;
+        };
+        PoolStatBody: {
+            /** Format: int64 */
+            challenge_id: number;
+            /** Format: int64 */
+            issued: number;
+            name: string;
+            /** Format: int64 */
+            total: number;
+            /** Format: double */
+            utilization: number;
         };
     };
     responses: never;
@@ -2255,6 +2399,41 @@ export interface operations {
             };
         };
     };
+    "admin-set-challenge-flag-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChallengeFlagModeInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChallengeBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "admin-add-flag": {
         parameters: {
             query?: never;
@@ -2444,6 +2623,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminHintBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-list-instances": {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListInstancesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-upload-instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPoolUploadInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPoolUploadOutputBody"];
                 };
             };
             /** @description Error */
@@ -2703,6 +2951,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-pool-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPoolStatsOutputBody"];
                 };
             };
             /** @description Error */

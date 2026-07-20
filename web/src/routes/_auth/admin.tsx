@@ -23,6 +23,7 @@ const NAV = [
   { to: "/admin", label: "Overview", exact: true },
   { to: "/admin/config", label: "Config", exact: false },
   { to: "/admin/challenges", label: "Challenges", exact: false },
+  { to: "/admin/pool", label: "Pool", exact: false },
   { to: "/admin/tags", label: "Tags", exact: false },
   { to: "/admin/users", label: "Users", exact: false },
   { to: "/admin/teams", label: "Teams", exact: false },

@@ -2,9 +2,10 @@ import { useState } from "react";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { isApiError, request, type ChallengeDetail } from "../../../api/client";
-import { adminApi, type AdminChallenge, type AdminFlag } from "../../../api/admin";
+import { adminApi, type AdminChallenge, type AdminFlag, type AdminInstance } from "../../../api/admin";
 import {
   ADMIN_STALE_TIME,
+  challengeInstancesQuery,
   challengeQuery,
   qk,
   useAddFlag,
@@ -15,12 +16,14 @@ import {
   useDeleteFlag,
   useDeleteHint,
   useDetachTag,
+  useSetChallengeFlagMode,
   useSetChallengeRequirements,
   useSetChallengeState,
   useUpdateChallenge,
   useUpdateFlag,
   useUpdateHint,
   useUploadFile,
+  useUploadInstances,
 } from "../../../queries";
 import { PolicyGate, denialOf } from "../../../policy";
 import {
@@ -141,6 +144,15 @@ function ChallengeEditor() {
             label: "Flags",
             disabled: id === null,
             content: id === null ? null : <FlagsTab challengeId={id} />,
+          },
+          {
+            id: "pool",
+            label: "Pool",
+            disabled: id === null,
+            content:
+              id === null ? null : (
+                <PoolTab challengeId={id} read={read} saved={saved} onSaved={setSaved} />
+              ),
           },
           {
             id: "tags",
@@ -1562,6 +1574,234 @@ function FilesTab({ read }: { read: ChallengeDetail }) {
       />
     </div>
   );
+}
+
+/* ------------------------------------------------------------------- pool */
+
+function currentFlagMode(
+  saved: AdminChallenge | null,
+  read: ChallengeDetail | null,
+): "static" | "unique" {
+  const mode = saved?.flag_mode ?? read?.flag_mode ?? "static";
+  return mode === "unique" ? "unique" : "static";
+}
+
+function PoolTab({
+  challengeId,
+  read,
+  saved,
+  onSaved,
+}: {
+  challengeId: number;
+  read: ChallengeDetail | null;
+  saved: AdminChallenge | null;
+  onSaved: (ch: AdminChallenge) => void;
+}) {
+  const toast = useToast();
+  const setMode = useSetChallengeFlagMode();
+  const upload = useUploadInstances();
+  const instances = useQuery(challengeInstancesQuery(challengeId, { per_page: 100 }));
+
+  const mode = currentFlagMode(saved, read);
+  const [flagsText, setFlagsText] = useState("");
+  const [result, setResult] = useState<{
+    generation: number;
+    inserted: number;
+    idempotent: boolean;
+    warnings: string[];
+  } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const switchMode = async (next: "static" | "unique") => {
+    try {
+      const ch = await setMode.mutateAsync({ id: challengeId, flagMode: next });
+      onSaved(ch);
+      toast.success("Flag mode changed", `now ${next}`);
+    } catch (e) {
+      // The guard failures (regex flag present, no flags, has solves, logic=all) all arrive as a
+      // 422 with a plain reason — show it verbatim, it is written for the operator.
+      toast.error("Could not change the flag mode", messageOf(e));
+    }
+  };
+
+  const submitPool = async () => {
+    setFailure(null);
+    setResult(null);
+    const flags = flagsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    if (flags.length === 0) {
+      setFailure("Paste at least one flag, one per line.");
+      return;
+    }
+    if (new Set(flags).size !== flags.length) {
+      setFailure("The list has a duplicate flag. Every instance must be distinct.");
+      return;
+    }
+    try {
+      // Hash in the browser: the plaintext flag never leaves this tab, only its sha256 does.
+      const hashes = await Promise.all(flags.map(sha256Hex));
+      const out = await upload.mutateAsync({
+        challengeId,
+        body: { instances: hashes.map((value_hash) => ({ value_hash })) },
+      });
+      setResult({
+        generation: out.generation,
+        inserted: out.inserted,
+        idempotent: out.idempotent,
+        warnings: out.warnings ?? [],
+      });
+      setFlagsText("");
+      toast.success(
+        out.idempotent ? "Pool unchanged" : "Pool uploaded",
+        out.idempotent
+          ? `already at generation ${out.generation}`
+          : `${out.inserted} instances in generation ${out.generation}`,
+      );
+    } catch (e) {
+      setFailure(messageOf(e));
+    }
+  };
+
+  const rows = instances.data?.instances ?? [];
+  const columns: readonly Column<AdminInstance>[] = [
+    { key: "gen", header: "Gen", align: "right", cell: (i) => i.generation },
+    {
+      key: "hash",
+      header: "Flag hash",
+      cell: (i) => <code className="ff-mono">{i.value_hash.slice(0, 16)}…</code>,
+    },
+    {
+      key: "issued",
+      header: "Issued to",
+      cell: (i) =>
+        i.issued_to === undefined ? (
+          <span className="ff-muted">free</span>
+        ) : (
+          <Badge tone="info">account {i.issued_to}</Badge>
+        ),
+    },
+  ];
+
+  return (
+    <div className="ff-stack">
+      <Card title="Flag mode">
+        <div className="ff-stack">
+          <p>
+            This challenge issues{" "}
+            {mode === "unique" ? (
+              <Badge tone="info">unique — one flag per account</Badge>
+            ) : (
+              <Badge tone="neutral">static — one shared flag</Badge>
+            )}
+            .
+          </p>
+          <p className="ff-muted">
+            A switch is refused while the challenge has any solve, and — toward unique — while a regex
+            flag exists or the flag logic is “all”. Toward static, the challenge must still have a
+            flag. Deleting and recreating the challenge is the escape hatch once it has solves.
+          </p>
+          <div className="ff-row">
+            <Button
+              variant={mode === "static" ? "primary" : "secondary"}
+              disabled={mode === "static" || setMode.isPending}
+              onClick={() => void switchMode("static")}
+            >
+              Use static flags
+            </Button>
+            <Button
+              variant={mode === "unique" ? "primary" : "secondary"}
+              disabled={mode === "unique" || setMode.isPending}
+              onClick={() => void switchMode("unique")}
+            >
+              Use unique flags
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {mode === "unique" && rows.length === 0 && !instances.isPending && (
+        <Alert tone="warn" title="This pool is empty">
+          A unique-flag challenge with no instances hands out a hard 503 on the first view. Upload a
+          pool below before the event opens.
+        </Alert>
+      )}
+
+      <Card title="Upload instances">
+        <Form
+          errors={{}}
+          error={failure}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitPool();
+          }}
+          footer={
+            <Button type="submit" variant="primary" loading={upload.isPending}>
+              Hash &amp; upload
+            </Button>
+          }
+        >
+          <Field
+            name="flags"
+            label="Flags, one per line"
+            hint="Each line is hashed in your browser with SHA-256; only the hash is uploaded, never the plaintext. Re-uploading the same set is a no-op. A new set becomes the next generation, and new players draw from it."
+          >
+            <Textarea
+              mono
+              value={flagsText}
+              onChange={(e) => setFlagsText(e.target.value)}
+              rows={8}
+              placeholder={"flag{one}\nflag{two}\nflag{three}"}
+            />
+          </Field>
+        </Form>
+
+        {result !== null && (
+          <Alert
+            tone={result.idempotent ? "info" : "success"}
+            title={result.idempotent ? "Nothing to upload" : "Pool uploaded"}
+            onDismiss={() => setResult(null)}
+          >
+            <div className="pool-upload__result">
+              <Badge tone="neutral">generation {result.generation}</Badge>
+              <span>{result.inserted} instances added</span>
+            </div>
+            {result.warnings.map((w) => (
+              <p key={w} className="ff-muted">
+                {w}
+              </p>
+            ))}
+          </Alert>
+        )}
+      </Card>
+
+      <Card flush title="Instances">
+        <DataTable
+          caption="Instances in this challenge's pool"
+          columns={columns}
+          rows={rows}
+          rowKey={(i) => i.id}
+          empty={
+            <EmptyState
+              title="No instances"
+              description="Upload a pool above. Each instance is one account's flag; the pool must be at least as large as the field."
+            />
+          }
+        />
+      </Card>
+    </div>
+  );
+}
+
+// sha256Hex hashes a string to lowercase hex with the Web Crypto API, matching the server's
+// sha256(flag) probe. The flag is trimmed by the caller, mirroring the server's whitespace
+// normalisation, so a stray newline never produces a hash that will not match.
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /* ----------------------------------------------------------------- shared */

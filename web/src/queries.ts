@@ -70,6 +70,13 @@ export {
 } from "./queries/admin/challenges";
 
 export {
+  poolStatsQuery,
+  challengeInstancesQuery,
+  useUploadInstances,
+  useSetChallengeFlagMode,
+} from "./queries/admin/instances";
+
+export {
   adminUsersQuery,
   useSetUserBanned,
   useSetUserRole,
