@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/starvy/flagfish/internal/adminops"
+	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/domain/policy"
 )
 
@@ -89,8 +90,43 @@ func (s *Server) adminListAudit(ctx context.Context, in *adminListAuditInput) (*
 		out.Body.Entries[i] = adminAuditEntry{
 			ID: e.ID, ActorID: e.ActorID, Action: e.Action,
 			TargetTable: e.TargetTable, TargetID: e.TargetID,
-			Before: e.Before, After: e.After, At: e.At.Time, IP: ip,
+			Before: redactConfigAudit(e.TargetTable, e.Before),
+			After:  redactConfigAudit(e.TargetTable, e.After),
+			At:     e.At.Time, IP: ip,
 		}
 	}
 	return out, nil
+}
+
+// redactConfigAudit blanks a secret config value in a captured audit row. Config secrets are
+// set-only everywhere else; the capture trigger stores the row verbatim, so the feed is the one
+// read that would hand them back. The row keeps its shape — an operator sees THAT the key changed
+// and when, never the credential itself. Unparseable JSON passes through: it cannot be a config
+// row the trigger wrote, and inventing an empty object would erase evidence.
+func redactConfigAudit(table string, raw json.RawMessage) json.RawMessage {
+	if table != "config" || len(raw) == 0 {
+		return raw
+	}
+	var row map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &row); err != nil {
+		return raw
+	}
+	key := ""
+	if k, ok := row["key"]; ok {
+		if err := json.Unmarshal(k, &key); err != nil {
+			return raw
+		}
+	}
+	// Secret is default-deny: an undeclared key redacts too.
+	if key == "" || !config.Secret(key) {
+		return raw
+	}
+	if v, ok := row["value"]; ok && string(v) != "null" {
+		row["value"] = json.RawMessage(`"[redacted]"`)
+	}
+	redacted, err := json.Marshal(row)
+	if err != nil {
+		return raw
+	}
+	return redacted
 }

@@ -29,6 +29,7 @@ change to the auth path.
 | Forced-change exit | drop `exemptFromPasswordChange` from `ClassPasswordChange` | ✅ FAILS: `the forced-change exit is walled: 403 … password-change-required` |
 | Forced-change discharge | ChangePassword back to `UpdatePasswordHash` (hash only, no clear) | ✅ FAILS: flag survives the change, post-change session still walled |
 | Login rehash leaves the flag | rehash path switched to the clearing query | ✅ FAILS: `the login rehash cleared must_change_password` |
+| Audit feed redacts config secrets | `redactConfigAudit` → return raw | ✅ FAILS: S17 secret sweep — `GET /api/v1/admin/audit echoes the stored secret` (this is how the leak was found: wiring AdminOps into the fixture put /admin/audit inside S17's OpenAPI-driven sweep) |
 | File download prerequisites | `downloadFile` checks only `meta.Hidden`, not `meta.PrereqsMet` | ✅ FAILS: the file of a prerequisite-locked challenge downloads by id (200, exact bytes) |
 | Hint unlock prerequisites | drop the `challengePrereqsMet` gate from `UnlockHint` | ✅ FAILS: the hint of a prerequisite-locked challenge is sold, content and all |
 
