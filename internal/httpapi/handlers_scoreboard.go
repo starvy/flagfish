@@ -101,6 +101,9 @@ func (s *Server) scoreboard(ctx context.Context, in *scoreboardInput) (*scoreboa
 		entries []board.Entry
 		err     error
 	)
+	// Time the standings read — the other architecturally load-bearing span — at this boundary,
+	// around the query only, not the JSON marshalling.
+	start := time.Now()
 	// `admin` only widens the rows to hidden/banned accounts; the freeze is decided by policy.
 	switch {
 	case !in.AsOf.IsZero():
@@ -119,6 +122,7 @@ func (s *Server) scoreboard(ctx context.Context, in *scoreboardInput) (*scoreboa
 	default:
 		entries, err = s.opts.Board.Top(ctx, admin, bracket, in.Limit)
 	}
+	s.opts.Metrics.ObserveScoreboard(time.Since(start))
 	if err != nil {
 		s.opts.Log.ErrorContext(ctx, "scoreboard read failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load the scoreboard")

@@ -30,6 +30,7 @@ import (
 	"github.com/starvy/flagfish/internal/domain/account"
 	"github.com/starvy/flagfish/internal/gameplay"
 	"github.com/starvy/flagfish/internal/httpapi"
+	"github.com/starvy/flagfish/internal/metrics"
 )
 
 // stubInserter stands in for the River insert-only client: the announcement enqueue is not what these
@@ -88,6 +89,7 @@ func newAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) *apiFix {
 		Gameplay: gameplay.New(pool, stubInserter{}, mode),
 		Catalog:  catalog.New(pool),
 		Board:    board.New(pool, mode),
+		Metrics:  metrics.New(ctx, pool, log),
 	})
 
 	ts := httptest.NewServer(srv.Router)

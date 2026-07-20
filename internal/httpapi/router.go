@@ -24,6 +24,7 @@ import (
 	"github.com/starvy/flagfish/internal/domain/policy"
 	"github.com/starvy/flagfish/internal/files"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/web"
 )
@@ -44,6 +45,10 @@ type Options struct {
 	AdminOps  *adminops.Service
 	Anticheat *anticheat.Service
 	Files     *files.Service
+
+	// Metrics is the Prometheus surface. Nil disables /metrics and /readyz and skips
+	// instrumentation — the server still serves, it is just blind.
+	Metrics *metrics.Metrics
 
 	// Notify is the notifications service; Broadcaster is the live SSE fan-out. Both are needed for
 	// the notifications endpoints, and either being nil disables them (the router warns at boot).
@@ -148,6 +153,29 @@ func New(opts Options) *Server {
 			opts.Log.WarnContext(r.Context(), "healthz write failed", "error", err)
 		}
 	})
+
+	// Metrics and readiness sit beside health, outside the authenticated chain: a scrape and a
+	// readiness probe are infrastructure, not a logged-in caller. Readiness — unlike the static
+	// healthz — actually pings the pool, so a replica with a dead database is pulled from rotation
+	// instead of staying green.
+	if opts.Metrics != nil {
+		r.Handle("/metrics", opts.Metrics.Handler())
+		r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if err := opts.Metrics.Ready(ctx); err != nil {
+				opts.Log.WarnContext(ctx, "readyz: database unreachable", "error", err)
+				problem(w, http.StatusServiceUnavailable, "not-ready", "database unreachable")
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte("ok")); err != nil {
+				opts.Log.WarnContext(ctx, "readyz write failed", "error", err)
+			}
+		})
+	} else {
+		opts.Log.Warn("no metrics configured: /metrics and /readyz are not mounted")
+	}
 
 	s := &Server{Router: r, opts: opts}
 

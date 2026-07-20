@@ -19,6 +19,7 @@ import (
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/files"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 )
 
@@ -53,6 +54,7 @@ type serverParams struct {
 	Broadcaster    *notify.Broadcaster
 	Anticheat      *anticheat.Service
 	Files          *files.Service
+	Metrics        *metrics.Metrics
 	TrustedProxies []*net.IPNet `optional:"true"`
 }
 
@@ -72,6 +74,7 @@ func newServer(p serverParams) *Server {
 		Broadcaster:    p.Broadcaster,
 		Anticheat:      p.Anticheat,
 		Files:          p.Files,
+		Metrics:        p.Metrics,
 		TrustedProxies: p.TrustedProxies,
 
 		// The env says "secure cookies"; the router takes the inverted flag so that its zero

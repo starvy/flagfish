@@ -27,6 +27,7 @@ import (
 	"github.com/starvy/flagfish/internal/httpapi"
 	"github.com/starvy/flagfish/internal/jobs"
 	"github.com/starvy/flagfish/internal/mail"
+	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/storage"
 )
@@ -64,6 +65,7 @@ func ServeOptions(ctx context.Context, env config.Env, log *slog.Logger, sc Serv
 		adminops.Module,
 		anticheat.Module,
 		files.Module,
+		metrics.Module,
 
 		fx.Provide(provideStore),
 		fx.Supply(httpapi.ListenAddr(sc.Addr)),

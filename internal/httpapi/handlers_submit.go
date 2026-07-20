@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -54,11 +55,16 @@ func (s *Server) registerSubmit() {
 }
 
 func (s *Server) attempt(ctx context.Context, in *attemptInput) (*attemptOutput, error) {
+	// Time the whole submit transaction at this boundary. The observation happens after Submit
+	// returns, so it adds nothing to the wrong-answer pre-lock leg inside the hot path, and the
+	// gameplay package stays free of any metrics dependency.
+	start := time.Now()
 	res, err := s.opts.Gameplay.Submit(ctx, gameplay.SubmitInput{
 		ChallengeID: in.ID,
 		Actor:       s.actor(ctx),
 		Provided:    in.Body.Flag,
 	})
+	s.opts.Metrics.ObserveSubmit(submitResult(res, err), time.Since(start))
 	switch {
 	case errors.Is(err, gameplay.ErrChallengeNotFound):
 		return nil, huma.Error404NotFound("challenge not found")
@@ -78,6 +84,15 @@ func (s *Server) attempt(ctx context.Context, in *attemptInput) (*attemptOutput,
 	out.Body.FirstBlood = res.FirstBlood
 	out.Body.Value = res.Value
 	return out, nil
+}
+
+// submitResult is the histogram's outcome label. A bounded set — the three statuses plus "error" —
+// so it cannot explode metric cardinality.
+func submitResult(res gameplay.Result, err error) string {
+	if err != nil {
+		return "error"
+	}
+	return res.Status.String()
 }
 
 func (s *Server) unlockHint(ctx context.Context, in *unlockInput) (*unlockOutput, error) {
