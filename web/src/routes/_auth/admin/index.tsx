@@ -195,6 +195,20 @@ function OverviewPage() {
           </DefList>
         </Card>
 
+        <Card title="Export">
+          <p className="muted">
+            CSV for prizes and eligibility. This is the organiser's board: hidden and banned
+            entrants are included and flagged.
+          </p>
+          <nav className="admin-links" aria-label="CSV exports">
+            {/* Plain anchors, not router Links: these are file downloads served by the API, carried
+                by the same admin session cookie — a client-side navigation would swallow them. */}
+            <a href="/api/v1/admin/export/standings.csv">Final standings</a>
+            <a href="/api/v1/admin/export/users.csv">Users</a>
+            {inst.mode === "teams" && <a href="/api/v1/admin/export/teams.csv">Teams</a>}
+          </nav>
+        </Card>
+
         <Card title="Go to">
           <nav className="admin-links" aria-label="Console shortcuts">
             <Link to="/admin/config">Config</Link>
