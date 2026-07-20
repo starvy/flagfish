@@ -150,6 +150,7 @@ func TestAdminRoutesRejectNonAdmin(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/challenges", map[string]any{"name": "x", "category": "y", "value": 100}},
 		{http.MethodGet, "/api/v1/admin/users", nil},
 		{http.MethodPut, "/api/v1/admin/users/1/ban", map[string]any{"banned": true}},
+		{http.MethodGet, "/api/v1/admin/config", nil},
 		{http.MethodPatch, "/api/v1/admin/config", map[string]any{"name": "hijack"}},
 	}
 	for _, c := range cases {

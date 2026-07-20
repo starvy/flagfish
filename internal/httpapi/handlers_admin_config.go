@@ -39,6 +39,18 @@ type adminConfigInput struct {
 		ScoreVisibility        *string `json:"score_visibility,omitempty" enum:"public,private,hidden"`
 		AccountVisibility      *string `json:"account_visibility,omitempty" enum:"public,private"`
 		RegistrationVisibility *string `json:"registration_visibility,omitempty" enum:"public,private,mlc"`
+
+		// Pausing stops flag submissions for everyone, admins included; browsing and
+		// hint unlocks keep working.
+		Paused       *bool `json:"paused,omitempty"`
+		VerifyEmails *bool `json:"verify_emails,omitempty"`
+		ViewAfterCTF *bool `json:"view_after_ctf,omitempty"`
+		TeamCreation *bool `json:"team_creation,omitempty"`
+
+		// Caps. Zero means unlimited.
+		NumUsers *int `json:"num_users,omitempty" minimum:"0"`
+		NumTeams *int `json:"num_teams,omitempty" minimum:"0"`
+		TeamSize *int `json:"team_size,omitempty" minimum:"0"`
 	}
 }
 
@@ -58,6 +70,20 @@ type adminConfigOutput struct {
 		ScoreVisibility        string `json:"score_visibility"`
 		AccountVisibility      string `json:"account_visibility"`
 		RegistrationVisibility string `json:"registration_visibility"`
+
+		Paused       bool `json:"paused"`
+		VerifyEmails bool `json:"verify_emails"`
+		ViewAfterCTF bool `json:"view_after_ctf"`
+		TeamCreation bool `json:"team_creation"`
+
+		NumUsers int `json:"num_users"`
+		NumTeams int `json:"num_teams"`
+		TeamSize int `json:"team_size"`
+
+		// Problems are coherence violations the instance is currently serving with.
+		// They can only arrive out of band — the write path refuses to create them —
+		// and the operator reading this form is the one who can repair them.
+		Problems []string `json:"problems,omitempty"`
 	}
 }
 
@@ -74,7 +100,7 @@ func (s *Server) registerAdminConfig() {
 }
 
 func (s *Server) adminGetConfig(_ context.Context, _ *struct{}) (*adminConfigOutput, error) {
-	return configOutput(s.opts.Config.Current()), nil
+	return configOutput(s.opts.Config), nil
 }
 
 func (s *Server) adminUpdateConfig(ctx context.Context, in *adminConfigInput) (*adminConfigOutput, error) {
@@ -82,6 +108,16 @@ func (s *Server) adminUpdateConfig(ctx context.Context, in *adminConfigInput) (*
 	putString := func(key string, v *string) {
 		if v != nil {
 			kv[key] = *v
+		}
+	}
+	putBool := func(key string, v *bool) {
+		if v != nil {
+			kv[key] = strconv.FormatBool(*v)
+		}
+	}
+	putInt := func(key string, v *int) {
+		if v != nil {
+			kv[key] = strconv.Itoa(*v)
 		}
 	}
 	// Clearing writes the empty string: an empty config row reads back as unset, which is exactly a
@@ -108,6 +144,13 @@ func (s *Server) adminUpdateConfig(ctx context.Context, in *adminConfigInput) (*
 	putString("score_visibility", in.Body.ScoreVisibility)
 	putString("account_visibility", in.Body.AccountVisibility)
 	putString("registration_visibility", in.Body.RegistrationVisibility)
+	putBool("paused", in.Body.Paused)
+	putBool("verify_emails", in.Body.VerifyEmails)
+	putBool("view_after_ctf", in.Body.ViewAfterCTF)
+	putBool("team_creation", in.Body.TeamCreation)
+	putInt("num_users", in.Body.NumUsers)
+	putInt("num_teams", in.Body.NumTeams)
+	putInt("team_size", in.Body.TeamSize)
 
 	// Set validates the merged result before it writes, so an incoherent combination (freeze after
 	// end, say) is refused whole rather than stored and then found broken on the next boot. The
@@ -121,10 +164,11 @@ func (s *Server) adminUpdateConfig(ctx context.Context, in *adminConfigInput) (*
 		s.opts.Log.ErrorContext(ctx, "update config failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not update config")
 	}
-	return configOutput(s.opts.Config.Current()), nil
+	return configOutput(s.opts.Config), nil
 }
 
-func configOutput(snap *config.Snapshot) *adminConfigOutput {
+func configOutput(cfg *config.Manager) *adminConfigOutput {
+	snap := cfg.Current()
 	out := &adminConfigOutput{}
 	out.Body.Name = snap.CTFName
 	out.Body.Description = snap.CTFDescription
@@ -137,5 +181,13 @@ func configOutput(snap *config.Snapshot) *adminConfigOutput {
 	out.Body.ScoreVisibility = snap.ScoreVis.String()
 	out.Body.AccountVisibility = snap.AccountVis.String()
 	out.Body.RegistrationVisibility = snap.RegistrationVis.String()
+	out.Body.Paused = snap.Paused
+	out.Body.VerifyEmails = snap.VerifyEmails
+	out.Body.ViewAfterCTF = snap.ViewAfterCTF
+	out.Body.TeamCreation = snap.TeamCreation
+	out.Body.NumUsers = snap.NumUsers
+	out.Body.NumTeams = snap.NumTeams
+	out.Body.TeamSize = snap.TeamSize
+	out.Body.Problems = cfg.Problems()
 	return out
 }
