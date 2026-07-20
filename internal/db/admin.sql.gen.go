@@ -41,31 +41,33 @@ const adminCreateChallenge = `-- name: AdminCreateChallenge :one
 INSERT INTO challenges (
     name, category, description, attribution, connection_info,
     type, state, value, function, initial, minimum, decay,
-    max_attempts, logic, position
+    max_attempts, logic, position, first_blood, first_blood_bonus
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10, $11, $12,
-    $13, $14, $15
+    $13, $14, $15, $16, $17
 )
 RETURNING id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at
 `
 
 type AdminCreateChallengeParams struct {
-	Name           string
-	Category       string
-	Description    string
-	Attribution    *string
-	ConnectionInfo *string
-	Type           string
-	State          string
-	Value          int32
-	Function       string
-	Initial        *int32
-	Minimum        *int32
-	Decay          *int32
-	MaxAttempts    int32
-	Logic          string
-	Position       int32
+	Name            string
+	Category        string
+	Description     string
+	Attribution     *string
+	ConnectionInfo  *string
+	Type            string
+	State           string
+	Value           int32
+	Function        string
+	Initial         *int32
+	Minimum         *int32
+	Decay           *int32
+	MaxAttempts     int32
+	Logic           string
+	Position        int32
+	FirstBlood      string
+	FirstBloodBonus *int32
 }
 
 // Admin mutations. Every statement here runs inside a transaction that has stamped the acting
@@ -89,6 +91,8 @@ func (q *Queries) AdminCreateChallenge(ctx context.Context, arg AdminCreateChall
 		arg.MaxAttempts,
 		arg.Logic,
 		arg.Position,
+		arg.FirstBlood,
+		arg.FirstBloodBonus,
 	)
 	var i Challenge
 	err := row.Scan(
@@ -654,32 +658,38 @@ UPDATE challenges SET
     max_attempts    = COALESCE($17, max_attempts),
     logic           = COALESCE($18, logic),
     position        = COALESCE($19, position),
+    first_blood     = COALESCE($20, first_blood),
+    first_blood_bonus = CASE WHEN $21::bool THEN NULL
+                             ELSE COALESCE($22, first_blood_bonus) END,
     updated_at      = now()
-WHERE id = $20
+WHERE id = $23
 RETURNING id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at
 `
 
 type AdminUpdateChallengeParams struct {
-	Name                *string
-	Category            *string
-	Description         *string
-	ClearAttribution    bool
-	Attribution         *string
-	ClearConnectionInfo bool
-	ConnectionInfo      *string
-	Type                *string
-	Value               *int32
-	Function            *string
-	ClearInitial        bool
-	Initial             *int32
-	ClearMinimum        bool
-	Minimum             *int32
-	ClearDecay          bool
-	Decay               *int32
-	MaxAttempts         *int32
-	Logic               *string
-	Position            *int32
-	ChallengeID         int64
+	Name                 *string
+	Category             *string
+	Description          *string
+	ClearAttribution     bool
+	Attribution          *string
+	ClearConnectionInfo  bool
+	ConnectionInfo       *string
+	Type                 *string
+	Value                *int32
+	Function             *string
+	ClearInitial         bool
+	Initial              *int32
+	ClearMinimum         bool
+	Minimum              *int32
+	ClearDecay           bool
+	Decay                *int32
+	MaxAttempts          *int32
+	Logic                *string
+	Position             *int32
+	FirstBlood           *string
+	ClearFirstBloodBonus bool
+	FirstBloodBonus      *int32
+	ChallengeID          int64
 }
 
 // Partial update with a third state for the nullable columns: an absent field keeps its value, a
@@ -708,6 +718,9 @@ func (q *Queries) AdminUpdateChallenge(ctx context.Context, arg AdminUpdateChall
 		arg.MaxAttempts,
 		arg.Logic,
 		arg.Position,
+		arg.FirstBlood,
+		arg.ClearFirstBloodBonus,
+		arg.FirstBloodBonus,
 		arg.ChallengeID,
 	)
 	var i Challenge

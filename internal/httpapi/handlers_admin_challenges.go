@@ -62,24 +62,26 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 }
 
 type adminChallengeBody struct {
-	ID             int64     `json:"id"`
-	Name           string    `json:"name"`
-	Category       string    `json:"category"`
-	Description    string    `json:"description"`
-	Attribution    *string   `json:"attribution,omitempty"`
-	ConnectionInfo *string   `json:"connection_info,omitempty"`
-	Type           string    `json:"type"`
-	State          string    `json:"state"`
-	Value          int32     `json:"value"`
-	Function       string    `json:"function"`
-	Initial        *int32    `json:"initial,omitempty"`
-	Minimum        *int32    `json:"minimum,omitempty"`
-	Decay          *int32    `json:"decay,omitempty"`
-	MaxAttempts    int32     `json:"max_attempts"`
-	Logic          string    `json:"logic"`
-	Position       int32     `json:"position"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID              int64     `json:"id"`
+	Name            string    `json:"name"`
+	Category        string    `json:"category"`
+	Description     string    `json:"description"`
+	Attribution     *string   `json:"attribution,omitempty"`
+	ConnectionInfo  *string   `json:"connection_info,omitempty"`
+	Type            string    `json:"type"`
+	State           string    `json:"state"`
+	Value           int32     `json:"value"`
+	Function        string    `json:"function"`
+	Initial         *int32    `json:"initial,omitempty"`
+	Minimum         *int32    `json:"minimum,omitempty"`
+	Decay           *int32    `json:"decay,omitempty"`
+	MaxAttempts     int32     `json:"max_attempts"`
+	Logic           string    `json:"logic"`
+	Position        int32     `json:"position"`
+	FirstBlood      string    `json:"first_blood"`
+	FirstBloodBonus *int32    `json:"first_blood_bonus,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type adminChallengeOutput struct {
@@ -93,6 +95,7 @@ func (s *Server) adminChallenge(c *db.Challenge) *adminChallengeOutput {
 		Type: c.Type, State: c.State, Value: c.Value, Function: c.Function,
 		Initial: c.Initial, Minimum: c.Minimum, Decay: c.Decay,
 		MaxAttempts: c.MaxAttempts, Logic: c.Logic, Position: c.Position,
+		FirstBlood: c.FirstBlood, FirstBloodBonus: c.FirstBloodBonus,
 		CreatedAt: c.CreatedAt.Time, UpdatedAt: c.UpdatedAt.Time,
 	}}
 }
@@ -127,6 +130,10 @@ type adminCreateChallengeInput struct {
 		MaxAttempts    int32   `json:"max_attempts,omitempty" minimum:"0"`
 		Logic          string  `json:"logic,omitempty" enum:"any,all" default:"any"`
 		Position       int32   `json:"position,omitempty"`
+		// FirstBloodBonus is required with first_blood "bonus" and refused with any other mode;
+		// the pairing CHECK arbitrates, so the two cannot disagree in storage.
+		FirstBlood      string `json:"first_blood,omitempty" enum:"none,announce,bonus" default:"none"`
+		FirstBloodBonus *int32 `json:"first_blood_bonus,omitempty" minimum:"1"`
 	}
 }
 
@@ -149,6 +156,10 @@ type adminUpdateChallengeInput struct {
 		MaxAttempts    *int32           `json:"max_attempts,omitempty" minimum:"0"`
 		Logic          *string          `json:"logic,omitempty" enum:"any,all"`
 		Position       *int32           `json:"position,omitempty"`
+		// Switching bonus → announce/none must clear the bonus in the same PATCH (explicit null);
+		// the pairing CHECK refuses the half-switched row.
+		FirstBlood      *string         `json:"first_blood,omitempty" enum:"none,announce,bonus"`
+		FirstBloodBonus Optional[int32] `json:"first_blood_bonus,omitempty" minimum:"1"`
 	}
 }
 
@@ -322,6 +333,7 @@ func (s *Server) adminCreateChallenge(ctx context.Context, in *adminCreateChalle
 		State: b.State, Value: b.Value, Function: b.Function,
 		Initial: b.Initial, Minimum: b.Minimum, Decay: b.Decay,
 		MaxAttempts: b.MaxAttempts, Logic: b.Logic, Position: b.Position,
+		FirstBlood: b.FirstBlood, FirstBloodBonus: b.FirstBloodBonus,
 	})
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "create challenge")
@@ -336,6 +348,7 @@ func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChalle
 	initial, clearInitial := b.Initial.split()
 	minimum, clearMinimum := b.Minimum.split()
 	decay, clearDecay := b.Decay.split()
+	firstBloodBonus, clearFirstBloodBonus := b.FirstBloodBonus.split()
 
 	c, err := s.opts.AdminOps.UpdateChallenge(ctx, s.adminActor(ctx), in.ID, adminops.ChallengePatch{
 		Name: b.Name, Category: b.Category, Description: b.Description,
@@ -343,11 +356,13 @@ func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChalle
 		Value: b.Value, Function: b.Function,
 		Initial: initial, Minimum: minimum, Decay: decay,
 		MaxAttempts: b.MaxAttempts, Logic: b.Logic, Position: b.Position,
-		ClearAttribution:    clearAttribution,
-		ClearConnectionInfo: clearConnectionInfo,
-		ClearInitial:        clearInitial,
-		ClearMinimum:        clearMinimum,
-		ClearDecay:          clearDecay,
+		FirstBlood: b.FirstBlood, FirstBloodBonus: firstBloodBonus,
+		ClearAttribution:     clearAttribution,
+		ClearConnectionInfo:  clearConnectionInfo,
+		ClearInitial:         clearInitial,
+		ClearMinimum:         clearMinimum,
+		ClearDecay:           clearDecay,
+		ClearFirstBloodBonus: clearFirstBloodBonus,
 	})
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "update challenge")

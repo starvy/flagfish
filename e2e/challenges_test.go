@@ -19,11 +19,8 @@ func TestChallengeSolveLifecycle(t *testing.T) {
 	const flag = "flag{e2e-correct-flag}"
 	chal := adminCreateChallenge(t, "solve-me-"+suffix(), "web", 100)
 	adminAddStaticFlag(t, chal, flag)
-	// origin/main exposes no admin API to enable first blood (challenges.first_blood defaults
-	// to 'none'), so turn it on directly to exercise the announcement path.
-	if err := execSQL(ctx, `UPDATE challenges SET first_blood = 'announce' WHERE id = $1`, chal); err != nil {
-		t.Fatalf("enable first blood: %v", err)
-	}
+	admin.adminReq(t, "PATCH", path("/challenges/%d", chal),
+		map[string]any{"first_blood": "announce"}).require(t, 200)
 
 	a := mustRegister(t)
 

@@ -30,31 +30,38 @@ type NewChallenge struct {
 	MaxAttempts    int32
 	Logic          string
 	Position       int32
+	FirstBlood     string
+	// FirstBloodBonus must be present exactly when FirstBlood is "bonus"; the pairing and
+	// positivity CHECKs arbitrate, not this struct.
+	FirstBloodBonus *int32
 }
 
 // ChallengePatch is a partial update. For every field nil means "keep". The nullable columns carry
 // an extra Clear flag: setting it nulls the column, which is distinct from leaving the value nil.
 // A caller must not set both a value and its Clear on the same field.
 type ChallengePatch struct {
-	Name           *string
-	Category       *string
-	Description    *string
-	Attribution    *string
-	ConnectionInfo *string
-	Value          *int32
-	Function       *string
-	Initial        *int32
-	Minimum        *int32
-	Decay          *int32
-	MaxAttempts    *int32
-	Logic          *string
-	Position       *int32
+	Name            *string
+	Category        *string
+	Description     *string
+	Attribution     *string
+	ConnectionInfo  *string
+	Value           *int32
+	Function        *string
+	Initial         *int32
+	Minimum         *int32
+	Decay           *int32
+	MaxAttempts     *int32
+	Logic           *string
+	Position        *int32
+	FirstBlood      *string
+	FirstBloodBonus *int32
 
-	ClearAttribution    bool
-	ClearConnectionInfo bool
-	ClearInitial        bool
-	ClearMinimum        bool
-	ClearDecay          bool
+	ClearAttribution     bool
+	ClearConnectionInfo  bool
+	ClearInitial         bool
+	ClearMinimum         bool
+	ClearDecay           bool
+	ClearFirstBloodBonus bool
 }
 
 func challengeType(function string) string {
@@ -75,6 +82,7 @@ func (s *Service) CreateChallenge(ctx context.Context, actor audit.Actor, in New
 			Type: challengeType(in.Function), State: in.State, Value: in.Value,
 			Function: in.Function, Initial: in.Initial, Minimum: in.Minimum, Decay: in.Decay,
 			MaxAttempts: in.MaxAttempts, Logic: in.Logic, Position: in.Position,
+			FirstBlood: in.FirstBlood, FirstBloodBonus: in.FirstBloodBonus,
 		})
 		if err != nil {
 			return fmt.Errorf("adminops: create challenge: %w", checkViolation(err))
@@ -100,11 +108,13 @@ func (s *Service) UpdateChallenge(ctx context.Context, actor audit.Actor, challe
 			Type: typ, Value: patch.Value, Function: patch.Function,
 			Initial: patch.Initial, Minimum: patch.Minimum, Decay: patch.Decay,
 			MaxAttempts: patch.MaxAttempts, Logic: patch.Logic, Position: patch.Position,
-			ClearAttribution:    patch.ClearAttribution,
-			ClearConnectionInfo: patch.ClearConnectionInfo,
-			ClearInitial:        patch.ClearInitial,
-			ClearMinimum:        patch.ClearMinimum,
-			ClearDecay:          patch.ClearDecay,
+			FirstBlood: patch.FirstBlood, FirstBloodBonus: patch.FirstBloodBonus,
+			ClearAttribution:     patch.ClearAttribution,
+			ClearConnectionInfo:  patch.ClearConnectionInfo,
+			ClearInitial:         patch.ClearInitial,
+			ClearMinimum:         patch.ClearMinimum,
+			ClearDecay:           patch.ClearDecay,
+			ClearFirstBloodBonus: patch.ClearFirstBloodBonus,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
@@ -379,12 +389,20 @@ func (s *Service) DeleteHint(ctx context.Context, actor audit.Actor, challengeID
 	})
 }
 
-// checkViolation translates the dynamic-params CHECK into operator language. Anything else passes
-// through untouched for the boundary to wrap.
+// checkViolation translates the challenge CHECK constraints into operator language. Anything else
+// passes through untouched for the boundary to wrap.
 func checkViolation(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == "challenges_dynamic_params" {
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+		return err
+	}
+	switch pgErr.ConstraintName {
+	case "challenges_dynamic_params":
 		return invalidf("a decayed challenge needs initial, minimum and decay, with decay > 0 and initial >= minimum >= 0")
+	case "challenges_fb_bonus":
+		return invalidf("first_blood 'bonus' needs a first_blood_bonus, and any other mode must not carry one")
+	case "challenges_fb_bonus_positive":
+		return invalidf("first_blood_bonus must be positive: zero scores nothing and a negative bonus would penalize the first solver")
 	}
 	return err
 }

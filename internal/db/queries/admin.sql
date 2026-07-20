@@ -8,11 +8,11 @@
 INSERT INTO challenges (
     name, category, description, attribution, connection_info,
     type, state, value, function, initial, minimum, decay,
-    max_attempts, logic, position
+    max_attempts, logic, position, first_blood, first_blood_bonus
 ) VALUES (
     @name, @category, @description, sqlc.narg(attribution), sqlc.narg(connection_info),
     @type, @state, @value, @function, sqlc.narg(initial), sqlc.narg(minimum), sqlc.narg(decay),
-    @max_attempts, @logic, @position
+    @max_attempts, @logic, @position, @first_blood, sqlc.narg(first_blood_bonus)
 )
 RETURNING *;
 
@@ -42,6 +42,9 @@ UPDATE challenges SET
     max_attempts    = COALESCE(sqlc.narg(max_attempts), max_attempts),
     logic           = COALESCE(sqlc.narg(logic), logic),
     position        = COALESCE(sqlc.narg(position), position),
+    first_blood     = COALESCE(sqlc.narg(first_blood), first_blood),
+    first_blood_bonus = CASE WHEN @clear_first_blood_bonus::bool THEN NULL
+                             ELSE COALESCE(sqlc.narg(first_blood_bonus), first_blood_bonus) END,
     updated_at      = now()
 WHERE id = @challenge_id
 RETURNING *;
