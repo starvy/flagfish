@@ -30,6 +30,25 @@ export function useSetChallengeState() {
   );
 }
 
+export function useSetChallengeRequirements() {
+  return useChallengeWrite(
+    (v: { id: number; body: Parameters<typeof adminApi.setChallengeRequirements>[1] }) =>
+      adminApi.setChallengeRequirements(v.id, v.body),
+  );
+}
+
+export function useAttachTag() {
+  return useChallengeWrite((v: { challengeId: number; value: string }) =>
+    adminApi.attachTag(v.challengeId, v.value),
+  );
+}
+
+export function useDetachTag() {
+  return useChallengeWrite((v: { challengeId: number; value: string }) =>
+    adminApi.detachTag(v.challengeId, v.value),
+  );
+}
+
 export function useReorderChallenges() {
   return useChallengeWrite((items: ReadonlyArray<{ id: number; position: number }>) =>
     adminApi.reorderChallenges(items),

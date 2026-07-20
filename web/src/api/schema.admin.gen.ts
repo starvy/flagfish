@@ -281,6 +281,23 @@ export interface paths {
         patch: operations["admin-update-hint"];
         trace?: never;
     };
+    "/challenges/{id}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a challenge's prerequisites (whole-value replace) */
+        put: operations["admin-set-challenge-requirements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/challenges/{id}/state": {
         parameters: {
             query?: never;
@@ -293,6 +310,40 @@ export interface paths {
         put: operations["admin-set-challenge-state"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/challenges/{id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a tag to a challenge */
+        post: operations["admin-attach-tag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/challenges/{id}/tags/{value}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach a tag from a challenge */
+        delete: operations["admin-detach-tag"];
         options?: never;
         head?: never;
         patch?: never;
@@ -604,6 +655,7 @@ export interface components {
             cost?: number;
             /** Format: int32 */
             position?: number;
+            prerequisites?: number[] | null;
             title?: string;
         };
         AdminAssignBracketInputBody: {
@@ -628,6 +680,15 @@ export interface components {
             /** Format: int64 */
             bracket_id: number | null;
             name: string;
+        };
+        AdminAttachTagInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminAttachTagInputBody.json
+             */
+            readonly $schema?: string;
+            value: string;
         };
         AdminAuditEntry: {
             action: string;
@@ -693,6 +754,9 @@ export interface components {
             /** Format: int32 */
             decay?: number;
             description: string;
+            first_blood: string;
+            /** Format: int32 */
+            first_blood_bonus?: number;
             function: string;
             /** Format: int64 */
             id: number;
@@ -706,6 +770,7 @@ export interface components {
             name: string;
             /** Format: int32 */
             position: number;
+            requirements: components["schemas"]["AdminRequirementsBody"];
             state: string;
             type: string;
             /** Format: date-time */
@@ -722,6 +787,19 @@ export interface components {
             readonly $schema?: string;
             /** @enum {string} */
             state: "visible" | "hidden";
+        };
+        AdminChallengeTagBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminChallengeTagBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            challenge_id: number;
+            /** Format: int64 */
+            id: number;
+            value: string;
         };
         AdminConfigInputBody: {
             /**
@@ -838,6 +916,13 @@ export interface components {
             decay?: number;
             description?: string;
             /**
+             * @default none
+             * @enum {string}
+             */
+            first_blood: "none" | "announce" | "bonus";
+            /** Format: int32 */
+            first_blood_bonus?: number;
+            /**
              * @default static
              * @enum {string}
              */
@@ -921,6 +1006,7 @@ export interface components {
             id: number;
             /** Format: int32 */
             position: number;
+            prerequisites: number[] | null;
             title?: string;
         };
         AdminListAuditOutputBody: {
@@ -999,6 +1085,11 @@ export interface components {
             /** Format: int64 */
             reordered: number;
         };
+        AdminRequirementsBody: {
+            prerequisites: number[] | null;
+            /** @enum {string} */
+            visibility: "hidden" | "masked" | "preview";
+        };
         AdminRoleInputBody: {
             /**
              * Format: uri
@@ -1020,6 +1111,31 @@ export interface components {
             id: number;
             name: string;
             role: string;
+        };
+        AdminSetRequirementsInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminSetRequirementsInputBody.json
+             */
+            readonly $schema?: string;
+            prerequisites: number[] | null;
+            /**
+             * @description How the challenge appears while its prerequisites are unmet: hidden (absent), masked (listed as ???), or preview (real name, no solvable content).
+             * @default hidden
+             * @enum {string}
+             */
+            visibility: "hidden" | "masked" | "preview";
+        };
+        AdminSetRequirementsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminSetRequirementsOutputBody.json
+             */
+            readonly $schema?: string;
+            challenge: components["schemas"]["AdminChallengeBody"];
+            warnings?: string[] | null;
         };
         AdminTag: {
             /** Format: int64 */
@@ -1049,6 +1165,10 @@ export interface components {
             /** Format: int32 */
             decay?: number | null;
             description?: string;
+            /** @enum {string} */
+            first_blood?: "none" | "announce" | "bonus";
+            /** Format: int32 */
+            first_blood_bonus?: number | null;
             /** @enum {string} */
             function?: "static" | "linear" | "logarithmic";
             /** Format: int32 */
@@ -1089,6 +1209,7 @@ export interface components {
             cost?: number;
             /** Format: int32 */
             position?: number;
+            prerequisites?: number[] | null;
             title?: string;
         };
         AdminUserBody: {
@@ -1881,6 +2002,41 @@ export interface operations {
             };
         };
     };
+    "admin-set-challenge-requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSetRequirementsInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSetRequirementsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "admin-set-challenge-state": {
         parameters: {
             query?: never;
@@ -1904,6 +2060,71 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminChallengeBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-attach-tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAttachTagInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChallengeTagBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-detach-tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                value: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

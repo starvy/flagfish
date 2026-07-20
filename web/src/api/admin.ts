@@ -13,6 +13,9 @@ const P = "/admin";
 export type AdminConfig = Schemas["AdminConfigOutputBody"];
 export type AdminConfigPatch = Body<Schemas["AdminConfigInputBody"]>;
 export type AdminChallenge = Schemas["AdminChallengeBody"];
+export type AdminRequirements = Schemas["AdminRequirementsBody"];
+export type AdminSetRequirementsResult = Schemas["AdminSetRequirementsOutputBody"];
+export type AdminChallengeTag = Schemas["AdminChallengeTagBody"];
 export type AdminFlag = Schemas["AdminFlagBody"];
 export type AdminHint = Schemas["AdminHintBody"];
 export type AdminFile = Schemas["AdminFileBody"];
@@ -58,6 +61,10 @@ export const adminApi = {
   setChallengeState: (id: number, state: "visible" | "hidden") =>
     request<AdminChallenge>("PUT", `${P}/challenges/${id}/state`, { state }),
 
+  // Whole-value replace: what you send is the entire prerequisite set.
+  setChallengeRequirements: (id: number, body: Body<Schemas["AdminSetRequirementsInputBody"]>) =>
+    request<AdminSetRequirementsResult>("PUT", `${P}/challenges/${id}/requirements`, body),
+
   reorderChallenges: (items: ReadonlyArray<{ id: number; position: number }>) =>
     request<Schemas["AdminReorderOutputBody"]>("PUT", `${P}/challenges/order`, { items }),
 
@@ -100,6 +107,13 @@ export const adminApi = {
 
   // Tags
   listTags: () => request<Schemas["AdminListTagsOutputBody"]>("GET", `${P}/tags`),
+
+  // A duplicate attach is a 409; a missing challenge a 404 — both straight from the constraints.
+  attachTag: (challengeId: number, value: string) =>
+    request<AdminChallengeTag>("POST", `${P}/challenges/${challengeId}/tags`, { value }),
+
+  detachTag: (challengeId: number, value: string) =>
+    request<void>("DELETE", `${P}/challenges/${challengeId}/tags/${encodeURIComponent(value)}`),
 
   mergeTag: (value: string, into: string) =>
     request<void>("POST", `${P}/tags/${encodeURIComponent(value)}/merge`, { into }),

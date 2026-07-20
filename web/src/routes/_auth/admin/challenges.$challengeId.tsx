@@ -1,16 +1,21 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { isApiError, type ChallengeDetail } from "../../../api/client";
+import { isApiError, request, type ChallengeDetail } from "../../../api/client";
 import { adminApi, type AdminChallenge, type AdminFlag } from "../../../api/admin";
 import {
+  ADMIN_STALE_TIME,
   challengeQuery,
+  qk,
   useAddFlag,
   useAddHint,
+  useAttachTag,
   useCreateChallenge,
   useDeleteFile,
   useDeleteFlag,
   useDeleteHint,
+  useDetachTag,
+  useSetChallengeRequirements,
   useSetChallengeState,
   useUpdateChallenge,
   useUpdateFlag,
@@ -123,10 +128,25 @@ function ChallengeEditor() {
             content: <DetailsTab id={id} read={read} saved={saved} onSaved={setSaved} />,
           },
           {
+            id: "requirements",
+            label: "Requirements",
+            disabled: id === null,
+            content:
+              id === null ? null : (
+                <RequirementsTab challengeId={id} saved={saved} onSaved={setSaved} />
+              ),
+          },
+          {
             id: "flags",
             label: "Flags",
             disabled: id === null,
             content: id === null ? null : <FlagsTab challengeId={id} />,
+          },
+          {
+            id: "tags",
+            label: "Tags",
+            disabled: id === null,
+            content: id === null ? null : <TagsTab challengeId={id} read={read} />,
           },
           {
             id: "hints",
@@ -190,6 +210,8 @@ interface FormState {
   state: "visible" | "hidden";
   function: "static" | "linear" | "logarithmic";
   logic: "any" | "all" | "";
+  first_blood: "none" | "announce" | "bonus" | "";
+  first_blood_bonus: string;
   value: string;
   initial: string;
   minimum: string;
@@ -207,6 +229,8 @@ const BLANK: FormState = {
   state: "visible",
   function: "static",
   logic: "any",
+  first_blood: "none",
+  first_blood_bonus: "",
   value: "0",
   initial: "",
   minimum: "",
@@ -229,6 +253,8 @@ function seedOf(ch: AdminChallenge | null, read: ChallengeDetail | null): FormSt
       state: ch.state as FormState["state"],
       function: ch.function as FormState["function"],
       logic: ch.logic as FormState["logic"],
+      first_blood: ch.first_blood as FormState["first_blood"],
+      first_blood_bonus: optNum(ch.first_blood_bonus),
       value: String(ch.value),
       initial: optNum(ch.initial),
       minimum: optNum(ch.minimum),
@@ -248,6 +274,7 @@ function seedOf(ch: AdminChallenge | null, read: ChallengeDetail | null): FormSt
       state: read.state as FormState["state"],
       function: read.function as FormState["function"],
       logic: "",
+      first_blood: "",
       value: String(read.value),
       max_attempts: String(read.max_attempts),
     };
@@ -305,6 +332,10 @@ function DetailsTab({
           value: Number(form.value),
           function: form.function,
           logic: form.logic === "" ? "any" : form.logic,
+          first_blood: form.first_blood === "" ? "none" : form.first_blood,
+          ...(form.first_blood === "bonus"
+            ? { first_blood_bonus: Number(form.first_blood_bonus) }
+            : {}),
           max_attempts: Number(form.max_attempts || 0),
           ...(form.description === "" ? {} : { description: form.description }),
           ...(form.attribution === "" ? {} : { attribution: form.attribution }),
@@ -464,6 +495,34 @@ function DetailsTab({
           </>
         )}
 
+        <Field
+          name="first_blood"
+          label="First blood"
+          hint="Enabling this on an already-solved challenge changes nothing retroactively: the first solve is a stamped fact, so nobody is paid or announced after the fact."
+        >
+          <Select
+            value={form.first_blood}
+            onChange={(e) => set("first_blood", e.target.value as FormState["first_blood"])}
+            options={[
+              ...(form.first_blood === "" ? [{ value: "", label: "unchanged" }] : []),
+              { value: "none", label: "none — first solve is just a solve" },
+              { value: "announce", label: "announce — the first solver is broadcast" },
+              { value: "bonus", label: "bonus — announced and paid extra points" },
+            ]}
+          />
+        </Field>
+
+        {form.first_blood === "bonus" && (
+          <Field name="first_blood_bonus" label="First blood bonus" required hint="Extra points for the first solver. Must be positive.">
+            <Input
+              type="number"
+              min={1}
+              value={form.first_blood_bonus}
+              onChange={(e) => set("first_blood_bonus", e.target.value)}
+            />
+          </Field>
+        )}
+
         <Field name="max_attempts" label="Max attempts" hint="0 is unlimited.">
           <Input
             type="number"
@@ -514,6 +573,9 @@ function validate(form: FormState, creating: boolean): FieldErrors {
       if (form[key] === "") out[key] = "Decayed scoring needs initial, minimum and decay.";
     }
   }
+  if (form.first_blood === "bonus" && (!isCount(form.first_blood_bonus) || Number(form.first_blood_bonus) < 1)) {
+    out.first_blood_bonus = "A bonus is a positive number of points.";
+  }
   return out;
 }
 
@@ -527,6 +589,14 @@ function patchOf(form: FormState, base: FormState): ChallengePatch {
   if (form.function !== base.function) patch.function = form.function;
   if (form.max_attempts !== base.max_attempts) patch.max_attempts = Number(form.max_attempts || 0);
   if (form.logic !== base.logic && form.logic !== "") patch.logic = form.logic;
+  if (form.first_blood !== base.first_blood && form.first_blood !== "") {
+    patch.first_blood = form.first_blood;
+    // The bonus must switch in the same PATCH: bonus mode carries its value, any other mode
+    // clears it with an explicit null — a half-switched row is refused by the server.
+    patch.first_blood_bonus = form.first_blood === "bonus" ? Number(form.first_blood_bonus) : null;
+  } else if (form.first_blood === "bonus" && form.first_blood_bonus !== base.first_blood_bonus) {
+    patch.first_blood_bonus = Number(form.first_blood_bonus);
+  }
   if (form.position !== base.position && form.position !== "") patch.position = Number(form.position);
   if (form.attribution !== base.attribution) patch.attribution = orNull(form.attribution);
   if (form.connection_info !== base.connection_info) {
@@ -536,6 +606,235 @@ function patchOf(form: FormState, base: FormState): ChallengePatch {
   if (form.minimum !== base.minimum) patch.minimum = numOrNull(form.minimum);
   if (form.decay !== base.decay) patch.decay = numOrNull(form.decay);
   return patch;
+}
+
+/* ----------------------------------------------------------- requirements */
+
+type BoardRow = { id: number; name: string; category: string };
+
+// Same key and projection as the admin board screen, so the two share one cache entry.
+const editorBoardQuery = queryOptions({
+  queryKey: [...qk.challenges(), "admin"] as const,
+  queryFn: () => request<{ challenges: BoardRow[] }>("GET", "/challenges?view=admin"),
+  staleTime: ADMIN_STALE_TIME,
+});
+
+type ReqVisibility = "hidden" | "masked" | "preview";
+
+function RequirementsTab({
+  challengeId,
+  saved,
+  onSaved,
+}: {
+  challengeId: number;
+  saved: AdminChallenge | null;
+  onSaved: (ch: AdminChallenge) => void;
+}) {
+  const board = useQuery(editorBoardQuery);
+  const save = useSetChallengeRequirements();
+  const toast = useToast();
+
+  const stored = saved?.requirements ?? null;
+  const [selected, setSelected] = useState<number[]>(stored?.prerequisites ?? []);
+  const [visibility, setVisibility] = useState<ReqVisibility>(
+    (stored?.visibility as ReqVisibility | undefined) ?? "hidden",
+  );
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const options = (board.data?.challenges ?? []).filter((c) => c.id !== challengeId);
+
+  const toggle = (id: number) =>
+    setSelected((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+
+  const submit = async () => {
+    setFailure(null);
+    try {
+      const out = await save.mutateAsync({
+        id: challengeId,
+        body: { prerequisites: selected, visibility },
+      });
+      onSaved(out.challenge);
+      setSelected(out.challenge.requirements.prerequisites ?? []);
+      setWarnings(out.warnings ?? []);
+      toast.success("Requirements saved");
+    } catch (e) {
+      setFailure(messageOf(e));
+    }
+  };
+
+  return (
+    <div className="ff-stack">
+      {stored === null && (
+        <Alert tone="info" title="Saving replaces the stored set">
+          The stored prerequisites have not been read back in this session — the API only echoes
+          them on a write. Saving replaces the whole set with what is selected below.
+        </Alert>
+      )}
+
+      {warnings.map((w) => (
+        <Alert key={w} tone="warn" title="Saved, with a warning">
+          {w}
+        </Alert>
+      ))}
+
+      <Card title="Prerequisites">
+        <Form
+          errors={{}}
+          error={failure}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+          footer={
+            <Button type="submit" variant="primary" loading={save.isPending}>
+              Save requirements
+            </Button>
+          }
+        >
+          <Field
+            name="prerequisites"
+            label="Must be solved first"
+            hint="Every selected challenge has to be solved before this one opens."
+          >
+            {board.isPending ? (
+              <Skeleton lines={3} height="1.25rem" />
+            ) : options.length === 0 ? (
+              <p className="ff-muted">There is no other challenge to require.</p>
+            ) : (
+              <div className="ff-stack">
+                {options.map((c) => (
+                  <Checkbox
+                    key={c.id}
+                    checked={selected.includes(c.id)}
+                    onChange={() => toggle(c.id)}
+                    label={`${c.name} (${c.category})`}
+                  />
+                ))}
+              </div>
+            )}
+          </Field>
+
+          <Field
+            name="visibility"
+            label="While locked"
+            hint="hidden: players never learn it exists. masked: listed as ??? with nothing solvable. preview: real name shown so a route can be planned."
+          >
+            <Select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as ReqVisibility)}
+              options={[
+                { value: "hidden", label: "hidden — off the board entirely" },
+                { value: "masked", label: "masked — on the board as ???" },
+                { value: "preview", label: "preview — named, but locked" },
+              ]}
+            />
+          </Field>
+        </Form>
+      </Card>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------- tags */
+
+function TagsTab({ challengeId, read }: { challengeId: number; read: ChallengeDetail | null }) {
+  const toast = useToast();
+  const attach = useAttachTag();
+  const detach = useDetachTag();
+
+  // Seeded from the player detail — the surface tags exist for — then kept in step locally.
+  const [tags, setTags] = useState<string[]>(read?.tags ?? []);
+  const [value, setValue] = useState("");
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const add = async () => {
+    const v = value.trim();
+    if (v === "") return;
+    setFailure(null);
+    try {
+      const tag = await attach.mutateAsync({ challengeId, value: v });
+      setTags((list) => (list.includes(tag.value) ? list : [...list, tag.value]));
+      setValue("");
+      toast.success("Tag attached", tag.value);
+    } catch (e) {
+      setFailure(messageOf(e));
+    }
+  };
+
+  const remove = async (v: string) => {
+    try {
+      await detach.mutateAsync({ challengeId, value: v });
+      setTags((list) => list.filter((t) => t !== v));
+      toast.success("Tag detached", v);
+    } catch (e) {
+      toast.error("Could not detach the tag", messageOf(e));
+    }
+  };
+
+  return (
+    <div className="ff-stack">
+      {read === null && (
+        <Alert tone="info" title="Stored tags not loaded">
+          Tags are read off the player detail, which a hidden challenge does not publish. The list
+          below starts from this session's writes; attach and detach still hit the stored rows.
+        </Alert>
+      )}
+
+      {failure !== null && (
+        <Alert tone="danger" title="Could not attach the tag" onDismiss={() => setFailure(null)}>
+          {failure}
+        </Alert>
+      )}
+
+      <Card title="Attach a tag">
+        <form
+          className="ff-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void add();
+          }}
+        >
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label="Tag value"
+            placeholder="e.g. web"
+          />
+          <Button
+            type="submit"
+            variant="primary"
+            loading={attach.isPending}
+            disabled={value.trim() === ""}
+          >
+            Attach
+          </Button>
+        </form>
+      </Card>
+
+      <Card title="Tags on this challenge">
+        {tags.length === 0 ? (
+          <p className="ff-muted">No tags yet. Players see them on the challenge detail.</p>
+        ) : (
+          <div className="ff-row">
+            {tags.map((t) => (
+              <span key={t} className="ff-row">
+                <Badge tone="info">{t}</Badge>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Detach tag ${t}`}
+                  onClick={() => void remove(t)}
+                >
+                  ×
+                </Button>
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ flags */
@@ -825,6 +1124,7 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [cost, setCost] = useState("0");
+  const [prereqIds, setPrereqIds] = useState<number[]>([]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -833,6 +1133,9 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
 
   const hints = read.hints ?? [];
   const reordering = update.isPending;
+
+  const togglePrereq = (id: number) =>
+    setPrereqIds((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
 
   const submit = async () => {
     setFailure(null);
@@ -850,11 +1153,13 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
           cost: Number(cost),
           position: hints.length,
           ...(title === "" ? {} : { title }),
+          ...(prereqIds.length === 0 ? {} : { prerequisites: prereqIds }),
         },
       });
       setTitle("");
       setContent("");
       setCost("0");
+      setPrereqIds([]);
       toast.success("Hint added");
     } catch (e) {
       if (isApiError(e)) {
@@ -972,6 +1277,24 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
           <Field name="cost" label="Cost" hint="Points charged on unlock. 0 is free.">
             <Input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value)} />
           </Field>
+          {hints.length > 0 && (
+            <Field
+              name="prerequisites"
+              label="Unlock after"
+              hint="Every selected hint must be unlocked before this one can be bought."
+            >
+              <div className="ff-stack">
+                {hints.map((h) => (
+                  <Checkbox
+                    key={h.id}
+                    checked={prereqIds.includes(h.id)}
+                    onChange={() => togglePrereq(h.id)}
+                    label={h.title ?? `hint ${h.id}`}
+                  />
+                ))}
+              </div>
+            </Field>
+          )}
         </Form>
       </Card>
 
@@ -993,6 +1316,7 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
       {editing && (
         <EditHintDialog
           hint={editing}
+          others={hints.filter((h) => h.id !== editing.id)}
           busy={update.isPending}
           onClose={() => setEditing(null)}
           onSave={async (body) => {
@@ -1025,15 +1349,18 @@ interface HintEdit {
   title?: string;
   content?: string;
   cost?: number;
+  prerequisites?: number[];
 }
 
 function EditHintDialog({
   hint,
+  others,
   busy,
   onClose,
   onSave,
 }: {
   hint: ReadHint;
+  others: ReadHint[];
   busy: boolean;
   onClose: () => void;
   onSave: (body: HintEdit) => Promise<string | null>;
@@ -1041,8 +1368,17 @@ function EditHintDialog({
   const [title, setTitle] = useState(hint.title ?? "");
   const [content, setContent] = useState("");
   const [cost, setCost] = useState(String(hint.cost));
+  // The stored set is never read back, so the control is three-state like the body: untouched is
+  // omitted (keeps), and any touch replaces the whole set with the selection — empty clears.
+  const [prereqTouched, setPrereqTouched] = useState(false);
+  const [prereqIds, setPrereqIds] = useState<number[]>([]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
+
+  const togglePrereq = (id: number) => {
+    setPrereqTouched(true);
+    setPrereqIds((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+  };
 
   const submit = async () => {
     if (!isCount(cost)) {
@@ -1055,6 +1391,7 @@ function EditHintDialog({
         title,
         cost: Number(cost),
         ...(content === "" ? {} : { content }),
+        ...(prereqTouched ? { prerequisites: prereqIds } : {}),
       }),
     );
   };
@@ -1092,6 +1429,24 @@ function EditHintDialog({
         <Field name="cost" label="Cost">
           <Input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value)} />
         </Field>
+        {others.length > 0 && (
+          <Field
+            name="prerequisites"
+            label="Unlock after"
+            hint="The stored set is never read back. Untouched keeps it; any change replaces it with the selection — selecting nothing clears it."
+          >
+            <div className="ff-stack">
+              {others.map((h) => (
+                <Checkbox
+                  key={h.id}
+                  checked={prereqIds.includes(h.id)}
+                  onChange={() => togglePrereq(h.id)}
+                  label={h.title ?? `hint ${h.id}`}
+                />
+              ))}
+            </div>
+          </Field>
+        )}
       </Form>
     </Dialog>
   );
