@@ -269,6 +269,37 @@ func (q *Queries) AdminDeleteTag(ctx context.Context, value string) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const adminFilterChallengeFileIDs = `-- name: AdminFilterChallengeFileIDs :many
+SELECT id FROM files WHERE id = ANY($1::bigint[]) AND challenge_id = $2
+`
+
+type AdminFilterChallengeFileIDsParams struct {
+	Ids         []int64
+	ChallengeID *int64
+}
+
+// Existence probe for artifact validation, scoped to the challenge: an artifact_id that is not a
+// file of this challenge filters out here, and the caller names it as invalid.
+func (q *Queries) AdminFilterChallengeFileIDs(ctx context.Context, arg AdminFilterChallengeFileIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, adminFilterChallengeFileIDs, arg.Ids, arg.ChallengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminFilterChallengeIDs = `-- name: AdminFilterChallengeIDs :many
 SELECT id FROM challenges WHERE id = ANY($1::bigint[])
 `
@@ -564,6 +595,47 @@ func (q *Queries) AdminInsertHint(ctx context.Context, arg AdminInsertHintParams
 	return i, err
 }
 
+const adminInsertInstances = `-- name: AdminInsertInstances :execrows
+INSERT INTO challenge_instances (challenge_id, value_hash, artifact_id, vars, generation)
+SELECT $1,
+       v.value_hash,
+       nullif(v.artifact_id, 0),
+       v.vars,
+       $2
+FROM (
+    SELECT unnest($3::bytea[])  AS value_hash,
+           unnest($4::bigint[]) AS artifact_id,
+           unnest($5::jsonb[])          AS vars
+) v
+`
+
+type AdminInsertInstancesParams struct {
+	ChallengeID int64
+	Generation  int32
+	ValueHashes [][]byte
+	ArtifactIds []int64
+	Vars        []json.RawMessage
+}
+
+// One statement, one transaction: the whole batch lands or none of it does. An in-batch duplicate,
+// or a collision with an existing generation's hash, trips UNIQUE(challenge_id, value_hash,
+// generation) and rolls the entire upload back — the friendly duplicate pre-check in Go only buys a
+// nicer message; this is the guarantee. A zero artifact_id means "no artifact": file ids are
+// bigserial and never 0, so it is a safe stand-in for the SQL NULL a bigint[] element cannot carry.
+func (q *Queries) AdminInsertInstances(ctx context.Context, arg AdminInsertInstancesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adminInsertInstances,
+		arg.ChallengeID,
+		arg.Generation,
+		arg.ValueHashes,
+		arg.ArtifactIds,
+		arg.Vars,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adminListAudit = `-- name: AdminListAudit :many
 
 SELECT id, actor_id, action, target_table, target_id, before, after, at, ip,
@@ -663,6 +735,65 @@ func (q *Queries) AdminListChallengeRequirements(ctx context.Context) ([]AdminLi
 	for rows.Next() {
 		var i AdminListChallengeRequirementsRow
 		if err := rows.Scan(&i.ID, &i.Requirements); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListInstances = `-- name: AdminListInstances :many
+SELECT ci.id, ci.value_hash, ci.artifact_id, ci.vars, ci.generation,
+       fi.account_id AS issued_to, fi.assigned_at,
+       COUNT(*) OVER () AS total
+  FROM challenge_instances ci
+  LEFT JOIN flag_issues fi ON fi.instance_id = ci.id
+ WHERE ci.challenge_id = $1
+ ORDER BY ci.generation DESC, ci.id
+ LIMIT $3::int OFFSET $2::int
+`
+
+type AdminListInstancesParams struct {
+	ChallengeID int64
+	Off         int32
+	Lim         int32
+}
+
+type AdminListInstancesRow struct {
+	ID         int64
+	ValueHash  []byte
+	ArtifactID *int64
+	Vars       json.RawMessage
+	Generation int32
+	IssuedTo   *int64
+	AssignedAt pgtype.Timestamptz
+	Total      int64
+}
+
+// The pool of one challenge, newest generation first, each row carrying who it was issued to (a NULL
+// issued_to is a still-free instance). COUNT(*) OVER () rides along so the page and its total agree.
+func (q *Queries) AdminListInstances(ctx context.Context, arg AdminListInstancesParams) ([]AdminListInstancesRow, error) {
+	rows, err := q.db.Query(ctx, adminListInstances, arg.ChallengeID, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminListInstancesRow{}
+	for rows.Next() {
+		var i AdminListInstancesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ValueHash,
+			&i.ArtifactID,
+			&i.Vars,
+			&i.Generation,
+			&i.IssuedTo,
+			&i.AssignedAt,
+			&i.Total,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -893,6 +1024,54 @@ func (q *Queries) AdminMergeTagCollisions(ctx context.Context, arg AdminMergeTag
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const adminNewestPoolHashes = `-- name: AdminNewestPoolHashes :many
+SELECT ci.value_hash
+  FROM challenge_instances ci
+ WHERE ci.challenge_id = $1
+   AND ci.generation = (SELECT MAX(g.generation) FROM challenge_instances g WHERE g.challenge_id = $1)
+`
+
+// The value_hash set of the newest generation, for the idempotent-push check: an upload whose hash
+// set equals this one is a no-op and returns the existing generation unchanged.
+func (q *Queries) AdminNewestPoolHashes(ctx context.Context, challengeID int64) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, adminNewestPoolHashes, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var value_hash []byte
+		if err := rows.Scan(&value_hash); err != nil {
+			return nil, err
+		}
+		items = append(items, value_hash)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminNextPoolGeneration = `-- name: AdminNextPoolGeneration :one
+
+SELECT COALESCE(MAX(generation), 0) + 1 AS generation FROM challenge_instances WHERE challenge_id = $1
+`
+
+// ── challenge instances (the unique-flag pool) ────────────────────────────────────
+//
+// The pool write path. The client uploads value_hash = sha256(flag) — never the plaintext, which
+// the platform is designed never to hold — plus an optional per-account artifact and vars. A
+// re-upload lands in a new generation so new issues come from the new set while existing flag_issues
+// stay attributable to the instances they were assigned from.
+// The generation a fresh upload lands in: one past the highest present, or 1 for an empty pool.
+func (q *Queries) AdminNextPoolGeneration(ctx context.Context, challengeID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, adminNextPoolGeneration, challengeID)
+	var generation int32
+	err := row.Scan(&generation)
+	return generation, err
 }
 
 const adminRemoveTag = `-- name: AdminRemoveTag :execrows

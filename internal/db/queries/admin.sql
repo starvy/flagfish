@@ -89,6 +89,60 @@ SELECT id, requirements FROM challenges;
 -- caller maps that violation to a conflict.
 DELETE FROM challenges WHERE id = @challenge_id;
 
+-- ── challenge instances (the unique-flag pool) ────────────────────────────────────
+--
+-- The pool write path. The client uploads value_hash = sha256(flag) — never the plaintext, which
+-- the platform is designed never to hold — plus an optional per-account artifact and vars. A
+-- re-upload lands in a new generation so new issues come from the new set while existing flag_issues
+-- stay attributable to the instances they were assigned from.
+
+-- name: AdminNextPoolGeneration :one
+-- The generation a fresh upload lands in: one past the highest present, or 1 for an empty pool.
+SELECT COALESCE(MAX(generation), 0) + 1 AS generation FROM challenge_instances WHERE challenge_id = @challenge_id;
+
+-- name: AdminNewestPoolHashes :many
+-- The value_hash set of the newest generation, for the idempotent-push check: an upload whose hash
+-- set equals this one is a no-op and returns the existing generation unchanged.
+SELECT ci.value_hash
+  FROM challenge_instances ci
+ WHERE ci.challenge_id = @challenge_id
+   AND ci.generation = (SELECT MAX(g.generation) FROM challenge_instances g WHERE g.challenge_id = @challenge_id);
+
+-- name: AdminInsertInstances :execrows
+-- One statement, one transaction: the whole batch lands or none of it does. An in-batch duplicate,
+-- or a collision with an existing generation's hash, trips UNIQUE(challenge_id, value_hash,
+-- generation) and rolls the entire upload back — the friendly duplicate pre-check in Go only buys a
+-- nicer message; this is the guarantee. A zero artifact_id means "no artifact": file ids are
+-- bigserial and never 0, so it is a safe stand-in for the SQL NULL a bigint[] element cannot carry.
+INSERT INTO challenge_instances (challenge_id, value_hash, artifact_id, vars, generation)
+SELECT @challenge_id,
+       v.value_hash,
+       nullif(v.artifact_id, 0),
+       v.vars,
+       @generation
+FROM (
+    SELECT unnest(@value_hashes::bytea[])  AS value_hash,
+           unnest(@artifact_ids::bigint[]) AS artifact_id,
+           unnest(@vars::jsonb[])          AS vars
+) v;
+
+-- name: AdminListInstances :many
+-- The pool of one challenge, newest generation first, each row carrying who it was issued to (a NULL
+-- issued_to is a still-free instance). COUNT(*) OVER () rides along so the page and its total agree.
+SELECT ci.id, ci.value_hash, ci.artifact_id, ci.vars, ci.generation,
+       fi.account_id AS issued_to, fi.assigned_at,
+       COUNT(*) OVER () AS total
+  FROM challenge_instances ci
+  LEFT JOIN flag_issues fi ON fi.instance_id = ci.id
+ WHERE ci.challenge_id = @challenge_id
+ ORDER BY ci.generation DESC, ci.id
+ LIMIT @lim::int OFFSET @off::int;
+
+-- name: AdminFilterChallengeFileIDs :many
+-- Existence probe for artifact validation, scoped to the challenge: an artifact_id that is not a
+-- file of this challenge filters out here, and the caller names it as invalid.
+SELECT id FROM files WHERE id = ANY(@ids::bigint[]) AND challenge_id = @challenge_id;
+
 -- ── flags ───────────────────────────────────────────────────────────────────────
 
 -- name: AdminInsertFlag :one

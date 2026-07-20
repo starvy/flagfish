@@ -44,6 +44,9 @@ type Querier interface {
 	AdminDeleteFlag(ctx context.Context, arg AdminDeleteFlagParams) (int64, error)
 	AdminDeleteHint(ctx context.Context, arg AdminDeleteHintParams) (int64, error)
 	AdminDeleteTag(ctx context.Context, value string) (int64, error)
+	// Existence probe for artifact validation, scoped to the challenge: an artifact_id that is not a
+	// file of this challenge filters out here, and the caller names it as invalid.
+	AdminFilterChallengeFileIDs(ctx context.Context, arg AdminFilterChallengeFileIDsParams) ([]int64, error)
 	// Existence probe for prerequisite validation: the caller diffs the echo against its input to name
 	// the ids that do not exist.
 	AdminFilterChallengeIDs(ctx context.Context, ids []int64) ([]int64, error)
@@ -67,6 +70,12 @@ type Querier interface {
 	AdminInsertFlag(ctx context.Context, arg AdminInsertFlagParams) (Flag, error)
 	// ── hints ───────────────────────────────────────────────────────────────────────
 	AdminInsertHint(ctx context.Context, arg AdminInsertHintParams) (Hint, error)
+	// One statement, one transaction: the whole batch lands or none of it does. An in-batch duplicate,
+	// or a collision with an existing generation's hash, trips UNIQUE(challenge_id, value_hash,
+	// generation) and rolls the entire upload back — the friendly duplicate pre-check in Go only buys a
+	// nicer message; this is the guarantee. A zero artifact_id means "no artifact": file ids are
+	// bigserial and never 0, so it is a safe stand-in for the SQL NULL a bigint[] element cannot carry.
+	AdminInsertInstances(ctx context.Context, arg AdminInsertInstancesParams) (int64, error)
 	// ── audit trail ───────────────────────────────────────────────────────────────────
 	// Read-only feed over the capture triggers' output, newest first. Each filter is optional and
 	// narrows independently; an unset one drops out of the WHERE rather than matching a sentinel. The
@@ -76,6 +85,9 @@ type Querier interface {
 	// The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
 	// read beats a traversal query nothing else needs.
 	AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error)
+	// The pool of one challenge, newest generation first, each row carrying who it was issued to (a NULL
+	// issued_to is a still-free instance). COUNT(*) OVER () rides along so the page and its total agree.
+	AdminListInstances(ctx context.Context, arg AdminListInstancesParams) ([]AdminListInstancesRow, error)
 	AdminListTags(ctx context.Context) ([]AdminListTagsRow, error)
 	// ── teams ───────────────────────────────────────────────────────────────────────
 	// COUNT(*) OVER () carries the total in the same round trip, like AdminListUsers. The search is
@@ -90,6 +102,17 @@ type Querier interface {
 	// Drop the source rows on challenges that already carry the destination, so the rename that follows
 	// cannot trip UNIQUE(challenge_id, value). These deletions are real merges and are audited as such.
 	AdminMergeTagCollisions(ctx context.Context, arg AdminMergeTagCollisionsParams) (int64, error)
+	// The value_hash set of the newest generation, for the idempotent-push check: an upload whose hash
+	// set equals this one is a no-op and returns the existing generation unchanged.
+	AdminNewestPoolHashes(ctx context.Context, challengeID int64) ([][]byte, error)
+	// ── challenge instances (the unique-flag pool) ────────────────────────────────────
+	//
+	// The pool write path. The client uploads value_hash = sha256(flag) — never the plaintext, which
+	// the platform is designed never to hold — plus an optional per-account artifact and vars. A
+	// re-upload lands in a new generation so new issues come from the new set while existing flag_issues
+	// stay attributable to the instances they were assigned from.
+	// The generation a fresh upload lands in: one past the highest present, or 1 for an empty pool.
+	AdminNextPoolGeneration(ctx context.Context, challengeID int64) (int32, error)
 	AdminRemoveTag(ctx context.Context, arg AdminRemoveTagParams) (int64, error)
 	AdminRenameTag(ctx context.Context, arg AdminRenameTagParams) (int64, error)
 	// Bulk position assignment in one statement: the two arrays are zipped by ordinality, so every
