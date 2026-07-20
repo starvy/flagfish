@@ -11,6 +11,7 @@ import (
 
 	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/db"
+	"github.com/starvy/flagfish/internal/domain/prereq"
 )
 
 // NewChallenge is the create input. Type is not in it: it is derived from the scoring function,
@@ -324,6 +325,8 @@ type NewHint struct {
 	Content  string
 	Cost     int32
 	Position int32
+	// Prerequisites are hint ids on the same challenge that must be unlocked before this one.
+	Prerequisites []int64
 }
 
 type HintPatch struct {
@@ -331,15 +334,22 @@ type HintPatch struct {
 	Content  *string
 	Cost     *int32
 	Position *int32
+	// Prerequisites replaces the whole set: nil keeps, empty clears.
+	Prerequisites *[]int64
 }
 
 func (s *Service) AddHint(ctx context.Context, actor audit.Actor, challengeID int64, in NewHint) (db.Hint, error) {
+	ids := dedupeIDs(in.Prerequisites)
+	raw, err := prereq.Encode(prereq.Requirements{Prerequisites: ids})
+	if err != nil {
+		return db.Hint{}, fmt.Errorf("adminops: add hint: %w", err)
+	}
 	var out db.Hint
-	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+	err = s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
 		var err error
 		out, err = q.AdminInsertHint(ctx, db.AdminInsertHintParams{
 			ChallengeID: challengeID, Title: in.Title, Content: in.Content,
-			Cost: in.Cost, Position: in.Position,
+			Cost: in.Cost, Position: in.Position, Requirements: raw,
 		})
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -348,25 +358,39 @@ func (s *Service) AddHint(ctx context.Context, actor audit.Actor, challengeID in
 			}
 			return fmt.Errorf("adminops: add hint to challenge %d: %w", challengeID, err)
 		}
-		return nil
+		return validateHintPrereqs(ctx, q, challengeID, out.ID, ids)
 	})
 	return out, err
 }
 
 func (s *Service) UpdateHint(ctx context.Context, actor audit.Actor, challengeID, hintID int64, patch HintPatch) (db.Hint, error) {
+	var ids []int64
+	var raw []byte
+	if patch.Prerequisites != nil {
+		ids = dedupeIDs(*patch.Prerequisites)
+		var err error
+		raw, err = prereq.Encode(prereq.Requirements{Prerequisites: ids})
+		if err != nil {
+			return db.Hint{}, fmt.Errorf("adminops: update hint: %w", err)
+		}
+	}
 	var out db.Hint
 	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
 		var err error
 		out, err = q.AdminUpdateHint(ctx, db.AdminUpdateHintParams{
 			HintID: hintID, ChallengeID: challengeID,
 			Title: patch.Title, Content: patch.Content, Cost: patch.Cost, Position: patch.Position,
+			Requirements: raw,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: id=%d", ErrHintNotFound, hintID)
 		} else if err != nil {
 			return fmt.Errorf("adminops: update hint %d: %w", hintID, err)
 		}
-		return nil
+		if patch.Prerequisites == nil {
+			return nil
+		}
+		return validateHintPrereqs(ctx, q, challengeID, hintID, ids)
 	})
 	return out, err
 }

@@ -327,6 +327,14 @@ components:
         position:
           format: int32
           type: integer
+        prerequisites:
+          items:
+            format: int64
+            type: integer
+          maxItems: 64
+          type:
+            - array
+            - "null"
         title:
           maxLength: 256
           type: string
@@ -985,6 +993,13 @@ components:
         position:
           format: int32
           type: integer
+        prerequisites:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
         title:
           type: string
       required:
@@ -993,6 +1008,7 @@ components:
         - content
         - cost
         - position
+        - prerequisites
       type: object
     AdminListAuditOutputBody:
       additionalProperties: false
@@ -1407,6 +1423,14 @@ components:
         position:
           format: int32
           type: integer
+        prerequisites:
+          items:
+            format: int64
+            type: integer
+          maxItems: 64
+          type:
+            - array
+            - "null"
         title:
           maxLength: 256
           type: string

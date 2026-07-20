@@ -210,6 +210,37 @@ func (q *Queries) AdminFilterChallengeIDs(ctx context.Context, ids []int64) ([]i
 	return items, nil
 }
 
+const adminFilterHintIDs = `-- name: AdminFilterHintIDs :many
+SELECT id FROM hints WHERE id = ANY($1::bigint[]) AND challenge_id = $2
+`
+
+type AdminFilterHintIDsParams struct {
+	Ids         []int64
+	ChallengeID int64
+}
+
+// Existence probe for hint-prerequisite validation, scoped to the challenge: a cross-challenge id
+// filters out here and is reported by the caller the same as one that does not exist at all.
+func (q *Queries) AdminFilterHintIDs(ctx context.Context, arg AdminFilterHintIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, adminFilterHintIDs, arg.Ids, arg.ChallengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminGetChallenge = `-- name: AdminGetChallenge :one
 SELECT id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at FROM challenges WHERE id = $1
 `
@@ -302,17 +333,18 @@ func (q *Queries) AdminInsertFlag(ctx context.Context, arg AdminInsertFlagParams
 
 const adminInsertHint = `-- name: AdminInsertHint :one
 
-INSERT INTO hints (challenge_id, title, content, cost, position)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO hints (challenge_id, title, content, cost, position, requirements)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb)
 RETURNING id, challenge_id, title, content, cost, requirements, position
 `
 
 type AdminInsertHintParams struct {
-	ChallengeID int64
-	Title       *string
-	Content     string
-	Cost        int32
-	Position    int32
+	ChallengeID  int64
+	Title        *string
+	Content      string
+	Cost         int32
+	Position     int32
+	Requirements json.RawMessage
 }
 
 // ── hints ───────────────────────────────────────────────────────────────────────
@@ -323,6 +355,7 @@ func (q *Queries) AdminInsertHint(ctx context.Context, arg AdminInsertHintParams
 		arg.Content,
 		arg.Cost,
 		arg.Position,
+		arg.Requirements,
 	)
 	var i Hint
 	err := row.Scan(
@@ -892,21 +925,23 @@ func (q *Queries) AdminUpdateFlag(ctx context.Context, arg AdminUpdateFlagParams
 
 const adminUpdateHint = `-- name: AdminUpdateHint :one
 UPDATE hints SET
-    title    = COALESCE($1, title),
-    content  = COALESCE($2, content),
-    cost     = COALESCE($3, cost),
-    position = COALESCE($4, position)
-WHERE id = $5 AND challenge_id = $6
+    title        = COALESCE($1, title),
+    content      = COALESCE($2, content),
+    cost         = COALESCE($3, cost),
+    position     = COALESCE($4, position),
+    requirements = COALESCE($5::jsonb, requirements)
+WHERE id = $6 AND challenge_id = $7
 RETURNING id, challenge_id, title, content, cost, requirements, position
 `
 
 type AdminUpdateHintParams struct {
-	Title       *string
-	Content     *string
-	Cost        *int32
-	Position    *int32
-	HintID      int64
-	ChallengeID int64
+	Title        *string
+	Content      *string
+	Cost         *int32
+	Position     *int32
+	Requirements json.RawMessage
+	HintID       int64
+	ChallengeID  int64
 }
 
 func (q *Queries) AdminUpdateHint(ctx context.Context, arg AdminUpdateHintParams) (Hint, error) {
@@ -915,6 +950,7 @@ func (q *Queries) AdminUpdateHint(ctx context.Context, arg AdminUpdateHintParams
 		arg.Content,
 		arg.Cost,
 		arg.Position,
+		arg.Requirements,
 		arg.HintID,
 		arg.ChallengeID,
 	)

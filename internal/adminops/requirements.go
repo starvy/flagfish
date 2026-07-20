@@ -25,17 +25,11 @@ type ChallengeRequirements struct {
 // refused: the runtime gate is a membership test that never traverses, imported archives may
 // already carry one, and a jsonb column offers no constraint to make the refusal race-free.
 func (s *Service) SetChallengeRequirements(ctx context.Context, actor audit.Actor, challengeID int64, in ChallengeRequirements) (db.Challenge, []string, error) {
-	ids := make([]int64, 0, len(in.Prerequisites))
-	seen := make(map[int64]struct{}, len(in.Prerequisites))
-	for _, id := range in.Prerequisites {
+	ids := dedupeIDs(in.Prerequisites)
+	for _, id := range ids {
 		if id == challengeID {
 			return db.Challenge{}, nil, invalidf("challenge %d cannot be its own prerequisite", challengeID)
 		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
 	}
 
 	raw, err := prereq.Encode(prereq.Requirements{Prerequisites: ids, Visibility: in.Visibility})
@@ -96,6 +90,42 @@ func cycleWarnings(ctx context.Context, q *db.Queries, challengeID int64) ([]str
 		"prerequisite cycle %s: none of these challenges can unlock until an admin breaks the cycle",
 		joinIDs(cycle, " → "),
 	)}, nil
+}
+
+// validateHintPrereqs refuses prerequisites that are not hints of the same challenge, and
+// self-reference. It runs after the write, in the same transaction, so a refusal rolls the write
+// back — running it first would misreport a missing parent as a bad prerequisite.
+func validateHintPrereqs(ctx context.Context, q *db.Queries, challengeID, hintID int64, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	for _, id := range ids {
+		if id == hintID {
+			return invalidf("hint %d cannot be its own prerequisite", hintID)
+		}
+	}
+	found, err := q.AdminFilterHintIDs(ctx, db.AdminFilterHintIDsParams{Ids: ids, ChallengeID: challengeID})
+	if err != nil {
+		return fmt.Errorf("adminops: check hint prerequisites: %w", err)
+	}
+	if missing := missingIDs(ids, found); len(missing) > 0 {
+		return invalidf("hint prerequisites must be hints on the same challenge; unknown or cross-challenge ids: %s",
+			joinIDs(missing, ", "))
+	}
+	return nil
+}
+
+func dedupeIDs(ids []int64) []int64 {
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func missingIDs(want, have []int64) []int64 {

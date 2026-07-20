@@ -115,18 +115,24 @@ DELETE FROM flags WHERE id = @flag_id AND challenge_id = @challenge_id;
 -- ── hints ───────────────────────────────────────────────────────────────────────
 
 -- name: AdminInsertHint :one
-INSERT INTO hints (challenge_id, title, content, cost, position)
-VALUES (@challenge_id, sqlc.narg(title), @content, @cost, @position)
+INSERT INTO hints (challenge_id, title, content, cost, position, requirements)
+VALUES (@challenge_id, sqlc.narg(title), @content, @cost, @position, @requirements::jsonb)
 RETURNING *;
 
 -- name: AdminUpdateHint :one
 UPDATE hints SET
-    title    = COALESCE(sqlc.narg(title), title),
-    content  = COALESCE(sqlc.narg(content), content),
-    cost     = COALESCE(sqlc.narg(cost), cost),
-    position = COALESCE(sqlc.narg(position), position)
+    title        = COALESCE(sqlc.narg(title), title),
+    content      = COALESCE(sqlc.narg(content), content),
+    cost         = COALESCE(sqlc.narg(cost), cost),
+    position     = COALESCE(sqlc.narg(position), position),
+    requirements = COALESCE(sqlc.narg(requirements)::jsonb, requirements)
 WHERE id = @hint_id AND challenge_id = @challenge_id
 RETURNING *;
+
+-- name: AdminFilterHintIDs :many
+-- Existence probe for hint-prerequisite validation, scoped to the challenge: a cross-challenge id
+-- filters out here and is reported by the caller the same as one that does not exist at all.
+SELECT id FROM hints WHERE id = ANY(@ids::bigint[]) AND challenge_id = @challenge_id;
 
 -- name: AdminDeleteHint :execrows
 DELETE FROM hints WHERE id = @hint_id AND challenge_id = @challenge_id;

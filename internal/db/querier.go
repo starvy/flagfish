@@ -36,6 +36,9 @@ type Querier interface {
 	// Existence probe for prerequisite validation: the caller diffs the echo against its input to name
 	// the ids that do not exist.
 	AdminFilterChallengeIDs(ctx context.Context, ids []int64) ([]int64, error)
+	// Existence probe for hint-prerequisite validation, scoped to the challenge: a cross-challenge id
+	// filters out here and is reported by the caller the same as one that does not exist at all.
+	AdminFilterHintIDs(ctx context.Context, arg AdminFilterHintIDsParams) ([]int64, error)
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
 	// Challenge file attachments. The blob lives in object storage, content-addressed by sha256; these

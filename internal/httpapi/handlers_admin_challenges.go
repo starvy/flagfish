@@ -129,11 +129,20 @@ func adminFlag(f db.Flag) *adminFlagOutput {
 	}}
 }
 
-func adminHint(h db.Hint) *adminHintOutput {
+func adminHint(h *db.Hint) (*adminHintOutput, error) {
+	reqs, err := prereq.Parse(h.Requirements)
+	if err != nil {
+		return nil, fmt.Errorf("hint %d: %w", h.ID, err)
+	}
+	prereqs := reqs.Prerequisites
+	if prereqs == nil {
+		prereqs = []int64{}
+	}
 	return &adminHintOutput{Body: adminHintBody{
 		ID: h.ID, ChallengeID: h.ChallengeID, Title: h.Title,
 		Content: h.Content, Cost: h.Cost, Position: h.Position,
-	}}
+		Prerequisites: prereqs,
+	}}, nil
 }
 
 type adminCreateChallengeInput struct {
@@ -262,12 +271,13 @@ type adminFlagPathInput struct {
 }
 
 type adminHintBody struct {
-	ID          int64   `json:"id"`
-	ChallengeID int64   `json:"challenge_id"`
-	Title       *string `json:"title,omitempty"`
-	Content     string  `json:"content"`
-	Cost        int32   `json:"cost"`
-	Position    int32   `json:"position"`
+	ID            int64   `json:"id"`
+	ChallengeID   int64   `json:"challenge_id"`
+	Title         *string `json:"title,omitempty"`
+	Content       string  `json:"content"`
+	Cost          int32   `json:"cost"`
+	Position      int32   `json:"position"`
+	Prerequisites []int64 `json:"prerequisites"`
 }
 
 type adminHintOutput struct {
@@ -281,6 +291,8 @@ type adminAddHintInput struct {
 		Content  string  `json:"content" minLength:"1"`
 		Cost     int32   `json:"cost,omitempty" minimum:"0"`
 		Position int32   `json:"position,omitempty"`
+		// Prerequisites are hint ids on the same challenge that must be unlocked before this one.
+		Prerequisites []int64 `json:"prerequisites,omitempty" maxItems:"64"`
 	}
 }
 
@@ -292,6 +304,8 @@ type adminUpdateHintInput struct {
 		Content  *string `json:"content,omitempty" minLength:"1"`
 		Cost     *int32  `json:"cost,omitempty" minimum:"0"`
 		Position *int32  `json:"position,omitempty"`
+		// The whole set replaces: omit to keep, [] or null to clear.
+		Prerequisites Optional[[]int64] `json:"prerequisites,omitempty" maxItems:"64"`
 	}
 }
 
@@ -504,21 +518,35 @@ func (s *Server) adminDeleteFlag(ctx context.Context, in *adminFlagPathInput) (*
 func (s *Server) adminAddHint(ctx context.Context, in *adminAddHintInput) (*adminHintOutput, error) {
 	h, err := s.opts.AdminOps.AddHint(ctx, s.adminActor(ctx), in.ID, adminops.NewHint{
 		Title: in.Body.Title, Content: in.Body.Content, Cost: in.Body.Cost, Position: in.Body.Position,
+		Prerequisites: in.Body.Prerequisites,
 	})
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "add hint")
 	}
-	return adminHint(h), nil
+	out, err := adminHint(&h)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "add hint")
+	}
+	return out, nil
 }
 
 func (s *Server) adminUpdateHint(ctx context.Context, in *adminUpdateHintInput) (*adminHintOutput, error) {
+	prereqs, clearPrereqs := in.Body.Prerequisites.split()
+	if clearPrereqs {
+		prereqs = &[]int64{}
+	}
 	h, err := s.opts.AdminOps.UpdateHint(ctx, s.adminActor(ctx), in.ID, in.HintID, adminops.HintPatch{
 		Title: in.Body.Title, Content: in.Body.Content, Cost: in.Body.Cost, Position: in.Body.Position,
+		Prerequisites: prereqs,
 	})
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "update hint")
 	}
-	return adminHint(h), nil
+	out, err := adminHint(&h)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "update hint")
+	}
+	return out, nil
 }
 
 func (s *Server) adminDeleteHint(ctx context.Context, in *adminHintPathInput) (*adminDeleteOutput, error) {
