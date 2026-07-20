@@ -1,5 +1,5 @@
 import type { NotificationsParams, ScoreboardParams } from "../api/client";
-import type { AuditParams, IPOverlapParams, PageParams } from "../api/admin";
+import type { AuditParams, IPOverlapParams, PageParams, SearchParams } from "../api/admin";
 
 /**
  * Query keys mirror the URL they read, so a mutation can invalidate everything under the
@@ -33,10 +33,16 @@ export const qk = {
   admin: {
     all: () => ["admin"] as const,
     config: () => ["admin", "config"] as const,
-    users: (params?: PageParams) =>
+    users: (params?: SearchParams) =>
       (params === undefined ? ["admin", "users"] : ["admin", "users", params]) as
         | readonly ["admin", "users"]
-        | readonly ["admin", "users", PageParams],
+        | readonly ["admin", "users", SearchParams],
+    user: (id: number) => ["admin", "users", "detail", id] as const,
+    teams: (params?: SearchParams) =>
+      (params === undefined ? ["admin", "teams"] : ["admin", "teams", params]) as
+        | readonly ["admin", "teams"]
+        | readonly ["admin", "teams", SearchParams],
+    team: (id: number) => ["admin", "teams", "detail", id] as const,
     tags: () => ["admin", "tags"] as const,
     brackets: () => ["admin", "brackets"] as const,
     audit: (params?: AuditParams) =>

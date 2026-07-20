@@ -21,6 +21,7 @@ export type AdminHint = Schemas["AdminHintBody"];
 export type AdminFile = Schemas["AdminFileBody"];
 export type AdminTag = Schemas["AdminTag"];
 export type AdminUser = Schemas["AdminUserBody"];
+export type AdminTeam = Schemas["AdminTeamBody"];
 export type AdminBracket = Schemas["AdminBracketBody"];
 export type AdminAuditEntry = Schemas["AdminAuditEntry"];
 export type AdminNotification = Schemas["NotificationBody"];
@@ -31,6 +32,12 @@ export type AcAccountReport = Schemas["AcAccountReportOutputBody"];
 export interface PageParams {
   page?: number;
   per_page?: number;
+}
+
+/** One (q, field) search over a paginated list. field defaults to name server-side. */
+export interface SearchParams extends PageParams {
+  q?: string;
+  field?: "name" | "email" | "website" | "affiliation" | "country";
 }
 
 export interface AuditParams extends PageParams {
@@ -123,14 +130,47 @@ export const adminApi = {
     request<void>("DELETE", `${P}/tags/${encodeURIComponent(value)}${query({ force })}`),
 
   // Users
-  listUsers: (params: PageParams = {}) =>
+  listUsers: (params: SearchParams = {}) =>
     request<Schemas["AdminListUsersOutputBody"]>("GET", `${P}/users${query({ ...params })}`),
+
+  getUser: (id: number) => request<AdminUser>("GET", `${P}/users/${id}`),
+
+  updateUser: (id: number, body: Body<Schemas["AdminUpdateUserInputBody"]>) =>
+    request<AdminUser>("PATCH", `${P}/users/${id}`, body),
 
   setUserBanned: (id: number, banned: boolean) =>
     request<Schemas["AdminBanOutputBody"]>("PUT", `${P}/users/${id}/ban`, { banned }),
 
+  setUserHidden: (id: number, hidden: boolean) =>
+    request<Schemas["AdminUserHiddenOutputBody"]>("PUT", `${P}/users/${id}/hidden`, { hidden }),
+
   setUserRole: (id: number, role: "user" | "admin") =>
     request<Schemas["AdminRoleOutputBody"]>("PUT", `${P}/users/${id}/role`, { role }),
+
+  // Sets the flag and kills the user's sessions; they must pick a new password to play again.
+  forcePasswordChange: (id: number) =>
+    request<Schemas["AdminForcePasswordChangeOutputBody"]>(
+      "PUT",
+      `${P}/users/${id}/force-password-change`,
+    ),
+
+  // Teams
+  listTeams: (params: SearchParams = {}) =>
+    request<Schemas["AdminListTeamsOutputBody"]>("GET", `${P}/teams${query({ ...params })}`),
+
+  getTeam: (id: number) => request<AdminTeam>("GET", `${P}/teams/${id}`),
+
+  createTeam: (body: Body<Schemas["AdminCreateTeamInputBody"]>) =>
+    request<AdminTeam>("POST", `${P}/teams`, body),
+
+  updateTeam: (id: number, body: Body<Schemas["AdminUpdateTeamInputBody"]>) =>
+    request<AdminTeam>("PATCH", `${P}/teams/${id}`, body),
+
+  setTeamBanned: (id: number, banned: boolean) =>
+    request<Schemas["AdminTeamBanOutputBody"]>("PUT", `${P}/teams/${id}/ban`, { banned }),
+
+  setTeamHidden: (id: number, hidden: boolean) =>
+    request<Schemas["AdminTeamHiddenOutputBody"]>("PUT", `${P}/teams/${id}/hidden`, { hidden }),
 
   // Brackets
   createBracket: (body: Body<Schemas["AdminCreateBracketInputBody"]>) =>

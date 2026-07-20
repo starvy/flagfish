@@ -56,3 +56,8 @@ export function useJoinTeam() {
 export function useLeaveTeam() {
   return useTeamMutation(() => api.leaveTeam());
 }
+
+// Captain-only; the server refuses everyone else, so no client-side gate is load-bearing.
+export function useUpdateMyTeam() {
+  return useTeamMutation(api.updateMyTeam);
+}

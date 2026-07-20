@@ -25,6 +25,7 @@ const NAV = [
   { to: "/admin/challenges", label: "Challenges", exact: false },
   { to: "/admin/tags", label: "Tags", exact: false },
   { to: "/admin/users", label: "Users", exact: false },
+  { to: "/admin/teams", label: "Teams", exact: false },
   { to: "/admin/brackets", label: "Brackets", exact: false },
   { to: "/admin/notifications", label: "Notifications", exact: false },
   { to: "/admin/audit", label: "Audit", exact: false },

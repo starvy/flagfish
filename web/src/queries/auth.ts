@@ -46,6 +46,16 @@ export function useLogout() {
   });
 }
 
+export function useUpdateMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.updateMe,
+    onSuccess: (me) => {
+      qc.setQueryData(qk.me(), me);
+    },
+  });
+}
+
 export function useChangePassword() {
   const qc = useQueryClient();
   return useMutation({

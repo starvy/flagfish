@@ -1,8 +1,15 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { isApiError, type CreatedToken, type TokenListItem } from "../../api/client";
-import { meQuery, tokensQuery, useChangePassword, useCreateToken, useDeleteToken } from "../../queries";
+import { isApiError, type CreatedToken, type Me, type TokenListItem } from "../../api/client";
+import {
+  meQuery,
+  tokensQuery,
+  useChangePassword,
+  useCreateToken,
+  useDeleteToken,
+  useUpdateMe,
+} from "../../queries";
 import { denialOf, PolicyGate } from "../../policy";
 import { ThemeSwitcher } from "../../theme/ThemeSwitcher";
 import {
@@ -82,15 +89,6 @@ function Profile() {
 
   return (
     <div className="ff-stack">
-      {/* There is no PATCH /me, and the custom registration fields an organiser can mark
-          required have no API at all — so a profile form here would post into a hole. Say
-          that instead of drawing one. */}
-      <Alert tone="info" title="Profile editing is not available yet">
-        flagfish has no endpoint to change these details, and none to read or fill the extra
-        registration fields an organiser may require. If something here is wrong — or a required
-        field is blocking you from playing — ask an organiser to fix it.
-      </Alert>
-
       <Card title="Account">
         <dl className="ff-stack">
           <Row label="Name">{me.name}</Row>
@@ -116,12 +114,83 @@ function Profile() {
             )}
           </Row>
         </dl>
+        <p className="muted">
+          Name and email are your identity here — an organiser can fix those if they are wrong.
+        </p>
       </Card>
+
+      <ProfileForm me={me} />
 
       <Card title="Appearance">
         <ThemeSwitcher />
       </Card>
     </div>
+  );
+}
+
+const PROFILE_FIELDS = [
+  { key: "website", label: "Website", hint: "Shown on public profiles." },
+  { key: "affiliation", label: "Affiliation", hint: "School, employer, crew." },
+  { key: "country", label: "Country", hint: "" },
+] as const;
+
+/** The player-owned fields. Submitting sends all three; an emptied box clears its field. */
+function ProfileForm({ me }: { me: Me }) {
+  const toast = useToast();
+  const update = useUpdateMe();
+  const [values, setValues] = useState<Record<string, string>>({
+    website: me.website ?? "",
+    affiliation: me.affiliation ?? "",
+    country: me.country ?? "",
+  });
+
+  useEffect(() => {
+    setValues({
+      website: me.website ?? "",
+      affiliation: me.affiliation ?? "",
+      country: me.country ?? "",
+    });
+  }, [me]);
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const clean = (s: string) => {
+      const t = s.trim();
+      return t === "" ? null : t;
+    };
+    update.mutate(
+      {
+        website: clean(values.website),
+        affiliation: clean(values.affiliation),
+        country: clean(values.country),
+      },
+      { onSuccess: () => toast.success("Profile saved") },
+    );
+  };
+
+  return (
+    <Card title="Profile">
+      <Form
+        onSubmit={submit}
+        error={update.error ? messageOf(update.error) : undefined}
+        errors={fieldsOf(update.error)}
+        footer={
+          <Button type="submit" variant="primary" loading={update.isPending}>
+            Save profile
+          </Button>
+        }
+      >
+        {PROFILE_FIELDS.map((f) => (
+          <Field key={f.key} name={f.key} label={f.label} hint={f.hint === "" ? undefined : f.hint}>
+            <Input
+              value={values[f.key]}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              maxLength={f.key === "country" ? 64 : 255}
+            />
+          </Field>
+        ))}
+      </Form>
+    </Card>
   );
 }
 

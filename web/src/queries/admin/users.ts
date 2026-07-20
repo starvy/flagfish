@@ -1,8 +1,8 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminApi, type PageParams } from "../../api/admin";
+import { adminApi, type SearchParams } from "../../api/admin";
 import { ADMIN_STALE_TIME, qk } from "../keys";
 
-export const adminUsersQuery = (params: PageParams = {}) =>
+export const adminUsersQuery = (params: SearchParams = {}) =>
   queryOptions({
     queryKey: qk.admin.users(params),
     queryFn: () => adminApi.listUsers(params),
@@ -32,6 +32,24 @@ export function useSetUserRole() {
   return useUserWrite((v: { id: number; role: "user" | "admin" }) =>
     adminApi.setUserRole(v.id, v.role),
   );
+}
+
+export function useSetUserHidden() {
+  return useUserWrite((v: { id: number; hidden: boolean }) =>
+    adminApi.setUserHidden(v.id, v.hidden),
+  );
+}
+
+export function useUpdateUser() {
+  return useUserWrite(
+    (v: { id: number; body: Parameters<typeof adminApi.updateUser>[1] }) =>
+      adminApi.updateUser(v.id, v.body),
+  );
+}
+
+// Kills the user's sessions with the flag; they log back in and are walled until they comply.
+export function useForcePasswordChange() {
+  return useUserWrite((id: number) => adminApi.forcePasswordChange(id));
 }
 
 export function useAssignBracket() {

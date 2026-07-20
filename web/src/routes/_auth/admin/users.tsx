@@ -1,10 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import type { AdminUser } from "../../../api/admin";
 import { isApiError } from "../../../api/errors";
 import { denialOf, PolicyGate } from "../../../policy";
-import { adminUsersQuery, useSetUserBanned, useSetUserRole } from "../../../queries";
+import {
+  adminUsersQuery,
+  useForcePasswordChange,
+  useSetUserBanned,
+  useSetUserHidden,
+  useSetUserRole,
+  useUpdateUser,
+} from "../../../queries";
+import {
+  TriStateField,
+  encodeText,
+  triInvalid,
+  triKeep,
+  triPatch,
+  type TriValue,
+} from "../../../admin";
 import {
   Alert,
   Badge,
@@ -14,6 +29,10 @@ import {
   DataTable,
   Dialog,
   EmptyState,
+  Field,
+  Form,
+  Input,
+  Select,
   useToast,
   type Column,
 } from "../../../ui";
@@ -27,20 +46,50 @@ export const Route = createFileRoute("/_auth/admin/users")({
 const SELF_BAN = "you cannot ban yourself";
 const LAST_ADMIN = "this is the last admin";
 
+const SEARCH_FIELDS = [
+  { value: "name", label: "name" },
+  { value: "email", label: "email" },
+  { value: "website", label: "website" },
+  { value: "affiliation", label: "affiliation" },
+  { value: "country", label: "country" },
+] as const;
+
+type SearchField = (typeof SEARCH_FIELDS)[number]["value"];
+
 function UsersPage() {
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
+  const [draft, setDraft] = useState("");
+  const [field, setField] = useState<SearchField>("name");
+  const [search, setSearch] = useState<{ q: string; field: SearchField }>({ q: "", field: "name" });
 
-  const users = useQuery(adminUsersQuery({ page, per_page: perPage }));
+  const users = useQuery(
+    adminUsersQuery({
+      page,
+      per_page: perPage,
+      ...(search.q === "" ? {} : { q: search.q, field: search.field }),
+    }),
+  );
 
   const [banTarget, setBanTarget] = useState<AdminUser | null>(null);
   const [banConflict, setBanConflict] = useState<string | null>(null);
   const [roleTarget, setRoleTarget] = useState<AdminUser | null>(null);
   const [roleConflict, setRoleConflict] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
+  const [hideTarget, setHideTarget] = useState<AdminUser | null>(null);
+  const [forceTarget, setForceTarget] = useState<AdminUser | null>(null);
 
   const setBanned = useSetUserBanned();
   const setRole = useSetUserRole();
+  const setHidden = useSetUserHidden();
+  const force = useForcePasswordChange();
+
+  const submitSearch = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setPage(1);
+    setSearch({ q: draft.trim(), field });
+  };
 
   const openBan = (user: AdminUser) => {
     setBanConflict(null);
@@ -138,6 +187,15 @@ function UsersPage() {
       align: "right",
       cell: (u) => (
         <span className="ff-row">
+          <Button size="sm" variant="ghost" onClick={() => setEditTarget(u)}>
+            Edit
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setHideTarget(u)}>
+            {u.hidden ? "Unhide" : "Hide"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setForceTarget(u)}>
+            Force new password
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => openRole(u)}>
             {u.role === "admin" ? "Demote" : "Make admin"}
           </Button>
@@ -177,6 +235,27 @@ function UsersPage() {
         <h1>users</h1>
         <span className="muted">{users.data?.total ?? 0} accounts</span>
       </div>
+
+      <Card>
+        <form onSubmit={submitSearch} className="ff-row" role="search" aria-label="Search users">
+          <Select
+            aria-label="Search field"
+            value={field}
+            onChange={(e) => setField(e.target.value as SearchField)}
+            options={SEARCH_FIELDS}
+          />
+          <Input
+            aria-label="Search users"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Search…"
+            maxLength={256}
+          />
+          <Button type="submit" variant="secondary">
+            Search
+          </Button>
+        </form>
+      </Card>
 
       <Card flush>
         <DataTable
@@ -225,6 +304,83 @@ function UsersPage() {
         </ConfirmDestructive>
       )}
 
+      {editTarget !== null && (
+        <EditUserDialog
+          user={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={(name) => {
+            setEditTarget(null);
+            toast.success(`${name} saved`);
+          }}
+        />
+      )}
+
+      {hideTarget !== null && (
+        <Dialog
+          open
+          size="sm"
+          onClose={() => setHideTarget(null)}
+          title={hideTarget.hidden ? "Unhide user" : "Hide user"}
+          description={
+            hideTarget.hidden
+              ? `${hideTarget.name} reappears on the scoreboard and the public rosters.`
+              : `${hideTarget.name} disappears from the scoreboard and the public rosters. They keep playing; their stamped solves stay put.`
+          }
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setHideTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                loading={setHidden.isPending}
+                onClick={() => {
+                  setHidden.mutate(
+                    { id: hideTarget.id, hidden: !hideTarget.hidden },
+                    {
+                      onSuccess: (u) => {
+                        setHideTarget(null);
+                        toast.success(u.hidden ? `${u.name} is hidden` : `${u.name} is visible`);
+                      },
+                      onError: (error) =>
+                        toast.error("Could not change visibility", messageOf(error)),
+                    },
+                  );
+                }}
+              >
+                {hideTarget.hidden ? "Unhide" : "Hide"}
+              </Button>
+            </>
+          }
+        />
+      )}
+
+      {forceTarget !== null && (
+        <ConfirmDestructive
+          open
+          onClose={() => setForceTarget(null)}
+          onConfirm={() =>
+            force.mutate(forceTarget.id, {
+              onSuccess: (u) => {
+                setForceTarget(null);
+                toast.success(
+                  `${u.name} must pick a new password`,
+                  "Their sessions are gone; they log back in and are walled until they change it.",
+                );
+              },
+              onError: (error) =>
+                toast.error("Could not force a password change", messageOf(error)),
+            })
+          }
+          resourceName={forceTarget.name}
+          resourceKind="user"
+          title="Force a new password"
+          confirmLabel="Force new password"
+          busy={force.isPending}
+          description="Use this when the credential is suspect. Every session dies now; the account is walled everywhere except the password-change form until they comply."
+        />
+      )}
+
       {roleTarget !== null && (
         <Dialog
           open
@@ -259,6 +415,111 @@ function UsersPage() {
         </Dialog>
       )}
     </>
+  );
+}
+
+/**
+ * Name plus the tri-state profile fields. Everything else about a user — email, role, ban,
+ * hide, team — moves through its own control, so this form cannot become a moderation tool.
+ */
+function EditUserDialog({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+  onSaved: (name: string) => void;
+}) {
+  const update = useUpdateUser();
+
+  const [name, setName] = useState(user.name);
+  const [website, setWebsite] = useState<TriValue>(triKeep(user.website ?? ""));
+  const [affiliation, setAffiliation] = useState<TriValue>(triKeep(user.affiliation ?? ""));
+  const [country, setCountry] = useState<TriValue>(triKeep(user.country ?? ""));
+
+  useEffect(() => {
+    setName(user.name);
+    setWebsite(triKeep(user.website ?? ""));
+    setAffiliation(triKeep(user.affiliation ?? ""));
+    setCountry(triKeep(user.country ?? ""));
+  }, [user]);
+
+  const invalid =
+    triInvalid(website, encodeText) ||
+    triInvalid(affiliation, encodeText) ||
+    triInvalid(country, encodeText);
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (invalid) return;
+    update.mutate(
+      {
+        id: user.id,
+        body: {
+          ...(name.trim() !== "" && name !== user.name ? { name: name.trim() } : {}),
+          website: triPatch(website, encodeText),
+          affiliation: triPatch(affiliation, encodeText),
+          country: triPatch(country, encodeText),
+        },
+      },
+      { onSuccess: (u) => onSaved(u.name) },
+    );
+  };
+
+  const tri = (
+    fieldName: string,
+    label: string,
+    value: TriValue,
+    onChange: (v: TriValue) => void,
+    current: string | null | undefined,
+    clearNote: string,
+  ) => (
+    <TriStateField
+      name={fieldName}
+      label={label}
+      value={value}
+      onChange={onChange}
+      current={current == null || current === "" ? "not set" : current}
+      clearNote={clearNote}
+    >
+      {(control, v, onValue) => (
+        <Input {...control} value={v} onChange={(e) => onValue(e.target.value)} maxLength={255} />
+      )}
+    </TriStateField>
+  );
+
+  return (
+    <Dialog open onClose={onClose} title={`Edit ${user.name}`} size="lg">
+      <Form
+        onSubmit={submit}
+        error={update.error ? messageOf(update.error) : undefined}
+        footer={
+          <>
+            <Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" loading={update.isPending} disabled={invalid}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        <Field name="name" label="Name" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={128} required />
+        </Field>
+        {tri("website", "Website", website, setWebsite, user.website, "The profile will list no website.")}
+        {tri(
+          "affiliation",
+          "Affiliation",
+          affiliation,
+          setAffiliation,
+          user.affiliation,
+          "The profile will list no affiliation.",
+        )}
+        {tri("country", "Country", country, setCountry, user.country, "The profile will list no country.")}
+      </Form>
+    </Dialog>
   );
 }
 

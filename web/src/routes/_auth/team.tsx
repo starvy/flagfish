@@ -2,7 +2,15 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { isApiError, type Team } from "../../api/client";
-import { instanceQuery, myTeamQuery, meQuery, useCreateTeam, useJoinTeam, useLeaveTeam } from "../../queries";
+import {
+  instanceQuery,
+  myTeamQuery,
+  meQuery,
+  useCreateTeam,
+  useJoinTeam,
+  useLeaveTeam,
+  useUpdateMyTeam,
+} from "../../queries";
 import { denialOf, PolicyGate } from "../../policy";
 import {
   Alert,
@@ -334,15 +342,13 @@ const PROFILE_FIELDS = [
 ] as const;
 
 /**
- * The team's public profile, with the unset fields called out.
- *
- * A team whose required fields are unfilled is refused play with `incomplete-team-profile`,
- * and the server sends no destination — this page is where a captain is meant to see what is
- * missing. It is also where the hole shows: there is no endpoint to edit a team, and the
- * custom registration fields an organiser can mark required are not readable at all, so the
- * honest thing is to name the gap rather than offer a form that posts nowhere.
+ * The team's profile. The captain edits it in place — contact email included; everyone else
+ * sees the read-only view with the unset fields called out, because `incomplete-team-profile`
+ * denials land people here to find out what is missing.
  */
 function TeamProfile({ team }: { team: Team }) {
+  if (team.is_captain) return <CaptainSettings team={team} />;
+
   const missing = PROFILE_FIELDS.filter((f) => (team[f.key] ?? "") === "");
 
   return (
@@ -351,8 +357,7 @@ function TeamProfile({ team }: { team: Team }) {
         <Alert tone="warn" title="This profile is incomplete">
           {missing.map((f) => f.label).join(", ")} {missing.length === 1 ? "is" : "are"} not set. If
           the organisers marked a profile field required, the CTF will refuse to let this team play
-          until it is filled — and flagfish has no API to edit a team yet, so ask an organiser to
-          set it.
+          until it is filled — your captain can set it from this page.
         </Alert>
       )}
       <dl className="ff-stack">
@@ -368,6 +373,81 @@ function TeamProfile({ team }: { team: Team }) {
           );
         })}
       </dl>
+    </Card>
+  );
+}
+
+/** Captain-only edit of the team's contact and profile data; an emptied box clears its field. */
+function CaptainSettings({ team }: { team: Team }) {
+  const toast = useToast();
+  const update = useUpdateMyTeam();
+  const [values, setValues] = useState({
+    email: team.email ?? "",
+    website: team.website ?? "",
+    affiliation: team.affiliation ?? "",
+    country: team.country ?? "",
+  });
+
+  useEffect(() => {
+    setValues({
+      email: team.email ?? "",
+      website: team.website ?? "",
+      affiliation: team.affiliation ?? "",
+      country: team.country ?? "",
+    });
+  }, [team]);
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const clean = (s: string) => {
+      const t = s.trim();
+      return t === "" ? null : t;
+    };
+    update.mutate(
+      {
+        email: clean(values.email),
+        website: clean(values.website),
+        affiliation: clean(values.affiliation),
+        country: clean(values.country),
+      },
+      { onSuccess: () => toast.success("Team profile saved") },
+    );
+  };
+
+  return (
+    <Card title="Team profile">
+      <p className="muted">You are the captain — what you save here is the team's public face.</p>
+      <Form
+        onSubmit={submit}
+        error={update.error ? messageOf(update.error) : undefined}
+        footer={
+          <Button type="submit" variant="primary" loading={update.isPending}>
+            Save team profile
+          </Button>
+        }
+      >
+        <Field
+          name="email"
+          label="Contact email"
+          hint="Never shown publicly — only your team and the organisers see it."
+        >
+          <Input
+            type="email"
+            value={values.email}
+            onChange={(e) => setValues((v) => ({ ...v, email: e.target.value }))}
+            maxLength={255}
+          />
+        </Field>
+        {PROFILE_FIELDS.map((f) => (
+          <Field key={f.key} name={f.key} label={f.label}>
+            <Input
+              value={values[f.key]}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              maxLength={f.key === "country" ? 64 : 255}
+            />
+          </Field>
+        ))}
+      </Form>
     </Card>
   );
 }

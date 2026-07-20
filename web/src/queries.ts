@@ -9,6 +9,7 @@ export {
   useLogin,
   useRegister,
   useLogout,
+  useUpdateMe,
   useChangePassword,
   useResetRequest,
   useResetApply,
@@ -31,7 +32,14 @@ export {
 
 export { scoreboardQuery, bracketsQuery } from "./queries/scoreboard";
 
-export { myTeamQuery, teamQuery, useCreateTeam, useJoinTeam, useLeaveTeam } from "./queries/teams";
+export {
+  myTeamQuery,
+  teamQuery,
+  useCreateTeam,
+  useJoinTeam,
+  useLeaveTeam,
+  useUpdateMyTeam,
+} from "./queries/teams";
 
 export { notificationsQuery } from "./queries/notifications";
 
@@ -62,8 +70,20 @@ export {
   adminUsersQuery,
   useSetUserBanned,
   useSetUserRole,
+  useSetUserHidden,
+  useUpdateUser,
+  useForcePasswordChange,
   useAssignBracket,
 } from "./queries/admin/users";
+
+export {
+  adminTeamsQuery,
+  adminTeamQuery,
+  useCreateAdminTeam,
+  useUpdateAdminTeam,
+  useSetTeamBanned,
+  useSetTeamHidden,
+} from "./queries/admin/teams";
 
 export { adminTagsQuery, useMergeTag, useDeleteTag } from "./queries/admin/tags";
 

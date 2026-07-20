@@ -452,6 +452,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List teams (paginated, searchable) */
+        get: operations["admin-list-teams"];
+        put?: never;
+        /** Create a team (captainless until someone joins) */
+        post: operations["admin-create-team"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teams/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one team */
+        get: operations["admin-get-team"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a team's profile (partial) */
+        patch: operations["admin-update-team"];
+        trace?: never;
+    };
+    "/teams/{id}/ban": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Ban or unban a team (a ban walls every member) */
+        put: operations["admin-set-team-banned"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teams/{id}/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Hide or unhide a team on the public surfaces */
+        put: operations["admin-set-team-hidden"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -469,6 +539,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one user */
+        get: operations["admin-get-user"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a user's profile (partial) */
+        patch: operations["admin-update-user"];
+        trace?: never;
+    };
     "/users/{id}/ban": {
         parameters: {
             query?: never;
@@ -479,6 +567,40 @@ export interface paths {
         get?: never;
         /** Ban or unban a user */
         put: operations["admin-set-user-banned"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/force-password-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Force a user to choose a new password (kills their sessions) */
+        put: operations["admin-force-password-change"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Hide or unhide a user on the public surfaces */
+        put: operations["admin-set-user-hidden"];
         post?: never;
         delete?: never;
         options?: never;
@@ -959,6 +1081,21 @@ export interface components {
             content: string;
             title: string;
         };
+        AdminCreateTeamInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminCreateTeamInputBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string;
+            country?: string;
+            /** Format: email */
+            email?: string;
+            name: string;
+            password?: string;
+            website?: string;
+        };
         AdminFileBody: {
             /**
              * Format: uri
@@ -989,6 +1126,18 @@ export interface components {
             /** Format: int64 */
             id: number;
             type: string;
+        };
+        AdminForcePasswordChangeOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminForcePasswordChangeOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            id: number;
+            must_change_password: boolean;
+            name: string;
         };
         AdminHintBody: {
             /**
@@ -1041,6 +1190,21 @@ export interface components {
              */
             readonly $schema?: string;
             tags: components["schemas"]["AdminTag"][] | null;
+        };
+        AdminListTeamsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminListTeamsOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            per_page: number;
+            teams: components["schemas"]["AdminTeamBody"][] | null;
+            /** Format: int64 */
+            total: number;
         };
         AdminListUsersOutputBody: {
             /**
@@ -1142,6 +1306,73 @@ export interface components {
             uses: number;
             value: string;
         };
+        AdminTeamBanInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminTeamBanInputBody.json
+             */
+            readonly $schema?: string;
+            banned: boolean;
+        };
+        AdminTeamBanOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminTeamBanOutputBody.json
+             */
+            readonly $schema?: string;
+            banned: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        AdminTeamBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminTeamBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string;
+            banned: boolean;
+            /** Format: int64 */
+            bracket_id?: number;
+            /** Format: int64 */
+            captain_id?: number;
+            country?: string;
+            /** Format: date-time */
+            created_at: string;
+            email?: string;
+            hidden: boolean;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            member_count: number;
+            name: string;
+            website?: string;
+        };
+        AdminTeamHiddenInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminTeamHiddenInputBody.json
+             */
+            readonly $schema?: string;
+            hidden: boolean;
+        };
+        AdminTeamHiddenOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminTeamHiddenOutputBody.json
+             */
+            readonly $schema?: string;
+            hidden: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
         AdminUpdateBracketInputBody: {
             /**
              * Format: uri
@@ -1212,19 +1443,76 @@ export interface components {
             prerequisites?: number[] | null;
             title?: string;
         };
+        AdminUpdateTeamInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUpdateTeamInputBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string | null;
+            country?: string | null;
+            /** Format: email */
+            email?: string | null;
+            name?: string;
+            website?: string | null;
+        };
+        AdminUpdateUserInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUpdateUserInputBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string | null;
+            country?: string | null;
+            name?: string;
+            website?: string | null;
+        };
         AdminUserBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUserBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string;
             banned: boolean;
+            country?: string;
             /** Format: date-time */
             created_at: string;
             email: string;
             hidden: boolean;
             /** Format: int64 */
             id: number;
+            must_change_password: boolean;
             name: string;
             role: string;
             /** Format: int64 */
             team_id?: number;
             verified: boolean;
+            website?: string;
+        };
+        AdminUserHiddenInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUserHiddenInputBody.json
+             */
+            readonly $schema?: string;
+            hidden: boolean;
+        };
+        AdminUserHiddenOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUserHiddenOutputBody.json
+             */
+            readonly $schema?: string;
+            hidden: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -2354,11 +2642,216 @@ export interface operations {
             };
         };
     };
+    "admin-list-teams": {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                q?: string;
+                field?: "name" | "email" | "website" | "affiliation" | "country";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListTeamsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-create-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateTeamInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTeamBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-get-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTeamBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-update-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateTeamInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTeamBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-set-team-banned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminTeamBanInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTeamBanOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-set-team-hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminTeamHiddenInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTeamHiddenOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "admin-list-users": {
         parameters: {
             query?: {
                 page?: number;
                 per_page?: number;
+                q?: string;
+                field?: "name" | "email" | "website" | "affiliation" | "country";
             };
             header?: never;
             path?: never;
@@ -2373,6 +2866,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminListUsersOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-get-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-update-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateUserInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserBody"];
                 };
             };
             /** @description Error */
@@ -2408,6 +2967,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminBanOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-force-password-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminForcePasswordChangeOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-set-user-hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserHiddenInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserHiddenOutputBody"];
                 };
             };
             /** @description Error */

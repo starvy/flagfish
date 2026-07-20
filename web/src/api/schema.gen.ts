@@ -188,7 +188,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update the current account's profile */
+        patch: operations["update-me"];
         trace?: never;
     };
     "/me/password": {
@@ -222,7 +223,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update the caller's team (captain only) */
+        patch: operations["update-my-team"];
         trace?: never;
     };
     "/me/team/leave": {
@@ -754,6 +756,8 @@ export interface components {
              * @example /api/v1/schemas/MeOutputBody.json
              */
             readonly $schema?: string;
+            affiliation?: string;
+            country?: string;
             csrf_token: string;
             email: string;
             is_admin: boolean;
@@ -764,6 +768,7 @@ export interface components {
             /** Format: int64 */
             user_id: number;
             verified: boolean;
+            website?: string;
         };
         NotificationBody: {
             content: string;
@@ -865,6 +870,7 @@ export interface components {
             country?: string;
             /** Format: date-time */
             created_at: string;
+            email?: string;
             /** Format: int64 */
             id: number;
             is_captain?: boolean;
@@ -907,6 +913,30 @@ export interface components {
             hint_id: number;
             /** Format: int64 */
             score: number;
+        };
+        UpdateMeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UpdateMeInputBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string | null;
+            country?: string | null;
+            website?: string | null;
+        };
+        UpdateMyTeamInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UpdateMyTeamInputBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string | null;
+            country?: string | null;
+            /** Format: email */
+            email?: string | null;
+            website?: string | null;
         };
     };
     responses: never;
@@ -1257,6 +1287,39 @@ export interface operations {
             };
         };
     };
+    "update-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "change-password": {
         parameters: {
             query?: never;
@@ -1299,6 +1362,39 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-my-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMyTeamInputBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

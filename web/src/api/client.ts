@@ -237,6 +237,9 @@ export const api = {
 
   me: () => request<Me>("GET", "/me"),
 
+  // Profile PATCH semantics: an omitted key keeps, an explicit null clears, a value sets.
+  updateMe: (body: Body<Schemas["UpdateMeInputBody"]>) => request<Me>("PATCH", "/me", body),
+
   changePassword: (body: Body<Schemas["ChangePasswordInputBody"]>) =>
     request<Session>("POST", "/me/password", body, { localUnauthorized: true }).then(rememberSession),
 
@@ -280,6 +283,10 @@ export const api = {
 
   // A 404 here is "you have no team" — an enrollment state, not a failure.
   myTeam: () => request<Team>("GET", "/me/team"),
+
+  // Captain only; the server enforces captaincy in the write itself.
+  updateMyTeam: (body: Body<Schemas["UpdateMyTeamInputBody"]>) =>
+    request<Team>("PATCH", "/me/team", body),
 
   leaveTeam: () => request<Schemas["LeftTeamOutputBody"]>("POST", "/me/team/leave"),
 
