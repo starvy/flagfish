@@ -631,6 +631,25 @@ components:
         - page
         - per_page
       type: object
+    ListPagesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ListPagesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        pages:
+          items:
+            $ref: "#/components/schemas/PageLink"
+          type:
+            - array
+            - "null"
+      required:
+        - pages
+      type: object
     ListTokensOutputBody:
       additionalProperties: false
       properties:
@@ -786,6 +805,44 @@ components:
           type: boolean
       required:
         - ok
+      type: object
+    PageLink:
+      additionalProperties: false
+      properties:
+        auth_required:
+          type: boolean
+        route:
+          type: string
+        title:
+          type: string
+      required:
+        - route
+        - title
+        - auth_required
+      type: object
+    PageOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/PageOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          type: string
+        format:
+          type: string
+        route:
+          type: string
+        title:
+          type: string
+      required:
+        - route
+        - title
+        - content
+        - format
       type: object
     RegisterInputBody:
       additionalProperties: false
@@ -1674,6 +1731,51 @@ paths:
       summary: List notifications (paginated)
       tags:
         - notifications
+  /pages:
+    get:
+      operationId: list-pages
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPagesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List published content pages
+      tags:
+        - pages
+  /pages/{route}:
+    get:
+      operationId: get-page
+      parameters:
+        - in: path
+          name: route
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get one published content page by its route
+      tags:
+        - pages
   /register:
     post:
       operationId: register

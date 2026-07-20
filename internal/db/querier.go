@@ -45,6 +45,7 @@ type Querier interface {
 	// answer writes below are what keep that gate satisfiable.
 	// ── admin CRUD over the definitions ──────────────────────────────────────────────
 	AdminCreateField(ctx context.Context, arg AdminCreateFieldParams) (Field, error)
+	AdminCreatePage(ctx context.Context, arg AdminCreatePageParams) (Page, error)
 	// Same arbiters as the self-serve create: teams_name_uniq and the num_teams caps trigger decide
 	// on the INSERT itself, never in a prior check. captain_id stays NULL — an admin-provisioned team
 	// is captainless until its first member joins and adopts it.
@@ -63,6 +64,7 @@ type Querier interface {
 	AdminDeleteFile(ctx context.Context, id int64) ([]byte, error)
 	AdminDeleteFlag(ctx context.Context, arg AdminDeleteFlagParams) (int64, error)
 	AdminDeleteHint(ctx context.Context, arg AdminDeleteHintParams) (int64, error)
+	AdminDeletePage(ctx context.Context, id int64) (int64, error)
 	AdminDeleteTag(ctx context.Context, value string) (int64, error)
 	// Existence probe for artifact validation, scoped to the challenge: an artifact_id that is not a
 	// file of this challenge filters out here, and the caller names it as invalid.
@@ -79,6 +81,7 @@ type Querier interface {
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	AdminGetField(ctx context.Context, fieldID int64) (Field, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
+	AdminGetPage(ctx context.Context, id int64) (Page, error)
 	AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamRow, error)
 	AdminGetUser(ctx context.Context, userID int64) (AdminGetUserRow, error)
 	// Challenge file attachments. The blob lives in object storage, content-addressed by sha256; these
@@ -112,6 +115,9 @@ type Querier interface {
 	// The pool of one challenge, newest generation first, each row carrying who it was issued to (a NULL
 	// issued_to is a still-free instance). COUNT(*) OVER () rides along so the page and its total agree.
 	AdminListInstances(ctx context.Context, arg AdminListInstancesParams) ([]AdminListInstancesRow, error)
+	// The admin index: every page, draft or not. Content is omitted — the list does not need the body,
+	// and a rules page is large.
+	AdminListPages(ctx context.Context) ([]AdminListPagesRow, error)
 	AdminListTags(ctx context.Context) ([]AdminListTagsRow, error)
 	// ── teams ───────────────────────────────────────────────────────────────────────
 	// COUNT(*) OVER () carries the total in the same round trip, like AdminListUsers. The search is
@@ -171,6 +177,9 @@ type Querier interface {
 	// affects zero rows, so there is no window and no forgotten guard.
 	AdminUpdateFlag(ctx context.Context, arg AdminUpdateFlagParams) (Flag, error)
 	AdminUpdateHint(ctx context.Context, arg AdminUpdateHintParams) (Hint, error)
+	// Partial update: an absent field keeps its value. Changing route to one already taken trips
+	// pages_route_key, which the service turns into a 409.
+	AdminUpdatePage(ctx context.Context, arg AdminUpdatePageParams) (Page, error)
 	// Deliberately narrow SET: banned, hidden, captain_id, password_hash and membership are not
 	// reachable from this statement — they move through their own routes or not at all.
 	AdminUpdateTeam(ctx context.Context, arg AdminUpdateTeamParams) (AdminUpdateTeamRow, error)
@@ -437,6 +446,12 @@ type Querier interface {
 	// the team nothing an attacker wants and everything they already know.
 	// t.email rides along because this is the team's own view — the public profile never selects it.
 	GetOwnTeam(ctx context.Context, userID int64) (GetOwnTeamRow, error)
+	// CMS pages: the rules/FAQ/sponsors content. The public reads are keyed by the URL slug; the admin
+	// CRUD is keyed by id. Route uniqueness is the table's (pages_route_key), so a duplicate slug is a
+	// constraint violation the service maps to a 409, never a check-then-insert.
+	// The public read. Returns the row whatever its draft/auth_required flags — the policy gate decides
+	// visibility against them, so the query must not pre-filter drafts or the gate could never be tested.
+	GetPageByRoute(ctx context.Context, route string) (Page, error)
 	// Expiry is a WHERE clause, not a Go comparison: an expired session must be indistinguishable from
 	// a missing one, and it must be so at the only place that can be tricked into disagreeing — the
 	// database. `now()` is the transaction's clock, not the app server's, so a skewed pod cannot extend
@@ -617,6 +632,9 @@ type Querier interface {
 	// answered. This is what a public profile view is allowed to show — a non-public answer never
 	// leaves this query.
 	ListPublicUserFieldAnswers(ctx context.Context, userID int64) ([]ListPublicUserFieldAnswersRow, error)
+	// The public list behind the nav: published pages only, drafts never appear. auth_required rides
+	// along so the client can mark a link that will ask an anonymous visitor to log in.
+	ListPublishedPages(ctx context.Context) ([]ListPublishedPagesRow, error)
 	ListTeamManualAwards(ctx context.Context, teamID *int64) ([]ListTeamManualAwardsRow, error)
 	// Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 	// scored them regardless of later roster churn. include_masked lifts the hidden/banned member

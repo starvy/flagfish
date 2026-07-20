@@ -33,6 +33,7 @@ func (s *Server) registerRoutes() {
 	}
 	if s.opts.Catalog != nil {
 		s.registerChallenges()
+		s.registerPages()
 	} else {
 		s.opts.Log.Warn("no catalog service configured: challenge routes are not registered")
 	}
@@ -63,6 +64,7 @@ func (s *Server) registerRoutes() {
 		s.registerAdminTags()
 		s.registerAdminAwards()
 		s.registerAdminFields()
+		s.registerAdminPages()
 		s.registerAdminAudit()
 		s.registerAdminExport()
 	}

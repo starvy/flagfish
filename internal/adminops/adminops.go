@@ -54,6 +54,11 @@ var (
 	// ErrFieldNotFound refuses an update or delete of a custom field that is not there.
 	ErrFieldNotFound = errors.New("adminops: field not found")
 
+	ErrPageNotFound = errors.New("adminops: page not found")
+	// ErrPageRouteTaken is the pages_route_key refusal of a duplicate slug — on create, or on an
+	// update that renames one page onto another's route.
+	ErrPageRouteTaken = errors.New("adminops: page route is already taken")
+
 	ErrTagNotFound = errors.New("adminops: tag not found")
 	// ErrTagInUse refuses an unforced delete of a tag still attached to challenges, so a mistyped
 	// delete cannot silently strip a tag off the whole board.

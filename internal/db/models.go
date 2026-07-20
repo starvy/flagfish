@@ -183,6 +183,18 @@ type Notification struct {
 	Date    pgtype.Timestamptz
 }
 
+type Page struct {
+	ID           int64
+	Route        string
+	Title        string
+	Content      string
+	Format       string
+	Draft        bool
+	AuthRequired bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type RateLimit struct {
 	Bucket      string
 	WindowStart pgtype.Timestamptz
