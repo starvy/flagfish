@@ -46,6 +46,11 @@ var (
 	ErrTeamEmailTaken = errors.New("adminops: team email is already in use")
 	ErrTeamCapReached = errors.New("adminops: the num_teams cap is reached")
 
+	ErrAwardNotFound = errors.New("adminops: award not found")
+	// ErrAwardNotManual refuses revoking a hint_unlock or first_blood award: those are gameplay
+	// facts stamped under the challenge lock, not admin adjustments, and never leave the ledger.
+	ErrAwardNotManual = errors.New("adminops: award is not a manual adjustment")
+
 	ErrTagNotFound = errors.New("adminops: tag not found")
 	// ErrTagInUse refuses an unforced delete of a tag still attached to challenges, so a mistyped
 	// delete cannot silently strip a tag off the whole board.

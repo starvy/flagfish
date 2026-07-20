@@ -430,6 +430,37 @@ components:
         - target_table
         - at
       type: object
+    AdminAwardBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAwardBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_id:
+          format: int64
+          type: integer
+        date:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        reason:
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - id
+        - account_id
+        - value
+        - reason
+        - date
+      type: object
     AdminBanInputBody:
       additionalProperties: false
       properties:
@@ -1064,6 +1095,32 @@ components:
         - name
         - must_change_password
       type: object
+    AdminGrantAwardInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminGrantAwardInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_id:
+          format: int64
+          minimum: 1
+          type: integer
+        reason:
+          maxLength: 500
+          minLength: 1
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - account_id
+        - value
+        - reason
+      type: object
     AdminHintBody:
       additionalProperties: false
       properties:
@@ -1135,6 +1192,25 @@ components:
         - total
         - page
         - per_page
+      type: object
+    AdminListAwardsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListAwardsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        awards:
+          items:
+            $ref: "#/components/schemas/AdminAwardBody"
+          type:
+            - array
+            - "null"
+      required:
+        - awards
       type: object
     AdminListBracketsOutputBody:
       additionalProperties: false
@@ -2185,6 +2261,79 @@ paths:
       summary: Read the audit trail (paginated, newest first, filterable)
       tags:
         - admin/audit
+  /awards:
+    get:
+      operationId: admin-list-awards
+      parameters:
+        - explode: false
+          in: query
+          name: account_id
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListAwardsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List an account's manual adjustments
+      tags:
+        - admin/awards
+    post:
+      operationId: admin-grant-award
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGrantAwardInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAwardBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Grant a manual point adjustment
+      tags:
+        - admin/awards
+  /awards/{id}:
+    delete:
+      operationId: admin-revoke-award
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke a manual point adjustment
+      tags:
+        - admin/awards
   /brackets:
     get:
       operationId: admin-list-brackets

@@ -60,6 +60,7 @@ func (s *Server) registerRoutes() {
 		s.registerAdminTeams()
 		s.registerAdminBrackets()
 		s.registerAdminTags()
+		s.registerAdminAwards()
 		s.registerAdminAudit()
 	}
 	if s.opts.Anticheat != nil {

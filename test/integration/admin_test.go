@@ -152,6 +152,9 @@ func TestAdminRoutesRejectNonAdmin(t *testing.T) {
 		{http.MethodPut, "/api/v1/admin/users/1/ban", map[string]any{"banned": true}},
 		{http.MethodGet, "/api/v1/admin/config", nil},
 		{http.MethodPatch, "/api/v1/admin/config", map[string]any{"name": "hijack"}},
+		{http.MethodPost, "/api/v1/admin/awards", map[string]any{"account_id": 1, "value": 100, "reason": "x"}},
+		{http.MethodGet, "/api/v1/admin/awards?account_id=1", nil},
+		{http.MethodDelete, "/api/v1/admin/awards/1", nil},
 	}
 	for _, c := range cases {
 		// authenticated non-admin

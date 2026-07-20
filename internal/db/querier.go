@@ -422,6 +422,19 @@ type Querier interface {
 	// hidden. NULL = no freeze / admin view. `admin` includes hidden and banned accounts.
 	// `lim` = 0 means no limit.
 	GetUserStandings(ctx context.Context, arg GetUserStandingsParams) ([]GetUserStandingsRow, error)
+	// Teams mode: the scoring account is the team. awards.user_id is NOT NULL, so the adjustment is
+	// recorded against the team's captain — its representative member, kept current by the enrolment
+	// trigger. A team with no members (captain_id IS NULL) has no way to score and is refused as zero
+	// rows rather than silently violating the NOT NULL.
+	GrantTeamAward(ctx context.Context, arg GrantTeamAwardParams) (GrantTeamAwardRow, error)
+	// Manual awards: the admin write surface for out-of-band point adjustments — a cheating penalty,
+	// a live-dispute correction, a make-good. A manual award is always type='standard'; the ledger's
+	// other award types (hint_unlock, first_blood) are gameplay facts stamped under the challenge lock,
+	// never an admin decision. The scoreboard already sums awards.value alongside solves.value, so a
+	// single INSERT here moves standings and nothing on the read side changes.
+	// Users mode: the scoring account is the user. team_id rides along from the user's own row (NULL in
+	// users mode), exactly as the submit path writes both. Zero rows ⇒ no such user.
+	GrantUserAward(ctx context.Context, arg GrantUserAwardParams) (GrantUserAwardRow, error)
 	ImportAwards(ctx context.Context, arg []ImportAwardsParams) (int64, error)
 	// Bulk restore path for the archive importer (internal/platform/importer).
 	//
@@ -528,11 +541,15 @@ type Querier interface {
 	// COUNT(*) OVER () returns the total in the same round trip rather than a second query. Ordered by
 	// a total key (date then id) so pages are stable when two rows share a timestamp.
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]ListNotificationsRow, error)
+	ListTeamManualAwards(ctx context.Context, teamID *int64) ([]ListTeamManualAwardsRow, error)
 	// Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 	// scored them regardless of later roster churn. include_masked lifts the hidden/banned member
 	// filter for the team's own view; cutoff is the freeze horizon (strict `<`, NULL = live) for the
 	// public one, where an unclamped per-member breakdown says who scored what during the freeze.
 	ListTeamMembers(ctx context.Context, arg ListTeamMembersParams) ([]ListTeamMembersRow, error)
+	// Only type='standard' rows: hint spends and first-blood bonuses are gameplay facts, not admin
+	// adjustments, and must never appear in a revoke list.
+	ListUserManualAwards(ctx context.Context, userID int64) ([]ListUserManualAwardsRow, error)
 	// Authentication: sessions, API tokens, and the one query that resolves a caller to a Principal.
 	// THE authentication query. Sessions and API tokens both converge here before any
 	// authorization runs, so a token cannot route around a wall a cookie hits.
@@ -652,6 +669,17 @@ type Querier interface {
 	// Replay on connect: newest first, capped, so a client that just opened the stream is caught up
 	// without paging. The caller emits them oldest-first.
 	RecentNotifications(ctx context.Context, lim int32) ([]Notification, error)
+	// A revoke is a real DELETE, never a mutation of a ledger row: scoreboard time-travel replays the
+	// ledger, so a revoked adjustment must read as never-having-happened, not as a rewritten fact. The
+	// WHERE type='standard' inside the delete is the guard — a hint_unlock or first_blood award is a
+	// gameplay fact and cannot be deleted through this path whatever id is passed. The surrounding CTE
+	// reads the row's type once so the caller can tell "no such award" from "refused: not manual",
+	// without a check-then-delete window: the delete's own predicate, not the read, is what protects the
+	// gameplay awards.
+	// COALESCE to non-null sentinels so the single result row scans cleanly whatever happened: an empty
+	// found_type means "no such award" (type is never empty), a zero deleted_id means "not deleted"
+	// (ids start at 1). The caller reads the two together to pick the outcome.
+	RevokeManualAward(ctx context.Context, id int64) (RevokeManualAwardRow, error)
 	TouchSession(ctx context.Context, idHash []byte) error
 	// The self-serve profile write: the player-owned fields and nothing else. Identity and
 	// moderation state are not in the SET list, so this statement cannot be talked into touching them.
