@@ -133,6 +133,7 @@ var registry = []table{
 	},
 	{name: "fields", orderBy: "id", hasSerialID: true},
 	{name: "field_entries", orderBy: "id", hasSerialID: true},
+	{name: "pages", orderBy: "id", hasSerialID: true},
 	{name: "challenges", orderBy: "id", hasSerialID: true},
 	{name: "files", orderBy: "id", hasSerialID: true},
 	{name: "tags", orderBy: "id", hasSerialID: true},
