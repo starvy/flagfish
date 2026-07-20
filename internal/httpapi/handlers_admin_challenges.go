@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/db"
 	"github.com/starvy/flagfish/internal/domain/policy"
+	"github.com/starvy/flagfish/internal/domain/prereq"
 )
 
 // adminActor identifies the acting admin for the audit trail. The IP is the trusted-proxy-aware
@@ -82,13 +84,29 @@ type adminChallengeBody struct {
 	FirstBloodBonus *int32    `json:"first_blood_bonus,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+
+	Requirements adminRequirementsBody `json:"requirements"`
+}
+
+// adminRequirementsBody speaks the visibility vocabulary, not the stored anonymize spelling.
+type adminRequirementsBody struct {
+	Prerequisites []int64 `json:"prerequisites"`
+	Visibility    string  `json:"visibility" enum:"hidden,masked,preview"`
 }
 
 type adminChallengeOutput struct {
 	Body adminChallengeBody
 }
 
-func (s *Server) adminChallenge(c *db.Challenge) *adminChallengeOutput {
+func (s *Server) adminChallenge(c *db.Challenge) (*adminChallengeOutput, error) {
+	reqs, err := prereq.Parse(c.Requirements)
+	if err != nil {
+		return nil, fmt.Errorf("challenge %d: %w", c.ID, err)
+	}
+	prereqs := reqs.Prerequisites
+	if prereqs == nil {
+		prereqs = []int64{}
+	}
 	return &adminChallengeOutput{Body: adminChallengeBody{
 		ID: c.ID, Name: c.Name, Category: c.Category, Description: c.Description,
 		Attribution: c.Attribution, ConnectionInfo: c.ConnectionInfo,
@@ -97,7 +115,11 @@ func (s *Server) adminChallenge(c *db.Challenge) *adminChallengeOutput {
 		MaxAttempts: c.MaxAttempts, Logic: c.Logic, Position: c.Position,
 		FirstBlood: c.FirstBlood, FirstBloodBonus: c.FirstBloodBonus,
 		CreatedAt: c.CreatedAt.Time, UpdatedAt: c.UpdatedAt.Time,
-	}}
+		Requirements: adminRequirementsBody{
+			Prerequisites: prereqs,
+			Visibility:    reqs.Visibility.Name(),
+		},
+	}}, nil
 }
 
 func adminFlag(f db.Flag) *adminFlagOutput {
@@ -167,6 +189,22 @@ type adminChallengeStateInput struct {
 	ID   int64 `path:"id"`
 	Body struct {
 		State string `json:"state" enum:"visible,hidden"`
+	}
+}
+
+type adminSetRequirementsInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Prerequisites []int64 `json:"prerequisites" maxItems:"64"`
+		Visibility    string  `json:"visibility,omitempty" enum:"hidden,masked,preview" default:"hidden" doc:"How the challenge appears while its prerequisites are unmet: hidden (absent), masked (listed as ???), or preview (real name, no solvable content)."`
+	}
+}
+
+type adminSetRequirementsOutput struct {
+	Body struct {
+		Challenge adminChallengeBody `json:"challenge"`
+		// Warnings flag stored-but-suspect states, e.g. a prerequisite cycle. The write went in.
+		Warnings []string `json:"warnings,omitempty"`
 	}
 }
 
@@ -280,6 +318,11 @@ func (s *Server) registerAdminChallenges() {
 	}, s.adminSetChallengeState)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-set-challenge-requirements", Method: http.MethodPut, Path: "/challenges/{id}/requirements",
+		Summary: "Set a challenge's prerequisites (whole-value replace)", Tags: []string{"admin/challenges"},
+	}, s.adminSetChallengeRequirements)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-reorder-challenges", Method: http.MethodPut, Path: "/challenges/order",
 		Summary: "Set the board position of many challenges at once", Tags: []string{"admin/challenges"},
 	}, s.adminReorderChallenges)
@@ -338,7 +381,11 @@ func (s *Server) adminCreateChallenge(ctx context.Context, in *adminCreateChalle
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "create challenge")
 	}
-	return s.adminChallenge(&c), nil
+	out, err := s.adminChallenge(&c)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "create challenge")
+	}
+	return out, nil
 }
 
 func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChallengeInput) (*adminChallengeOutput, error) {
@@ -367,7 +414,11 @@ func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChalle
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "update challenge")
 	}
-	return s.adminChallenge(&c), nil
+	out, err := s.adminChallenge(&c)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "update challenge")
+	}
+	return out, nil
 }
 
 func (s *Server) adminSetChallengeState(ctx context.Context, in *adminChallengeStateInput) (*adminChallengeOutput, error) {
@@ -375,7 +426,32 @@ func (s *Server) adminSetChallengeState(ctx context.Context, in *adminChallengeS
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "set challenge state")
 	}
-	return s.adminChallenge(&c), nil
+	out, err := s.adminChallenge(&c)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set challenge state")
+	}
+	return out, nil
+}
+
+func (s *Server) adminSetChallengeRequirements(ctx context.Context, in *adminSetRequirementsInput) (*adminSetRequirementsOutput, error) {
+	vis, err := prereq.VisibilityFromName(in.Body.Visibility)
+	if err != nil {
+		return nil, huma.Error422UnprocessableEntity(err.Error())
+	}
+	c, warnings, err := s.opts.AdminOps.SetChallengeRequirements(ctx, s.adminActor(ctx), in.ID, adminops.ChallengeRequirements{
+		Prerequisites: in.Body.Prerequisites, Visibility: vis,
+	})
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set challenge requirements")
+	}
+	ch, err := s.adminChallenge(&c)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set challenge requirements")
+	}
+	out := &adminSetRequirementsOutput{}
+	out.Body.Challenge = ch.Body
+	out.Body.Warnings = warnings
+	return out, nil
 }
 
 func (s *Server) adminReorderChallenges(ctx context.Context, in *adminReorderInput) (*adminReorderOutput, error) {

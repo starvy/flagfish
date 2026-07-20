@@ -184,6 +184,32 @@ func (q *Queries) AdminDeleteTag(ctx context.Context, value string) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const adminFilterChallengeIDs = `-- name: AdminFilterChallengeIDs :many
+SELECT id FROM challenges WHERE id = ANY($1::bigint[])
+`
+
+// Existence probe for prerequisite validation: the caller diffs the echo against its input to name
+// the ids that do not exist.
+func (q *Queries) AdminFilterChallengeIDs(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, adminFilterChallengeIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminGetChallenge = `-- name: AdminGetChallenge :one
 SELECT id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at FROM challenges WHERE id = $1
 `
@@ -389,6 +415,37 @@ func (q *Queries) AdminListAudit(ctx context.Context, arg AdminListAuditParams) 
 	return items, nil
 }
 
+const adminListChallengeRequirements = `-- name: AdminListChallengeRequirements :many
+SELECT id, requirements FROM challenges
+`
+
+type AdminListChallengeRequirementsRow struct {
+	ID           int64
+	Requirements json.RawMessage
+}
+
+// The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
+// read beats a traversal query nothing else needs.
+func (q *Queries) AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error) {
+	rows, err := q.db.Query(ctx, adminListChallengeRequirements)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminListChallengeRequirementsRow{}
+	for rows.Next() {
+		var i AdminListChallengeRequirementsRow
+		if err := rows.Scan(&i.ID, &i.Requirements); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminListTags = `-- name: AdminListTags :many
 
 SELECT value, count(*) AS uses
@@ -547,6 +604,49 @@ func (q *Queries) AdminReorderChallenges(ctx context.Context, arg AdminReorderCh
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const adminSetChallengeRequirements = `-- name: AdminSetChallengeRequirements :one
+UPDATE challenges SET requirements = $1::jsonb, updated_at = now()
+WHERE id = $2
+RETURNING id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at
+`
+
+type AdminSetChallengeRequirementsParams struct {
+	Requirements json.RawMessage
+	ChallengeID  int64
+}
+
+// Whole-value replace: the column is one document, so a partial patch has no meaning here.
+func (q *Queries) AdminSetChallengeRequirements(ctx context.Context, arg AdminSetChallengeRequirementsParams) (Challenge, error) {
+	row := q.db.QueryRow(ctx, adminSetChallengeRequirements, arg.Requirements, arg.ChallengeID)
+	var i Challenge
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Category,
+		&i.Description,
+		&i.Attribution,
+		&i.ConnectionInfo,
+		&i.Type,
+		&i.State,
+		&i.Value,
+		&i.Function,
+		&i.Initial,
+		&i.Minimum,
+		&i.Decay,
+		&i.MaxAttempts,
+		&i.Logic,
+		&i.Position,
+		&i.NextID,
+		&i.Requirements,
+		&i.FlagMode,
+		&i.FirstBlood,
+		&i.FirstBloodBonus,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const adminSetChallengeState = `-- name: AdminSetChallengeState :one

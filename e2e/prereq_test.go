@@ -4,16 +4,11 @@ package e2e
 
 import (
 	"context"
-	"fmt"
 	"testing"
 )
 
 // TestPrerequisiteUnlock proves the prerequisite gate end to end: a challenge whose
 // prerequisite is unmet is locked and unsubmittable; solving the prerequisite unlocks it.
-//
-// origin/main exposes no admin API to set a challenge's requirements, so the prerequisite
-// edge is written directly — the only out-of-band step here. Everything asserted afterwards
-// goes over HTTP.
 func TestPrerequisiteUnlock(t *testing.T) {
 	ctx := context.Background()
 	const prereqFlag = "flag{prereq}"
@@ -25,12 +20,10 @@ func TestPrerequisiteUnlock(t *testing.T) {
 	locked := adminCreateChallenge(t, "boss-"+suffix(), "intro", 200)
 	adminAddStaticFlag(t, locked, lockedFlag)
 
-	// anonymize:"preview" keeps the real name visible but the challenge locked until the
-	// prerequisite is solved.
-	reqs := fmt.Sprintf(`{"prerequisites":[%d],"anonymize":"preview"}`, prereq)
-	if err := execSQL(ctx, `UPDATE challenges SET requirements = $1::jsonb WHERE id = $2`, reqs, locked); err != nil {
-		t.Fatalf("set requirements: %v", err)
-	}
+	// "preview" keeps the real name visible but the challenge locked until the prerequisite
+	// is solved.
+	admin.adminReq(t, "PUT", path("/challenges/%d/requirements", locked),
+		map[string]any{"prerequisites": []int64{prereq}, "visibility": "preview"}).require(t, 200)
 
 	u := mustRegister(t)
 

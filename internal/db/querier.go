@@ -33,6 +33,9 @@ type Querier interface {
 	AdminDeleteFlag(ctx context.Context, arg AdminDeleteFlagParams) (int64, error)
 	AdminDeleteHint(ctx context.Context, arg AdminDeleteHintParams) (int64, error)
 	AdminDeleteTag(ctx context.Context, value string) (int64, error)
+	// Existence probe for prerequisite validation: the caller diffs the echo against its input to name
+	// the ids that do not exist.
+	AdminFilterChallengeIDs(ctx context.Context, ids []int64) ([]int64, error)
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
 	// Challenge file attachments. The blob lives in object storage, content-addressed by sha256; these
@@ -51,6 +54,9 @@ type Querier interface {
 	// (at, id) tiebreak keeps the order total when many rows share a timestamp, so pages never overlap.
 	// COUNT(*) OVER () rides along so the page and its total agree in one round trip.
 	AdminListAudit(ctx context.Context, arg AdminListAuditParams) ([]AdminListAuditRow, error)
+	// The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
+	// read beats a traversal query nothing else needs.
+	AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error)
 	// ── tags ──────────────────────────────────────────────────────────────────────────
 	//
 	// A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
@@ -67,6 +73,8 @@ type Querier interface {
 	// Bulk position assignment in one statement: the two arrays are zipped by ordinality, so every
 	// challenge moves or none does. A row count below the input length means an id did not exist.
 	AdminReorderChallenges(ctx context.Context, arg AdminReorderChallengesParams) (int64, error)
+	// Whole-value replace: the column is one document, so a partial patch has no meaning here.
+	AdminSetChallengeRequirements(ctx context.Context, arg AdminSetChallengeRequirementsParams) (Challenge, error)
 	AdminSetChallengeState(ctx context.Context, arg AdminSetChallengeStateParams) (Challenge, error)
 	AdminSetUserBanned(ctx context.Context, arg AdminSetUserBannedParams) (AdminSetUserBannedRow, error)
 	AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error)

@@ -516,6 +516,8 @@ components:
         position:
           format: int32
           type: integer
+        requirements:
+          $ref: "#/components/schemas/AdminRequirementsBody"
         state:
           type: string
         type:
@@ -541,6 +543,7 @@ components:
         - first_blood
         - created_at
         - updated_at
+        - requirements
       type: object
     AdminChallengeStateInputBody:
       additionalProperties: false
@@ -1143,6 +1146,26 @@ components:
       required:
         - reordered
       type: object
+    AdminRequirementsBody:
+      additionalProperties: false
+      properties:
+        prerequisites:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        visibility:
+          enum:
+            - hidden
+            - masked
+            - preview
+          type: string
+      required:
+        - prerequisites
+        - visibility
+      type: object
     AdminRoleInputBody:
       additionalProperties: false
       properties:
@@ -1182,6 +1205,56 @@ components:
         - id
         - name
         - role
+      type: object
+    AdminSetRequirementsInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminSetRequirementsInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        prerequisites:
+          items:
+            format: int64
+            type: integer
+          maxItems: 64
+          type:
+            - array
+            - "null"
+        visibility:
+          default: hidden
+          description: "How the challenge appears while its prerequisites are unmet: hidden (absent), masked (listed as ???), or preview (real name, no solvable content)."
+          enum:
+            - hidden
+            - masked
+            - preview
+          type: string
+      required:
+        - prerequisites
+      type: object
+    AdminSetRequirementsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminSetRequirementsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenge:
+          $ref: "#/components/schemas/AdminChallengeBody"
+        warnings:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - challenge
       type: object
     AdminTag:
       additionalProperties: false
@@ -2156,6 +2229,38 @@ paths:
       summary: Update a hint (partial)
       tags:
         - admin/hints
+  /challenges/{id}/requirements:
+    put:
+      operationId: admin-set-challenge-requirements
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminSetRequirementsInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSetRequirementsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set a challenge's prerequisites (whole-value replace)
+      tags:
+        - admin/challenges
   /challenges/{id}/state:
     put:
       operationId: admin-set-challenge-state

@@ -67,6 +67,22 @@ RETURNING *;
 -- name: AdminGetChallenge :one
 SELECT * FROM challenges WHERE id = @challenge_id;
 
+-- name: AdminSetChallengeRequirements :one
+-- Whole-value replace: the column is one document, so a partial patch has no meaning here.
+UPDATE challenges SET requirements = @requirements::jsonb, updated_at = now()
+WHERE id = @challenge_id
+RETURNING *;
+
+-- name: AdminFilterChallengeIDs :many
+-- Existence probe for prerequisite validation: the caller diffs the echo against its input to name
+-- the ids that do not exist.
+SELECT id FROM challenges WHERE id = ANY(@ids::bigint[]);
+
+-- name: AdminListChallengeRequirements :many
+-- The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
+-- read beats a traversal query nothing else needs.
+SELECT id, requirements FROM challenges;
+
 -- name: AdminDeleteChallenge :execrows
 -- Flags, hints, tags and file links cascade. Ledger rows (solves, submissions, awards, hint
 -- unlocks, issued flags) RESTRICT: a challenge with recorded history cannot be deleted, and the
