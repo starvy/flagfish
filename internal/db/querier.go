@@ -11,6 +11,13 @@ import (
 )
 
 type Querier interface {
+	// ── tags ──────────────────────────────────────────────────────────────────────────
+	//
+	// A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
+	// uses. These statements treat a tag by its value, which is the unit an operator manages.
+	// No pre-checks: UNIQUE(challenge_id, value) refuses the duplicate and the FK refuses a missing
+	// challenge, each mapped by the caller. A pre-read would just be the same check with a race in it.
+	AdminAddTag(ctx context.Context, arg AdminAddTagParams) (Tag, error)
 	AdminAssignTeamBracket(ctx context.Context, arg AdminAssignTeamBracketParams) (AdminAssignTeamBracketRow, error)
 	// bracket_id NULL clears the assignment. Touching bracket_id does not trip the registration-cap
 	// trigger, which fires only on team_id.
@@ -60,10 +67,6 @@ type Querier interface {
 	// The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
 	// read beats a traversal query nothing else needs.
 	AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error)
-	// ── tags ──────────────────────────────────────────────────────────────────────────
-	//
-	// A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
-	// uses. These statements treat a tag by its value, which is the unit an operator manages.
 	AdminListTags(ctx context.Context) ([]AdminListTagsRow, error)
 	// ── users ───────────────────────────────────────────────────────────────────────
 	// COUNT(*) OVER () carries the total in the same round trip, so the pagination header never
@@ -72,6 +75,7 @@ type Querier interface {
 	// Drop the source rows on challenges that already carry the destination, so the rename that follows
 	// cannot trip UNIQUE(challenge_id, value). These deletions are real merges and are audited as such.
 	AdminMergeTagCollisions(ctx context.Context, arg AdminMergeTagCollisionsParams) (int64, error)
+	AdminRemoveTag(ctx context.Context, arg AdminRemoveTagParams) (int64, error)
 	AdminRenameTag(ctx context.Context, arg AdminRenameTagParams) (int64, error)
 	// Bulk position assignment in one statement: the two arrays are zipped by ordinality, so every
 	// challenge moves or none does. A row count below the input length means an id did not exist.

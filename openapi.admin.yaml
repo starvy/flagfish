@@ -384,6 +384,23 @@ components:
         - name
         - bracket_id
       type: object
+    AdminAttachTagInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAttachTagInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        value:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - value
+      type: object
     AdminAuditEntry:
       additionalProperties: false
       properties:
@@ -570,6 +587,29 @@ components:
           type: string
       required:
         - state
+      type: object
+    AdminChallengeTagBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminChallengeTagBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenge_id:
+          format: int64
+          type: integer
+        id:
+          format: int64
+          type: integer
+        value:
+          type: string
+      required:
+        - id
+        - challenge_id
+        - value
       type: object
     AdminConfigInputBody:
       additionalProperties: false
@@ -2317,6 +2357,65 @@ paths:
       summary: Show or hide a challenge
       tags:
         - admin/challenges
+  /challenges/{id}/tags:
+    post:
+      operationId: admin-attach-tag
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAttachTagInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChallengeTagBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Attach a tag to a challenge
+      tags:
+        - admin/tags
+  /challenges/{id}/tags/{value}:
+    delete:
+      operationId: admin-detach-tag
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: value
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Detach a tag from a challenge
+      tags:
+        - admin/tags
   /config:
     get:
       operationId: admin-get-config

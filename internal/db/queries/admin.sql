@@ -181,6 +181,16 @@ SELECT id, actor_id, action, target_table, target_id, before, after, at, ip,
 -- A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
 -- uses. These statements treat a tag by its value, which is the unit an operator manages.
 
+-- name: AdminAddTag :one
+-- No pre-checks: UNIQUE(challenge_id, value) refuses the duplicate and the FK refuses a missing
+-- challenge, each mapped by the caller. A pre-read would just be the same check with a race in it.
+INSERT INTO tags (challenge_id, value)
+VALUES (@challenge_id, @value)
+RETURNING *;
+
+-- name: AdminRemoveTag :execrows
+DELETE FROM tags WHERE challenge_id = @challenge_id AND value = @value;
+
 -- name: AdminListTags :many
 SELECT value, count(*) AS uses
   FROM tags

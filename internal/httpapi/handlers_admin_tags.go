@@ -10,8 +10,8 @@ import (
 )
 
 // A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
-// uses. These endpoints manage a tag by its value — list them, merge one into another, or remove
-// one from the whole board.
+// uses. The board-wide endpoints manage a tag by its value — list, merge, remove everywhere — and
+// the per-challenge sub-resource attaches or detaches one use.
 
 type adminTag struct {
 	Value string `json:"value"`
@@ -42,6 +42,30 @@ type adminDeleteTagInput struct {
 
 type adminDeleteTagOutput struct{}
 
+type adminAttachTagInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Value string `json:"value" minLength:"1" maxLength:"128"`
+	}
+}
+
+type adminChallengeTagBody struct {
+	ID          int64  `json:"id"`
+	ChallengeID int64  `json:"challenge_id"`
+	Value       string `json:"value"`
+}
+
+type adminAttachTagOutput struct {
+	Body adminChallengeTagBody
+}
+
+type adminDetachTagInput struct {
+	ID    int64  `path:"id"`
+	Value string `path:"value"`
+}
+
+type adminDetachTagOutput struct{}
+
 func (s *Server) registerAdminTags() {
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-list-tags", Method: http.MethodGet, Path: "/tags",
@@ -59,6 +83,35 @@ func (s *Server) registerAdminTags() {
 		DefaultStatus: http.StatusNoContent,
 		Summary:       "Remove a tag from every challenge (force required while in use)", Tags: []string{"admin/tags"},
 	}, s.adminDeleteTag)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-attach-tag", Method: http.MethodPost, Path: "/challenges/{id}/tags",
+		DefaultStatus: http.StatusCreated,
+		Summary:       "Attach a tag to a challenge", Tags: []string{"admin/tags"},
+	}, s.adminAttachTag)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-detach-tag", Method: http.MethodDelete, Path: "/challenges/{id}/tags/{value}",
+		DefaultStatus: http.StatusNoContent,
+		Summary:       "Detach a tag from a challenge", Tags: []string{"admin/tags"},
+	}, s.adminDetachTag)
+}
+
+func (s *Server) adminAttachTag(ctx context.Context, in *adminAttachTagInput) (*adminAttachTagOutput, error) {
+	tag, err := s.opts.AdminOps.AddTag(ctx, s.adminActor(ctx), in.ID, in.Body.Value)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "attach tag")
+	}
+	return &adminAttachTagOutput{Body: adminChallengeTagBody{
+		ID: tag.ID, ChallengeID: tag.ChallengeID, Value: tag.Value,
+	}}, nil
+}
+
+func (s *Server) adminDetachTag(ctx context.Context, in *adminDetachTagInput) (*adminDetachTagOutput, error) {
+	if err := s.opts.AdminOps.RemoveTag(ctx, s.adminActor(ctx), in.ID, in.Value); err != nil {
+		return nil, s.adminOpsError(ctx, err, "detach tag")
+	}
+	return &adminDetachTagOutput{}, nil
 }
 
 func (s *Server) adminListTags(ctx context.Context, _ *struct{}) (*adminListTagsOutput, error) {

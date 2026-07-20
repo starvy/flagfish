@@ -13,6 +13,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adminAddTag = `-- name: AdminAddTag :one
+
+INSERT INTO tags (challenge_id, value)
+VALUES ($1, $2)
+RETURNING id, challenge_id, value
+`
+
+type AdminAddTagParams struct {
+	ChallengeID int64
+	Value       string
+}
+
+// ── tags ──────────────────────────────────────────────────────────────────────────
+//
+// A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
+// uses. These statements treat a tag by its value, which is the unit an operator manages.
+// No pre-checks: UNIQUE(challenge_id, value) refuses the duplicate and the FK refuses a missing
+// challenge, each mapped by the caller. A pre-read would just be the same check with a race in it.
+func (q *Queries) AdminAddTag(ctx context.Context, arg AdminAddTagParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, adminAddTag, arg.ChallengeID, arg.Value)
+	var i Tag
+	err := row.Scan(&i.ID, &i.ChallengeID, &i.Value)
+	return i, err
+}
+
 const adminCountOtherAdmins = `-- name: AdminCountOtherAdmins :one
 SELECT count(*) FROM users WHERE role = 'admin' AND banned = false AND id <> $1
 `
@@ -480,7 +505,6 @@ func (q *Queries) AdminListChallengeRequirements(ctx context.Context) ([]AdminLi
 }
 
 const adminListTags = `-- name: AdminListTags :many
-
 SELECT value, count(*) AS uses
   FROM tags
  GROUP BY value
@@ -492,10 +516,6 @@ type AdminListTagsRow struct {
 	Uses  int64
 }
 
-// ── tags ──────────────────────────────────────────────────────────────────────────
-//
-// A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
-// uses. These statements treat a tag by its value, which is the unit an operator manages.
 func (q *Queries) AdminListTags(ctx context.Context) ([]AdminListTagsRow, error) {
 	rows, err := q.db.Query(ctx, adminListTags)
 	if err != nil {
@@ -592,6 +612,23 @@ type AdminMergeTagCollisionsParams struct {
 // cannot trip UNIQUE(challenge_id, value). These deletions are real merges and are audited as such.
 func (q *Queries) AdminMergeTagCollisions(ctx context.Context, arg AdminMergeTagCollisionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, adminMergeTagCollisions, arg.FromValue, arg.ToValue)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const adminRemoveTag = `-- name: AdminRemoveTag :execrows
+DELETE FROM tags WHERE challenge_id = $1 AND value = $2
+`
+
+type AdminRemoveTagParams struct {
+	ChallengeID int64
+	Value       string
+}
+
+func (q *Queries) AdminRemoveTag(ctx context.Context, arg AdminRemoveTagParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adminRemoveTag, arg.ChallengeID, arg.Value)
 	if err != nil {
 		return 0, err
 	}

@@ -42,6 +42,8 @@ var (
 	// ErrTagInUse refuses an unforced delete of a tag still attached to challenges, so a mistyped
 	// delete cannot silently strip a tag off the whole board.
 	ErrTagInUse = errors.New("adminops: tag is in use")
+	// ErrTagAlreadyAttached is the UNIQUE(challenge_id, value) refusal of a duplicate attach.
+	ErrTagAlreadyAttached = errors.New("adminops: tag already attached")
 )
 
 // A ValidationError is operator input this service refused. Its Reason is written for the

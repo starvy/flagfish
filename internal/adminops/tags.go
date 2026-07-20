@@ -2,13 +2,54 @@ package adminops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/db"
 )
+
+// AddTag attaches a tag value to one challenge. There is no pre-check: the UNIQUE and FK
+// constraints are the check, and their violations map to the conflict and not-found below.
+func (s *Service) AddTag(ctx context.Context, actor audit.Actor, challengeID int64, value string) (db.Tag, error) {
+	var out db.Tag
+	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		var err error
+		out, err = q.AdminAddTag(ctx, db.AdminAddTagParams{ChallengeID: challengeID, Value: value})
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) {
+				switch pgErr.Code {
+				case "23505":
+					return fmt.Errorf("%w: %q on challenge %d", ErrTagAlreadyAttached, value, challengeID)
+				case "23503":
+					return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
+				}
+			}
+			return fmt.Errorf("adminops: add tag %q to challenge %d: %w", value, challengeID, err)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// RemoveTag detaches one tag value from one challenge. Zero rows means there was nothing to
+// detach — a missing challenge and a tag it never carried answer the same way.
+func (s *Service) RemoveTag(ctx context.Context, actor audit.Actor, challengeID int64, value string) error {
+	return s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		n, err := q.AdminRemoveTag(ctx, db.AdminRemoveTagParams{ChallengeID: challengeID, Value: value})
+		if err != nil {
+			return fmt.Errorf("adminops: remove tag %q from challenge %d: %w", value, challengeID, err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: %q on challenge %d", ErrTagNotFound, value, challengeID)
+		}
+		return nil
+	})
+}
 
 // ListTags returns every tag value with the number of challenges that carry it. Read-only, so no
 // transaction and no actor: nothing to audit.

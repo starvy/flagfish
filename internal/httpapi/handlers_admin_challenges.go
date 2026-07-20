@@ -57,6 +57,8 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error404NotFound("tag not found")
 	case errors.Is(err, adminops.ErrTagInUse):
 		return huma.Error409Conflict("tag is attached to challenges: pass force=true to remove it from all of them")
+	case errors.Is(err, adminops.ErrTagAlreadyAttached):
+		return huma.Error409Conflict("the challenge already carries this tag")
 	default:
 		s.opts.Log.ErrorContext(ctx, action+" failed", "error", err)
 		return huma.Error500InternalServerError("could not " + action)
