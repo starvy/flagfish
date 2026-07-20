@@ -51,6 +51,12 @@ type Env struct {
 	// attacker turns down first.
 	RateLimit  int
 	RateWindow time.Duration
+
+	// AuthRateLimit is the tighter per-caller budget on the credential routes (login, register,
+	// password reset) within the same RateWindow. It is deliberately far below RateLimit: those
+	// routes are where brute force lives, and the general budget is too loose to blunt it. Like
+	// RateLimit it is process-level, not runtime config an attacker could turn down first.
+	AuthRateLimit int
 }
 
 // DefaultMaxUploadBytes bounds a multipart upload when none is configured. The multipart
@@ -181,6 +187,19 @@ func LoadEnv() (Env, error) {
 			errs = append(errs, fmt.Sprintf("FLAGFISH_RATE_LIMIT=%d must be positive", n))
 		default:
 			env.RateLimit = n
+		}
+	}
+
+	env.AuthRateLimit = 10
+	if raw := firstSet("FLAGFISH_AUTH_RATE_LIMIT"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_AUTH_RATE_LIMIT=%q is not an integer", raw))
+		case n <= 0:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_AUTH_RATE_LIMIT=%d must be positive", n))
+		default:
+			env.AuthRateLimit = n
 		}
 	}
 

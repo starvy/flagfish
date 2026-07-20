@@ -31,6 +31,16 @@ func NewLimiter(pool *pgxpool.Pool, limit int, window time.Duration) *Limiter {
 	return &Limiter{q: db.New(pool), limit: int32(limit), window: window} //nolint:gosec // a configured limit
 }
 
+// AuthLimiter is the tighter fixed-window limiter guarding the credential routes. It is the very
+// same Postgres-counter mechanism as Limiter, with a smaller budget; a distinct type only so the
+// wiring graph can hand out two limiters without them colliding. The bucket namespace that keeps
+// the two counters apart is applied by the caller, not here.
+type AuthLimiter struct{ *Limiter }
+
+func NewAuthLimiter(pool *pgxpool.Pool, limit int, window time.Duration) *AuthLimiter {
+	return &AuthLimiter{NewLimiter(pool, limit, window)}
+}
+
 var _ auth.Limiter = (*Limiter)(nil)
 
 // Allow bumps the caller's counter and reports whether they are still under the limit.

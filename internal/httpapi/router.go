@@ -38,6 +38,11 @@ type Options struct {
 	Limiter Limiter
 	Log     *slog.Logger
 
+	// AuthLimiter is a second, tighter limiter applied only to the credential routes (login,
+	// register, password reset). Nil leaves those routes on the general limiter alone — the
+	// router warns, because a loose brute-force guard is the failure this exists to close.
+	AuthLimiter Limiter
+
 	Accounts  *accounts.Service
 	Gameplay  *gameplay.Service
 	Catalog   *catalog.Service
@@ -194,6 +199,14 @@ func New(opts Options) *Server {
 		// The root router is handed to the limiter so it can resolve which route a request matches:
 		// the bucket is keyed on the pattern and the parsed id, and the raw path is neither.
 		gated.Use(rateLimit(r, opts.Limiter, opts.Log))
+		// A tighter budget layered on top of the general limiter, biting only on the credential
+		// routes. Same router handed in for the same route-canonical bucketing.
+		if opts.AuthLimiter != nil {
+			gated.Use(authRateLimit(r, opts.AuthLimiter, opts.Log))
+		} else {
+			opts.Log.Warn("no auth rate limiter configured: login, register and password reset " +
+				"share the general rate limit, a loose brute-force guard")
+		}
 
 		// s.gated carries the raw routes Huma cannot type — the SSE stream — with NO request
 		// deadline: a live notification stream is long-lived by design.

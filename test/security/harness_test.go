@@ -89,6 +89,13 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		limit = o.limit
 	}
 
+	// The tighter credential-route limiter is wired only when a test asks for it — the property
+	// under test is that it bites sooner than the general limiter, so it needs its own budget.
+	var authLimiter httpapi.Limiter
+	if o.authLimit > 0 {
+		authLimiter = accounts.NewAuthLimiter(pool, o.authLimit, time.Minute)
+	}
+
 	var authenticator httpapi.Authenticator = acct
 	if o.auth != nil {
 		authenticator = o.auth
@@ -99,9 +106,10 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		Auth:   authenticator,
 		// The real auth routes, not just the seam: the session cookie a browser gets is minted by
 		// POST /login, so that is where its attributes have to be asserted.
-		Accounts: acct,
-		Limiter:  accounts.NewLimiter(pool, limit, time.Minute),
-		Log:      log,
+		Accounts:    acct,
+		Limiter:     accounts.NewLimiter(pool, limit, time.Minute),
+		AuthLimiter: authLimiter,
+		Log:         log,
 
 		// The write side the ban/hide tests drive, and the board their visibility is asserted on.
 		AdminOps: adminops.New(pool),
@@ -136,6 +144,7 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 // says why.
 type fixOpts struct {
 	limit          int
+	authLimit      int
 	trustedProxies []*net.IPNet
 	maxUpload      int64
 	auth           httpapi.Authenticator
@@ -143,6 +152,10 @@ type fixOpts struct {
 }
 
 func withLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.limit = n } }
+
+// withAuthLimit wires the tighter credential-route limiter with budget n. Absent it, the
+// credential routes ride the general limiter alone — the shape a test proves is not enough.
+func withAuthLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.authLimit = n } }
 
 // withTeamsMode boots the instance in teams mode — the mode the team-ban wall exists in.
 func withTeamsMode() func(*fixOpts) { return func(o *fixOpts) { o.teams = true } }

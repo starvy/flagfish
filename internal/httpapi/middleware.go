@@ -422,6 +422,58 @@ func rateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Handler
 	}
 }
 
+// credentialRoutes are the brute-force-sensitive routes: password guessing (login), account-spray
+// (register), and reset-token guessing. They earn a second, tighter budget on top of the general
+// limiter, so a guessing flood trips long before the general per-route budget would. Keyed by
+// "METHOD "+the matched route pattern — the same canonical route the general limiter buckets on,
+// never the raw path.
+var credentialRoutes = map[string]bool{
+	http.MethodPost + " /api/v1/login":           true,
+	http.MethodPost + " /api/v1/register":        true,
+	http.MethodPost + " /api/v1/reset-password":  true,
+	http.MethodPatch + " /api/v1/reset-password": true,
+	http.MethodPost + " /api/v1/verify/confirm":  true,
+}
+
+// authRateLimit imposes a tighter budget on the credential routes and passes everything else
+// straight through. It runs after the general rateLimit, not instead of it: the general limiter is
+// unchanged and still applies: this only adds a lower ceiling where brute force lives. The bucket
+// is namespaced ("auth:") so it never shares a row with the general limiter, and keyed on the
+// caller and the canonical route exactly as the general limiter is.
+func authRateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.RawPath // match chi's own routing: it routes on RawPath when the path had escapes
+			if path == "" {
+				path = r.URL.Path
+			}
+			rctx := chi.NewRouteContext()
+			if !routes.Match(rctx, r.Method, path) || !credentialRoutes[r.Method+" "+rctx.RoutePattern()] {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			pr := AuthOf(r.Context()).Principal
+			key := "ip:" + clientKey(r)
+			if pr.Authed {
+				key = fmt.Sprintf("account:%d", pr.AccountID)
+			}
+
+			ok, err := l.Allow(r.Context(), "auth:"+key+":"+r.Method+" "+rctx.RoutePattern())
+			if err != nil {
+				log.ErrorContext(r.Context(), "auth rate limiter failed", "error", err)
+				problem(w, http.StatusServiceUnavailable, "unavailable", "rate limiter unavailable")
+				return
+			}
+			if !ok {
+				problem(w, http.StatusTooManyRequests, "rate-limited", "too many requests")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // bucketRoute names the route a request is limited against: the matched route pattern, plus its
 // path parameters in the canonical form the handler will see.
 //

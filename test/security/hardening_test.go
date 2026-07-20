@@ -424,6 +424,44 @@ func cspDirective(csp, name string) string {
 	return ""
 }
 
+// A credential route is limited far tighter than a general one.
+//
+// The general per-caller budget is sized for ordinary play — board refreshes, submits — and is
+// much too loose to blunt a password- or reset-token-guessing flood. The credential routes carry a
+// second, tighter budget on top of it, so login gives out at a small number of attempts while an
+// ordinary route sails on. Both halves are asserted: that login trips early, and that the general
+// route does not — a fix that merely made everything tighter would be no fix at all.
+func TestS24_CredentialRoutesAreLimitedTighter(t *testing.T) {
+	const general = 100
+	const authLimit = 5
+	f := setup(t, withLimit(general), withAuthLimit(authLimit))
+
+	// A general route is nowhere near limited at the credential ceiling.
+	for i := 1; i <= authLimit+3; i++ {
+		if got := f.do(http.MethodGet, "/api/v1/probe").StatusCode; got == http.StatusTooManyRequests {
+			t.Fatalf("general route limited on request %d (general budget %d) — the tight auth "+
+				"budget leaked onto routes it has no business on", i, general)
+		}
+	}
+
+	// Login is a credential route: it allows exactly authLimit, then 429s. The body is rubbish on
+	// purpose — the limiter runs ahead of the handler, so a guessing flood is shed before it costs
+	// a password verification.
+	loginAttempt := func() int {
+		return f.do(http.MethodPost, "/api/v1/login",
+			withBody("application/json", []byte(`{"email":"ghost@ctf.test","password":"wrong"}`))).StatusCode
+	}
+	for i := 1; i <= authLimit; i++ {
+		if got := loginAttempt(); got == http.StatusTooManyRequests {
+			t.Fatalf("login 429'd on attempt %d, before the credential budget of %d was spent", i, authLimit)
+		}
+	}
+	if got := loginAttempt(); got != http.StatusTooManyRequests {
+		t.Fatalf("login attempt %d: %d, want 429 — the credential route is not tighter than the "+
+			"general limiter, so brute force runs to the general budget of %d", authLimit+1, got, general)
+	}
+}
+
 // dbErrorText stands in for the wrapped driver error an outage produces. It is deliberately
 // distinctive: the assertion is that no part of it reaches the wire.
 const dbErrorText = "connection refused: dial tcp 10.0.0.5:5432 (db=flagfish table=sessions)"

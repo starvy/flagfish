@@ -45,6 +45,7 @@ type serverParams struct {
 	Env            config.Env
 	Auth           Authenticator
 	Limiter        Limiter
+	AuthLimiter    *accounts.AuthLimiter
 	Log            *slog.Logger
 	Accounts       *accounts.Service
 	Gameplay       *gameplay.Service
@@ -66,6 +67,7 @@ func newServer(p serverParams) *Server {
 		Config:         p.Config,
 		Auth:           p.Auth,
 		Limiter:        p.Limiter,
+		AuthLimiter:    p.AuthLimiter,
 		Log:            p.Log,
 		Accounts:       p.Accounts,
 		Gameplay:       p.Gameplay,

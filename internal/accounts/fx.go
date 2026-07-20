@@ -19,6 +19,13 @@ type LimiterConfig struct {
 	Window time.Duration
 }
 
+// AuthLimiterConfig is the tighter budget for the credential routes. Same shape as LimiterConfig,
+// a distinct type so the graph supplies it independently of the general limit.
+type AuthLimiterConfig struct {
+	Limit  int
+	Window time.Duration
+}
+
 // Module wires credentials into the graph: the Service as the auth.Authenticator, and the
 // Limiter as the auth.Limiter. Both are also exposed under their concrete types, because
 // the login/token HTTP handlers need methods the interfaces do not carry. NewService's
@@ -32,9 +39,14 @@ var Module = fx.Module(
 		func(s *Service) auth.Authenticator { return s },
 		newLimiter,
 		func(l *Limiter) auth.Limiter { return l },
+		newAuthLimiter,
 	),
 )
 
 func newLimiter(pool *pgxpool.Pool, c LimiterConfig) *Limiter {
 	return NewLimiter(pool, c.Limit, c.Window)
+}
+
+func newAuthLimiter(pool *pgxpool.Pool, c AuthLimiterConfig) *AuthLimiter {
+	return NewAuthLimiter(pool, c.Limit, c.Window)
 }
