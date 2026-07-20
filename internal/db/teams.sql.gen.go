@@ -57,6 +57,25 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateT
 	return i, err
 }
 
+const disbandTeam = `-- name: DisbandTeam :execrows
+DELETE FROM teams t
+ WHERE t.id = (SELECT u.team_id FROM users u WHERE u.id = $1)
+   AND t.captain_id = $1
+`
+
+// Disband is a plain delete guarded only by captaincy. The RESTRICT foreign keys from the ledger
+// (submissions, solves, awards, hint_unlocks) refuse the delete the instant the team has any
+// history, surfacing as a foreign_key_violation the API turns into a conflict — a scored team is
+// retired by hide/ban, never erased. Any remaining members fall to team_id NULL via the ON DELETE
+// SET NULL on users, so a zero-history team created by mistake vanishes cleanly.
+func (q *Queries) DisbandTeam(ctx context.Context, captainID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, disbandTeam, captainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const enrollUser = `-- name: EnrollUser :execrows
 UPDATE users SET team_id = $1
  WHERE id = $2 AND team_id IS NULL
@@ -183,6 +202,33 @@ func (q *Queries) GetTeamPublicProfile(ctx context.Context, arg GetTeamPublicPro
 	return i, err
 }
 
+const kickMember = `-- name: KickMember :execrows
+UPDATE users m SET team_id = NULL
+ WHERE m.id = $1
+   AND m.id <> $2
+   AND EXISTS (SELECT 1 FROM teams t
+                WHERE t.id = m.team_id AND t.captain_id = $2)
+   AND NOT EXISTS (SELECT 1 FROM solves s WHERE s.team_id = m.team_id)
+`
+
+type KickMemberParams struct {
+	MemberID  int64
+	CaptainID int64
+}
+
+// Removal is the captain's alone, over a current teammate who is not the captain, and only while
+// the team has never scored. All three live in the WHERE, so a demoted captain, a stale target, or
+// a team already on the board changes zero rows — there is no check to race past. The scored guard
+// mirrors leave: solves stamp team_id, so a roster that can shrink after scoring would leave the
+// board attributing points to a lineup nobody can reconstruct.
+func (q *Queries) KickMember(ctx context.Context, arg KickMemberParams) (int64, error) {
+	result, err := q.db.Exec(ctx, kickMember, arg.MemberID, arg.CaptainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const leaveTeam = `-- name: LeaveTeam :execrows
 UPDATE users u SET team_id = NULL
  WHERE u.id = $1 AND u.team_id = $2
@@ -282,6 +328,48 @@ type ReassignCaptainAfterLeaveParams struct {
 func (q *Queries) ReassignCaptainAfterLeave(ctx context.Context, arg ReassignCaptainAfterLeaveParams) error {
 	_, err := q.db.Exec(ctx, reassignCaptainAfterLeave, arg.TeamID, arg.UserID)
 	return err
+}
+
+const teamCaptainScored = `-- name: TeamCaptainScored :one
+SELECT t.captain_id,
+       EXISTS (SELECT 1 FROM solves s WHERE s.team_id = t.id)::boolean AS scored
+  FROM teams t WHERE t.id = $1
+`
+
+type TeamCaptainScoredRow struct {
+	CaptainID *int64
+	Scored    bool
+}
+
+// Read-side disambiguation for the roster mutations above: which of captaincy, membership, or the
+// scored guard turned a zero-row write away. Off the hot path — it runs only to shape an error.
+func (q *Queries) TeamCaptainScored(ctx context.Context, teamID int64) (TeamCaptainScoredRow, error) {
+	row := q.db.QueryRow(ctx, teamCaptainScored, teamID)
+	var i TeamCaptainScoredRow
+	err := row.Scan(&i.CaptainID, &i.Scored)
+	return i, err
+}
+
+const transferCaptaincy = `-- name: TransferCaptaincy :execrows
+UPDATE teams t SET captain_id = $1
+ WHERE t.captain_id = $2
+   AND EXISTS (SELECT 1 FROM users m WHERE m.id = $1 AND m.team_id = t.id)
+`
+
+type TransferCaptaincyParams struct {
+	NewCaptainID *int64
+	CaptainID    *int64
+}
+
+// The seat moves only from the current captain to a current teammate; both facts are the WHERE, so
+// a demoted captain or a non-member target moves zero rows. Transfer carries no scored guard — it
+// changes who holds the seat, never the roster, so it cannot misattribute a solve.
+func (q *Queries) TransferCaptaincy(ctx context.Context, arg TransferCaptaincyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, transferCaptaincy, arg.NewCaptainID, arg.CaptainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateTeamByCaptain = `-- name: UpdateTeamByCaptain :one

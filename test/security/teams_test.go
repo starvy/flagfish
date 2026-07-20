@@ -295,6 +295,61 @@ func TestS20_TeamPatchMassAssignmentIsRefused(t *testing.T) {
 	}
 }
 
+// S21 — the roster controls are captain-only, enforced in the statement, not the handler.
+//
+// A non-captain member who reaches DELETE /me/team/members/{id}, PUT /me/team/captain, or
+// DELETE /me/team must change nothing: the guard is the UPDATE/DELETE's WHERE clause, so deleting
+// the handler-side story still leaves the database refusing. Each attempt is a 4xx and the roster,
+// captaincy, and the team's existence are all intact afterwards. Remove the guard and this fails.
+func TestS21_RosterControlsAreCaptainOnly(t *testing.T) {
+	f := setup(t, withTeamsMode())
+	ctx := context.Background()
+
+	captainID := f.user("skipper", pw)
+	memberID := f.user("deckhand", pw)
+	teamID := f.team("vessel")
+	f.assign(captainID, teamID)
+	f.assign(memberID, teamID)
+	if _, err := f.pool.Exec(ctx, `UPDATE teams SET captain_id = $1 WHERE id = $2`, captainID, teamID); err != nil {
+		t.Fatalf("seat captain: %v", err)
+	}
+
+	sess, err := f.acct.Login(ctx, "deckhand@ctf.test", pw)
+	if err != nil {
+		t.Fatalf("login member: %v", err)
+	}
+
+	// Kick the captain: the non-captain member has no authority to remove anyone.
+	kick := f.do(http.MethodDelete, fmt.Sprintf("/api/v1/me/team/members/%d", captainID),
+		withCookie(sess.ID), withCSRF(sess.CSRFToken))
+	if kick.StatusCode != http.StatusForbidden {
+		t.Errorf("non-captain kick: %d, want 403 (%s)", kick.StatusCode, kick.Body)
+	}
+
+	// Seize captaincy for themselves.
+	grab := f.do(http.MethodPut, "/api/v1/me/team/captain",
+		withCookie(sess.ID), withCSRF(sess.CSRFToken),
+		withBody("application/json", []byte(fmt.Sprintf(`{"user_id":%d}`, memberID))))
+	if grab.StatusCode != http.StatusForbidden {
+		t.Errorf("non-captain transfer: %d, want 403 (%s)", grab.StatusCode, grab.Body)
+	}
+
+	// Disband the team out from under the captain.
+	disband := f.do(http.MethodDelete, "/api/v1/me/team",
+		withCookie(sess.ID), withCSRF(sess.CSRFToken))
+	if disband.StatusCode != http.StatusForbidden {
+		t.Errorf("non-captain disband: %d, want 403 (%s)", disband.StatusCode, disband.Body)
+	}
+
+	// Nothing moved: both still on the team, the captain unchanged, the team alive.
+	if n := f.count(`SELECT count(*) FROM users WHERE team_id = $1`, teamID); n != 2 {
+		t.Errorf("roster changed under a non-captain: %d members remain, want 2", n)
+	}
+	if n := f.count(`SELECT count(*) FROM teams WHERE id = $1 AND captain_id = $2`, teamID, captainID); n != 1 {
+		t.Errorf("captaincy moved under a non-captain")
+	}
+}
+
 func sameProblemType(a, b string) bool {
 	typeOf := func(s string) string {
 		var v struct {

@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/starvy/flagfish/internal/accounts"
+	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/domain/policy"
 )
 
@@ -97,6 +98,27 @@ func (s *Server) registerTeams() {
 		OperationID: "leave-team", Method: http.MethodPost, Path: "/me/team/leave",
 		Summary: "Leave the caller's team", Tags: []string{"teams"},
 	}, s.leaveTeam)
+
+	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+		OperationID: "kick-team-member", Method: http.MethodDelete, Path: "/me/team/members/{userID}",
+		Summary: "Remove a member from the caller's team (captain only)", Tags: []string{"teams"},
+	}, s.kickTeamMember)
+
+	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+		OperationID: "transfer-captaincy", Method: http.MethodPut, Path: "/me/team/captain",
+		Summary: "Hand captaincy to another member (captain only)", Tags: []string{"teams"},
+	}, s.transferCaptaincy)
+
+	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+		OperationID: "disband-team", Method: http.MethodDelete, Path: "/me/team",
+		Summary: "Disband the caller's team (captain only, no history)", Tags: []string{"teams"},
+	}, s.disbandTeam)
+}
+
+// callerActor stamps the acting principal onto a self-service mutation's audit trail, exactly as
+// adminActor does for the admin surface — a captain's roster change records who made it.
+func (s *Server) callerActor(ctx context.Context) audit.Actor {
+	return audit.Actor{ID: AuthOf(ctx).Principal.UserID, IP: clientIPOf(ctx)}
 }
 
 func teamBodyOf(t accounts.Team) teamBody {
@@ -225,6 +247,70 @@ func (s *Server) leaveTeam(ctx context.Context, _ *struct{}) (*leftTeamOutput, e
 	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "leave team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not leave the team")
+	}
+	out := &leftTeamOutput{}
+	out.Body.OK = true
+	return out, nil
+}
+
+type kickMemberInput struct {
+	UserID int64 `path:"userID"`
+}
+
+type transferCaptainInput struct {
+	Body struct {
+		UserID int64 `json:"user_id"`
+	}
+}
+
+func (s *Server) kickTeamMember(ctx context.Context, in *kickMemberInput) (*teamOutput, error) {
+	t, err := s.opts.Accounts.KickMember(ctx, s.callerActor(ctx), in.UserID)
+	switch {
+	case errors.Is(err, accounts.ErrNotOnTeam):
+		return nil, huma.Error404NotFound("you are not on a team")
+	case errors.Is(err, accounts.ErrNotCaptain):
+		return nil, huma.Error403Forbidden("only the captain can remove members")
+	case errors.Is(err, accounts.ErrCannotKickSelf):
+		return nil, huma.Error409Conflict("use leave to remove yourself from the team")
+	case errors.Is(err, accounts.ErrTargetNotMember):
+		return nil, huma.Error404NotFound("that user is not on your team")
+	case errors.Is(err, accounts.ErrTeamHasScored):
+		return nil, huma.Error403Forbidden("you cannot remove members from a team that has solves")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "kick member failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not remove the member")
+	}
+	return &teamOutput{Body: teamBodyOf(t)}, nil
+}
+
+func (s *Server) transferCaptaincy(ctx context.Context, in *transferCaptainInput) (*teamOutput, error) {
+	t, err := s.opts.Accounts.TransferCaptaincy(ctx, s.callerActor(ctx), in.Body.UserID)
+	switch {
+	case errors.Is(err, accounts.ErrNotOnTeam):
+		return nil, huma.Error404NotFound("you are not on a team")
+	case errors.Is(err, accounts.ErrNotCaptain):
+		return nil, huma.Error403Forbidden("only the captain can transfer captaincy")
+	case errors.Is(err, accounts.ErrTargetNotMember):
+		return nil, huma.Error404NotFound("that user is not on your team")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "transfer captaincy failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not transfer captaincy")
+	}
+	return &teamOutput{Body: teamBodyOf(t)}, nil
+}
+
+func (s *Server) disbandTeam(ctx context.Context, _ *struct{}) (*leftTeamOutput, error) {
+	err := s.opts.Accounts.DisbandTeam(ctx, s.callerActor(ctx))
+	switch {
+	case errors.Is(err, accounts.ErrNotOnTeam):
+		return nil, huma.Error404NotFound("you are not on a team")
+	case errors.Is(err, accounts.ErrNotCaptain):
+		return nil, huma.Error403Forbidden("only the captain can disband the team")
+	case errors.Is(err, accounts.ErrTeamHasHistory):
+		return nil, huma.Error409Conflict("you cannot disband a team that has a scoreboard history")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "disband team failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not disband the team")
 	}
 	out := &leftTeamOutput{}
 	out.Body.OK = true

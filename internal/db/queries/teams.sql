@@ -84,6 +84,44 @@ SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country, t.created_at,
   JOIN users u ON u.team_id = t.id
  WHERE u.id = @user_id;
 
+-- name: KickMember :execrows
+-- Removal is the captain's alone, over a current teammate who is not the captain, and only while
+-- the team has never scored. All three live in the WHERE, so a demoted captain, a stale target, or
+-- a team already on the board changes zero rows — there is no check to race past. The scored guard
+-- mirrors leave: solves stamp team_id, so a roster that can shrink after scoring would leave the
+-- board attributing points to a lineup nobody can reconstruct.
+UPDATE users m SET team_id = NULL
+ WHERE m.id = @member_id
+   AND m.id <> @captain_id
+   AND EXISTS (SELECT 1 FROM teams t
+                WHERE t.id = m.team_id AND t.captain_id = @captain_id)
+   AND NOT EXISTS (SELECT 1 FROM solves s WHERE s.team_id = m.team_id);
+
+-- name: TransferCaptaincy :execrows
+-- The seat moves only from the current captain to a current teammate; both facts are the WHERE, so
+-- a demoted captain or a non-member target moves zero rows. Transfer carries no scored guard — it
+-- changes who holds the seat, never the roster, so it cannot misattribute a solve.
+UPDATE teams t SET captain_id = @new_captain_id
+ WHERE t.captain_id = @captain_id
+   AND EXISTS (SELECT 1 FROM users m WHERE m.id = @new_captain_id AND m.team_id = t.id);
+
+-- name: DisbandTeam :execrows
+-- Disband is a plain delete guarded only by captaincy. The RESTRICT foreign keys from the ledger
+-- (submissions, solves, awards, hint_unlocks) refuse the delete the instant the team has any
+-- history, surfacing as a foreign_key_violation the API turns into a conflict — a scored team is
+-- retired by hide/ban, never erased. Any remaining members fall to team_id NULL via the ON DELETE
+-- SET NULL on users, so a zero-history team created by mistake vanishes cleanly.
+DELETE FROM teams t
+ WHERE t.id = (SELECT u.team_id FROM users u WHERE u.id = @captain_id)
+   AND t.captain_id = @captain_id;
+
+-- name: TeamCaptainScored :one
+-- Read-side disambiguation for the roster mutations above: which of captaincy, membership, or the
+-- scored guard turned a zero-row write away. Off the hot path — it runs only to shape an error.
+SELECT t.captain_id,
+       EXISTS (SELECT 1 FROM solves s WHERE s.team_id = t.id)::boolean AS scored
+  FROM teams t WHERE t.id = @team_id;
+
 -- name: ListTeamMembers :many
 -- Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 -- scored them regardless of later roster churn. include_masked lifts the hidden/banned member

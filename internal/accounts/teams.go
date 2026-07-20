@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/db"
 )
 
@@ -29,6 +30,14 @@ var (
 
 	ErrNotCaptain     = errors.New("accounts: only the captain can edit the team")
 	ErrTeamEmailTaken = errors.New("accounts: team email is already in use")
+
+	// ErrTargetNotMember is a roster action aimed at someone who is not on the captain's team.
+	ErrTargetNotMember = errors.New("accounts: target is not a member of your team")
+	// ErrCannotKickSelf is the captain trying to kick themselves — leave or transfer instead.
+	ErrCannotKickSelf = errors.New("accounts: the captain cannot kick themselves")
+	// ErrTeamHasHistory is a disband refused by the ledger's RESTRICT foreign keys: the team has
+	// submissions, solves, awards, or hint unlocks and can only be retired by hide/ban.
+	ErrTeamHasHistory = errors.New("accounts: cannot disband a team with a scoreboard history")
 )
 
 // TeamMember is one roster row, with the member's contribution read from the stamped
@@ -360,4 +369,141 @@ func (s *Service) LeaveTeam(ctx context.Context, userID int64) error {
 		return fmt.Errorf("accounts: leave team: commit: %w", err)
 	}
 	return nil
+}
+
+// captainTx runs a roster mutation inside a transaction that stamps the acting captain, so the
+// audit triggers on the mutated users/teams rows record who performed the change.
+func (s *Service) captainTx(ctx context.Context, actor audit.Actor, fn func(q *db.Queries) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("accounts: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := audit.Stamp(ctx, tx, actor); err != nil {
+		return fmt.Errorf("accounts: %w", err)
+	}
+	if err := fn(s.q.WithTx(tx)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("accounts: commit: %w", err)
+	}
+	return nil
+}
+
+// KickMember removes a teammate the captain names. Captaincy, the target's membership, and the
+// scored guard all live in the single UPDATE, so a demoted captain, a stale target, or a team
+// already on the board changes nothing. A zero-row result is re-read only to tell the caller which
+// rule refused it — that read never authorises anything, the statement already did.
+func (s *Service) KickMember(ctx context.Context, actor audit.Actor, memberID int64) (Team, error) {
+	var rows int64
+	err := s.captainTx(ctx, actor, func(q *db.Queries) error {
+		var qerr error
+		rows, qerr = q.KickMember(ctx, db.KickMemberParams{MemberID: memberID, CaptainID: actor.ID})
+		if qerr != nil {
+			return fmt.Errorf("accounts: kick member: %w", qerr)
+		}
+		return nil
+	})
+	if err != nil {
+		return Team{}, err
+	}
+	if rows == 0 {
+		if memberID == actor.ID {
+			return Team{}, ErrCannotKickSelf
+		}
+		return Team{}, s.rosterRefusal(ctx, actor.ID, memberID, true)
+	}
+	return s.OwnTeam(ctx, actor.ID)
+}
+
+// TransferCaptaincy hands the seat to another current member. Both the caller's captaincy and the
+// target's membership are the UPDATE's WHERE, so nothing moves unless both hold at commit time.
+func (s *Service) TransferCaptaincy(ctx context.Context, actor audit.Actor, newCaptainID int64) (Team, error) {
+	captainID := actor.ID
+	var rows int64
+	err := s.captainTx(ctx, actor, func(q *db.Queries) error {
+		var qerr error
+		rows, qerr = q.TransferCaptaincy(ctx, db.TransferCaptaincyParams{
+			NewCaptainID: &newCaptainID, CaptainID: &captainID,
+		})
+		if qerr != nil {
+			return fmt.Errorf("accounts: transfer captaincy: %w", qerr)
+		}
+		return nil
+	})
+	if err != nil {
+		return Team{}, err
+	}
+	if rows == 0 {
+		return Team{}, s.rosterRefusal(ctx, captainID, newCaptainID, false)
+	}
+	return s.OwnTeam(ctx, captainID)
+}
+
+// DisbandTeam deletes the captain's team. The ledger's RESTRICT foreign keys are the guard: a team
+// with any submission, solve, award, or hint unlock refuses the delete (23503), which becomes
+// ErrTeamHasHistory. A zero-history team is deleted, its members freed by the ON DELETE SET NULL.
+func (s *Service) DisbandTeam(ctx context.Context, actor audit.Actor) error {
+	var rows int64
+	err := s.captainTx(ctx, actor, func(q *db.Queries) error {
+		var qerr error
+		rows, qerr = q.DisbandTeam(ctx, actor.ID)
+		if qerr != nil {
+			var pg *pgconn.PgError
+			if errors.As(qerr, &pg) && pg.Code == "23503" {
+				return ErrTeamHasHistory
+			}
+			return fmt.Errorf("accounts: disband team: %w", qerr)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		caller, cerr := s.q.GetUserByID(ctx, actor.ID)
+		if cerr != nil {
+			return fmt.Errorf("accounts: disband team: %w", cerr)
+		}
+		if caller.TeamID == nil {
+			return ErrNotOnTeam
+		}
+		return ErrNotCaptain
+	}
+	return nil
+}
+
+// rosterRefusal names the rule that turned a zero-row kick or transfer away, for a precise error.
+// scoredBlocks reflects whether the caller's statement carried the scored guard (kick does,
+// transfer does not), so a scored team is only reported as such where it was actually the cause.
+func (s *Service) rosterRefusal(ctx context.Context, captainID, targetID int64, scoredBlocks bool) error {
+	caller, err := s.q.GetUserByID(ctx, captainID)
+	if err != nil {
+		return fmt.Errorf("accounts: roster refusal: caller: %w", err)
+	}
+	if caller.TeamID == nil {
+		return ErrNotOnTeam
+	}
+	info, err := s.q.TeamCaptainScored(ctx, *caller.TeamID)
+	if err != nil {
+		return fmt.Errorf("accounts: roster refusal: team: %w", err)
+	}
+	if info.CaptainID == nil || *info.CaptainID != captainID {
+		return ErrNotCaptain
+	}
+	target, err := s.q.GetUserByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTargetNotMember
+		}
+		return fmt.Errorf("accounts: roster refusal: target: %w", err)
+	}
+	if target.TeamID == nil || *target.TeamID != *caller.TeamID {
+		return ErrTargetNotMember
+	}
+	if scoredBlocks && info.Scored {
+		return ErrTeamHasScored
+	}
+	return ErrTargetNotMember
 }

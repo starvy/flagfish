@@ -925,6 +925,22 @@ components:
         - created_at
         - expires_at
       type: object
+    TransferCaptainInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/TransferCaptainInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        user_id:
+          format: int64
+          type: integer
+      required:
+        - user_id
+      type: object
     UnlockOutputBody:
       additionalProperties: false
       properties:
@@ -1345,6 +1361,24 @@ paths:
       tags:
         - auth
   /me/team:
+    delete:
+      operationId: disband-team
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeftTeamOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Disband the caller's team (captain only, no history)
+      tags:
+        - teams
     get:
       operationId: my-team
       responses:
@@ -1387,6 +1421,31 @@ paths:
       summary: Update the caller's team (captain only)
       tags:
         - teams
+  /me/team/captain:
+    put:
+      operationId: transfer-captaincy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferCaptainInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Hand captaincy to another member (captain only)
+      tags:
+        - teams
   /me/team/leave:
     post:
       operationId: leave-team
@@ -1404,6 +1463,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Leave the caller's team
+      tags:
+        - teams
+  /me/team/members/{userID}:
+    delete:
+      operationId: kick-team-member
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a member from the caller's team (captain only)
       tags:
         - teams
   /notifications:

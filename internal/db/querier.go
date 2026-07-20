@@ -243,6 +243,12 @@ type Querier interface {
 	// cookie, and the ban wall stops them on the next request, but there is no reason to leave the door
 	// shut and unlocked.
 	DeleteUserSessions(ctx context.Context, userID int64) error
+	// Disband is a plain delete guarded only by captaincy. The RESTRICT foreign keys from the ledger
+	// (submissions, solves, awards, hint_unlocks) refuse the delete the instant the team has any
+	// history, surfacing as a foreign_key_violation the API turns into a conflict — a scored team is
+	// retired by hide/ban, never erased. Any remaining members fall to team_id NULL via the ON DELETE
+	// SET NULL on users, so a zero-history team created by mistake vanishes cleanly.
+	DisbandTeam(ctx context.Context, captainID int64) (int64, error)
 	// "Already on a team" is the WHERE clause, not a prior read: zero rows means the user was enrolled
 	// elsewhere by the time this ran. The caps trigger enforces team_size on the same statement.
 	EnrollUser(ctx context.Context, arg EnrollUserParams) (int64, error)
@@ -490,6 +496,12 @@ type Querier interface {
 	// issued to — NULL unless flag_mode='unique'. It is stamped here, never joined at query time, so
 	// sharing detection survives the instance being rotated, regenerated or deleted.
 	InsertSubmission(ctx context.Context, arg InsertSubmissionParams) (InsertSubmissionRow, error)
+	// Removal is the captain's alone, over a current teammate who is not the captain, and only while
+	// the team has never scored. All three live in the WHERE, so a demoted captain, a stale target, or
+	// a team already on the board changes zero rows — there is no check to race past. The scored guard
+	// mirrors leave: solves stamp team_id, so a roster that can shrink after scoring would leave the
+	// board attributing points to a lineup nobody can reconstruct.
+	KickMember(ctx context.Context, arg KickMemberParams) (int64, error)
 	// Departure is forbidden once the team has scored: solves stamp team_id, so a roster that can
 	// shrink after scoring would misattribute the board. The condition lives in the statement so two
 	// racing writes (a leave and a solve) serialize in the database, not in Go.
@@ -680,7 +692,14 @@ type Querier interface {
 	// found_type means "no such award" (type is never empty), a zero deleted_id means "not deleted"
 	// (ids start at 1). The caller reads the two together to pick the outcome.
 	RevokeManualAward(ctx context.Context, id int64) (RevokeManualAwardRow, error)
+	// Read-side disambiguation for the roster mutations above: which of captaincy, membership, or the
+	// scored guard turned a zero-row write away. Off the hot path — it runs only to shape an error.
+	TeamCaptainScored(ctx context.Context, teamID int64) (TeamCaptainScoredRow, error)
 	TouchSession(ctx context.Context, idHash []byte) error
+	// The seat moves only from the current captain to a current teammate; both facts are the WHERE, so
+	// a demoted captain or a non-member target moves zero rows. Transfer carries no scored guard — it
+	// changes who holds the seat, never the roster, so it cannot misattribute a solve.
+	TransferCaptaincy(ctx context.Context, arg TransferCaptaincyParams) (int64, error)
 	// The self-serve profile write: the player-owned fields and nothing else. Identity and
 	// moderation state are not in the SET list, so this statement cannot be talked into touching them.
 	UpdateOwnProfile(ctx context.Context, arg UpdateOwnProfileParams) (UpdateOwnProfileRow, error)
