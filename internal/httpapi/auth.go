@@ -33,6 +33,7 @@ const (
 	ctxPolicy
 	ctxClientIP
 	ctxSecure
+	ctxServedTLS
 )
 
 // AuthOf returns the authenticated caller. It is always present downstream of the auth

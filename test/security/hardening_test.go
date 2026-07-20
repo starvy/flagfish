@@ -327,6 +327,103 @@ func TestS17_AdminGETsNeverEchoASetSecret(t *testing.T) {
 	}
 }
 
+// Every response carries the hardening headers, whatever the route and whatever the status.
+//
+// The SPA serves author-supplied markdown and user-supplied team names, so it is an XSS surface;
+// the headers are the standing defense, and they are only a defense if they are actually present —
+// on the 200, on the 401, on the 404, not just on a handful of routes someone remembered. The
+// sweep hits a spread of routes and statuses and asserts the header set on each; removing the
+// middleware makes all of them go red at once.
+func TestS23_SecurityHeadersOnEveryResponse(t *testing.T) {
+	f := setup(t)
+	f.user("header-holder", pw)
+
+	// A deliberate spread: static health (200), an anonymous JSON route (401 at the auth wall),
+	// an anonymous POST that reaches a handler, and an unrouted path (the SPA fallback).
+	routes := []struct {
+		method, path string
+	}{
+		{http.MethodGet, "/healthz"},
+		{http.MethodGet, "/api/v1/probe"},
+		{http.MethodPost, "/api/v1/login"},
+		{http.MethodGet, "/definitely-not-a-route"},
+	}
+
+	for _, rt := range routes {
+		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+			r := f.do(rt.method, rt.path)
+
+			if got := r.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+			if got := r.Header.Get("X-Frame-Options"); got != "DENY" {
+				t.Errorf("X-Frame-Options = %q, want DENY", got)
+			}
+			if got := r.Header.Get("Referrer-Policy"); got == "" {
+				t.Error("Referrer-Policy is absent")
+			}
+			csp := r.Header.Get("Content-Security-Policy")
+			if csp == "" {
+				t.Fatal("Content-Security-Policy is absent")
+			}
+			// script-src must be exactly 'self'. A CSP whose script-src is widened to
+			// 'unsafe-inline' or 'unsafe-eval' is a CSP that no longer stops the injected
+			// <script>, which is the whole reason it is here.
+			if v := cspDirective(csp, "script-src"); v != "'self'" {
+				t.Errorf("script-src = %q, want 'self' exactly — widening it forfeits the XSS defense", v)
+			}
+			// And the directives the embedded SPA genuinely needs, so a future tightening that
+			// would blank the page is caught here rather than in a browser: the data: favicon,
+			// same-origin fetch + EventSource, and inline styles React writes.
+			if v := cspDirective(csp, "img-src"); !strings.Contains(v, "data:") {
+				t.Errorf("img-src = %q, want data: — the SPA favicon is a data: URI", v)
+			}
+			if v := cspDirective(csp, "connect-src"); !strings.Contains(v, "'self'") {
+				t.Errorf("connect-src = %q, want 'self' — the API and the SSE stream are same-origin", v)
+			}
+			if v := cspDirective(csp, "style-src"); !strings.Contains(v, "'unsafe-inline'") {
+				t.Errorf("style-src = %q, want 'unsafe-inline' — React writes inline styles", v)
+			}
+		})
+	}
+}
+
+// HSTS is sent only on a secure connection — and this server has no idea it is behind TLS.
+//
+// Announcing Strict-Transport-Security on a deployment that legitimately serves plain HTTP would
+// pin browsers to a scheme it does not speak. So the header is gated on the same Secure signal as
+// the session cookie: on by TLS or a trusted proxy's X-Forwarded-Proto, off otherwise. Both
+// directions are asserted, because a header that is always present and a header that is never
+// present both defeat the point.
+func TestS23b_HSTSOnlyWhenSecure(t *testing.T) {
+	t.Run("absent on a plain-HTTP request", func(t *testing.T) {
+		f := setup(t) // no TLS, no trusted proxy
+		if got := f.do(http.MethodGet, "/healthz").Header.Get("Strict-Transport-Security"); got != "" {
+			t.Errorf("HSTS = %q on a plain-HTTP server — browsers would be pinned to a scheme it cannot serve", got)
+		}
+	})
+
+	t.Run("present behind a trusted TLS-terminating proxy", func(t *testing.T) {
+		f := setup(t, withTrustedProxy())
+		r := f.do(http.MethodGet, "/healthz", withHeader("X-Forwarded-Proto", "https"))
+		if got := r.Header.Get("Strict-Transport-Security"); got == "" {
+			t.Error("HSTS is absent on a request forwarded as https by a trusted proxy — the documented topology")
+		}
+	})
+}
+
+// cspDirective returns the value of a single CSP directive (everything after the name up to the
+// next ';'), or "" if the directive is absent.
+func cspDirective(csp, name string) string {
+	for _, d := range strings.Split(csp, ";") {
+		d = strings.TrimSpace(d)
+		if rest, ok := strings.CutPrefix(d, name+" "); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
+}
+
 // dbErrorText stands in for the wrapped driver error an outage produces. It is deliberately
 // distinctive: the assertion is that no part of it reaches the wire.
 const dbErrorText = "connection refused: dial tcp 10.0.0.5:5432 (db=flagfish table=sessions)"

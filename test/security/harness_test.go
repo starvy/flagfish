@@ -300,11 +300,12 @@ func (f *fixture) count(query string, args ...any) int64 {
 	return n
 }
 
-// resp is what a probe returns: the status, the body read out, and the response's cookies —
-// the body is always drained and closed so the connection is reusable.
+// resp is what a probe returns: the status, the body read out, the response's headers, and its
+// cookies — the body is always drained and closed so the connection is reusable.
 type resp struct {
 	StatusCode int
 	Body       string
+	Header     http.Header
 	Cookies    []*http.Cookie
 }
 
@@ -327,7 +328,7 @@ func (f *fixture) do(method, path string, mut ...func(*http.Request)) resp {
 		f.t.Fatalf("read body: %v", err)
 	}
 	_ = r.Body.Close()
-	return resp{StatusCode: r.StatusCode, Body: string(body), Cookies: r.Cookies()}
+	return resp{StatusCode: r.StatusCode, Body: string(body), Header: r.Header, Cookies: r.Cookies()}
 }
 
 // withBody attaches a request body. ContentLength is set, as any real client sets it.
@@ -343,6 +344,12 @@ func withBody(contentType string, b []byte) func(*http.Request) {
 // withForwardedFor forges the header a reverse proxy would append.
 func withForwardedFor(ip string) func(*http.Request) {
 	return func(r *http.Request) { r.Header.Set("X-Forwarded-For", ip) }
+}
+
+// withHeader sets an arbitrary request header — a proxy's X-Forwarded-Proto, an inbound
+// X-Request-Id, whatever the property under test needs on the wire.
+func withHeader(k, v string) func(*http.Request) {
+	return func(r *http.Request) { r.Header.Set(k, v) }
 }
 
 // cookie returns the named cookie from a response, or nil.

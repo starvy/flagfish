@@ -143,6 +143,9 @@ func New(opts Options) *Server {
 	// anyone has decided who they are.
 	r.Use(chimw.RequestID)
 	r.Use(realIP(opts.TrustedProxies, !opts.InsecureCookies, opts.Log))
+	// After realIP: HSTS keys on the Secure signal realIP resolves. Before recoverer: a panic's
+	// 500 must still carry the hardening headers, and they are set on the way in.
+	r.Use(securityHeaders())
 	r.Use(recoverer(opts.Log))
 	r.Use(logging(opts.Log))
 	r.Use(limitBody(opts.MaxUploadBytes))

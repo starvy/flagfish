@@ -111,3 +111,11 @@ func secureOf(ctx context.Context) bool {
 	s, ok := ctx.Value(ctxSecure).(bool)
 	return ok && s
 }
+
+// servedOverTLS reports whether the request provably arrived over TLS — directly, or forwarded
+// https by a trusted proxy. Unlike secureOf it does not fold in the operator's secure-cookie
+// default: HSTS is a promise the browser holds us to, so it is made only on evidence.
+func servedOverTLS(ctx context.Context) bool {
+	s, ok := ctx.Value(ctxServedTLS).(bool)
+	return ok && s
+}

@@ -66,6 +66,10 @@ func realIP(trusted []*net.IPNet, secureCookies bool, log *slog.Logger) func(htt
 				ctx = context.WithValue(ctx, ctxClientIP, addr)
 			}
 			ctx = context.WithValue(ctx, ctxSecure, isSecure(r, trustedPeer, secureCookies))
+			// The cookie's Secure attribute is on by operator default; HSTS is not. It is a
+			// commitment, so it is claimed only when this request is provably TLS — arrived over
+			// TLS, or forwarded https by a trusted proxy — which is isSecure without the default.
+			ctx = context.WithValue(ctx, ctxServedTLS, isSecure(r, trustedPeer, false))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -186,6 +190,41 @@ func requestDeadline(d time.Duration) func(http.Handler) http.Handler {
 			ctx, cancel := context.WithTimeout(r.Context(), d)
 			defer cancel()
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// spaCSP is the Content-Security-Policy carried by every response. It is sized to the embedded
+// SPA and no wider: the production Vite build loads a single external module script and its
+// stylesheet from our own origin, the JSON API and the SSE stream are same-origin, and the only
+// non-self asset is the inline data: favicon. 'unsafe-inline' is granted to styles — React writes
+// inline style props and a code-split build can inject a <style> — but never to scripts:
+// script-src stays 'self', so an injected <script>, a javascript: URL, or reflected author
+// markdown or a hostile team name cannot execute. frame-ancestors and X-Frame-Options both forbid
+// framing; base-uri, object-src and form-action are closed to what the SPA actually uses.
+const spaCSP = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; " +
+	"img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+	"script-src 'self'; connect-src 'self'; form-action 'self'"
+
+// securityHeaders stamps the response-hardening headers onto every response. It runs before any
+// handler, so a handler that writes its own status — a 413, a policy denial, the SPA shell — still
+// carries them. HSTS is emitted only when the request reached us over TLS, directly or via a
+// trusted proxy's X-Forwarded-Proto (the same signal that decides the Secure cookie): announcing
+// it on a deployment that legitimately serves plain HTTP would pin browsers to a scheme it does
+// not speak. A route needing a different policy — the admin reference UI loads from a CDN —
+// overwrites Content-Security-Policy with its own, and Set replaces, so there is one header.
+func securityHeaders() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			h.Set("Content-Security-Policy", spaCSP)
+			if servedOverTLS(r.Context()) {
+				h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
