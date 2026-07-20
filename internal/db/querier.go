@@ -30,6 +30,10 @@ type Querier interface {
 	// as the change itself.
 	// ── challenges ──────────────────────────────────────────────────────────────────
 	AdminCreateChallenge(ctx context.Context, arg AdminCreateChallengeParams) (Challenge, error)
+	// Same arbiters as the self-serve create: teams_name_uniq and the num_teams caps trigger decide
+	// on the INSERT itself, never in a prior check. captain_id stays NULL — an admin-provisioned team
+	// is captainless until its first member joins and adopts it.
+	AdminCreateTeam(ctx context.Context, arg AdminCreateTeamParams) (AdminCreateTeamRow, error)
 	// Members are not blocked: bracket_id is ON DELETE SET NULL, so a delete simply unassigns them.
 	AdminDeleteBracket(ctx context.Context, bracketID int64) (int64, error)
 	// Flags, hints, tags and file links cascade. Ledger rows (solves, submissions, awards, hint
@@ -106,6 +110,9 @@ type Querier interface {
 	// affects zero rows, so there is no window and no forgotten guard.
 	AdminUpdateFlag(ctx context.Context, arg AdminUpdateFlagParams) (Flag, error)
 	AdminUpdateHint(ctx context.Context, arg AdminUpdateHintParams) (Hint, error)
+	// Deliberately narrow SET: banned, hidden, captain_id, password_hash and membership are not
+	// reachable from this statement — they move through their own routes or not at all.
+	AdminUpdateTeam(ctx context.Context, arg AdminUpdateTeamParams) (AdminUpdateTeamRow, error)
 	// A sole member adopts a captainless team (the captain's user row was deleted, FK SET NULL).
 	AdoptCaptainlessTeam(ctx context.Context, arg AdoptCaptainlessTeamParams) error
 	// Hands the account an unissued instance from the pool.

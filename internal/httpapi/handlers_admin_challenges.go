@@ -57,6 +57,12 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error409Conflict("you cannot ban yourself")
 	case errors.Is(err, adminops.ErrSelfTeamBan):
 		return huma.Error409Conflict("you cannot ban your own team")
+	case errors.Is(err, adminops.ErrTeamNameTaken):
+		return huma.Error409Conflict("that team name is already taken")
+	case errors.Is(err, adminops.ErrTeamEmailTaken):
+		return huma.Error409Conflict("that team email is already in use")
+	case errors.Is(err, adminops.ErrTeamCapReached):
+		return huma.Error409Conflict("the team cap (num_teams) is reached")
 	case errors.Is(err, adminops.ErrTagNotFound):
 		return huma.Error404NotFound("tag not found")
 	case errors.Is(err, adminops.ErrTagInUse):

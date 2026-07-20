@@ -148,6 +148,66 @@ func (q *Queries) AdminCreateChallenge(ctx context.Context, arg AdminCreateChall
 	return i, err
 }
 
+const adminCreateTeam = `-- name: AdminCreateTeam :one
+INSERT INTO teams (name, password_hash, email, website, affiliation, country)
+VALUES ($1, $2, $3, $4,
+        $5, $6)
+RETURNING id, name, email, website, affiliation, country, bracket_id, captain_id,
+          hidden, banned, created_at
+`
+
+type AdminCreateTeamParams struct {
+	Name         string
+	PasswordHash *string
+	Email        *string
+	Website      *string
+	Affiliation  *string
+	Country      *string
+}
+
+type AdminCreateTeamRow struct {
+	ID          int64
+	Name        string
+	Email       *string
+	Website     *string
+	Affiliation *string
+	Country     *string
+	BracketID   *int64
+	CaptainID   *int64
+	Hidden      bool
+	Banned      bool
+	CreatedAt   pgtype.Timestamptz
+}
+
+// Same arbiters as the self-serve create: teams_name_uniq and the num_teams caps trigger decide
+// on the INSERT itself, never in a prior check. captain_id stays NULL — an admin-provisioned team
+// is captainless until its first member joins and adopts it.
+func (q *Queries) AdminCreateTeam(ctx context.Context, arg AdminCreateTeamParams) (AdminCreateTeamRow, error) {
+	row := q.db.QueryRow(ctx, adminCreateTeam,
+		arg.Name,
+		arg.PasswordHash,
+		arg.Email,
+		arg.Website,
+		arg.Affiliation,
+		arg.Country,
+	)
+	var i AdminCreateTeamRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+		&i.BracketID,
+		&i.CaptainID,
+		&i.Hidden,
+		&i.Banned,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const adminDeleteChallenge = `-- name: AdminDeleteChallenge :execrows
 DELETE FROM challenges WHERE id = $1
 `
@@ -1173,6 +1233,81 @@ func (q *Queries) AdminUpdateHint(ctx context.Context, arg AdminUpdateHintParams
 		&i.Cost,
 		&i.Requirements,
 		&i.Position,
+	)
+	return i, err
+}
+
+const adminUpdateTeam = `-- name: AdminUpdateTeam :one
+UPDATE teams SET
+    name        = COALESCE($1, name),
+    email       = CASE WHEN $2::bool THEN NULL
+                       ELSE COALESCE($3, email) END,
+    website     = CASE WHEN $4::bool THEN NULL
+                       ELSE COALESCE($5, website) END,
+    affiliation = CASE WHEN $6::bool THEN NULL
+                       ELSE COALESCE($7, affiliation) END,
+    country     = CASE WHEN $8::bool THEN NULL
+                       ELSE COALESCE($9, country) END
+WHERE id = $10
+RETURNING id, name, email, website, affiliation, country, bracket_id, captain_id,
+          hidden, banned, created_at
+`
+
+type AdminUpdateTeamParams struct {
+	Name             *string
+	ClearEmail       bool
+	Email            *string
+	ClearWebsite     bool
+	Website          *string
+	ClearAffiliation bool
+	Affiliation      *string
+	ClearCountry     bool
+	Country          *string
+	TeamID           int64
+}
+
+type AdminUpdateTeamRow struct {
+	ID          int64
+	Name        string
+	Email       *string
+	Website     *string
+	Affiliation *string
+	Country     *string
+	BracketID   *int64
+	CaptainID   *int64
+	Hidden      bool
+	Banned      bool
+	CreatedAt   pgtype.Timestamptz
+}
+
+// Deliberately narrow SET: banned, hidden, captain_id, password_hash and membership are not
+// reachable from this statement — they move through their own routes or not at all.
+func (q *Queries) AdminUpdateTeam(ctx context.Context, arg AdminUpdateTeamParams) (AdminUpdateTeamRow, error) {
+	row := q.db.QueryRow(ctx, adminUpdateTeam,
+		arg.Name,
+		arg.ClearEmail,
+		arg.Email,
+		arg.ClearWebsite,
+		arg.Website,
+		arg.ClearAffiliation,
+		arg.Affiliation,
+		arg.ClearCountry,
+		arg.Country,
+		arg.TeamID,
+	)
+	var i AdminUpdateTeamRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+		&i.BracketID,
+		&i.CaptainID,
+		&i.Hidden,
+		&i.Banned,
+		&i.CreatedAt,
 	)
 	return i, err
 }

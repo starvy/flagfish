@@ -7,6 +7,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/starvy/flagfish/internal/accounts"
+	"github.com/starvy/flagfish/internal/adminops"
 	"github.com/starvy/flagfish/internal/domain/policy"
 )
 
@@ -49,6 +51,32 @@ type adminListTeamsOutput struct {
 
 type adminTeamIDInput struct {
 	ID int64 `path:"id"`
+}
+
+type adminCreateTeamInput struct {
+	Body struct {
+		Name string `json:"name" minLength:"1" maxLength:"128"`
+		// Password is the join password. Empty means the team has none and admits members on an
+		// empty password — the same contract as the self-serve create.
+		Password    string  `json:"password,omitempty" maxLength:"128" required:"false"`
+		Email       *string `json:"email,omitempty" format:"email" maxLength:"255"`
+		Website     *string `json:"website,omitempty" maxLength:"255"`
+		Affiliation *string `json:"affiliation,omitempty" maxLength:"255"`
+		Country     *string `json:"country,omitempty" maxLength:"64"`
+	}
+}
+
+type adminUpdateTeamInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Name *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
+		// Three-state: omit to keep, null to clear, a value to set. banned/hidden/captain_id are
+		// deliberately absent — flipping those is a different decision with its own route.
+		Email       Optional[string] `json:"email,omitempty" format:"email" maxLength:"255"`
+		Website     Optional[string] `json:"website,omitempty" maxLength:"255"`
+		Affiliation Optional[string] `json:"affiliation,omitempty" maxLength:"255"`
+		Country     Optional[string] `json:"country,omitempty" maxLength:"64"`
+	}
 }
 
 type adminTeamBanInput struct {
@@ -94,6 +122,17 @@ func (s *Server) registerAdminTeams() {
 	}, s.adminGetTeam)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-create-team", Method: http.MethodPost, Path: "/teams",
+		DefaultStatus: http.StatusCreated,
+		Summary:       "Create a team (captainless until someone joins)", Tags: []string{"admin/teams"},
+	}, s.adminCreateTeam)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-update-team", Method: http.MethodPatch, Path: "/teams/{id}",
+		Summary: "Update a team's profile (partial)", Tags: []string{"admin/teams"},
+	}, s.adminUpdateTeam)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-set-team-banned", Method: http.MethodPut, Path: "/teams/{id}/ban",
 		Summary: "Ban or unban a team (a ban walls every member)", Tags: []string{"admin/teams"},
 	}, s.adminSetTeamBanned)
@@ -102,6 +141,51 @@ func (s *Server) registerAdminTeams() {
 		OperationID: "admin-set-team-hidden", Method: http.MethodPut, Path: "/teams/{id}/hidden",
 		Summary: "Hide or unhide a team on the public surfaces", Tags: []string{"admin/teams"},
 	}, s.adminSetTeamHidden)
+}
+
+func (s *Server) adminCreateTeam(ctx context.Context, in *adminCreateTeamInput) (*adminTeamOutput, error) {
+	b := in.Body
+	var hash *string
+	if b.Password != "" {
+		h, err := accounts.Hash(b.Password)
+		if err != nil {
+			s.opts.Log.ErrorContext(ctx, "hashing a team password failed", "error", err)
+			return nil, huma.Error500InternalServerError("could not create team")
+		}
+		hash = &h
+	}
+	t, err := s.opts.AdminOps.CreateTeam(ctx, s.adminActor(ctx), adminops.NewTeam{
+		Name: b.Name, PasswordHash: hash, Email: b.Email,
+		Website: b.Website, Affiliation: b.Affiliation, Country: b.Country,
+	})
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "create team")
+	}
+	return &adminTeamOutput{Body: adminTeamBody{
+		ID: t.ID, Name: t.Name, Email: t.Email,
+		Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,
+		BracketID: t.BracketID, CaptainID: t.CaptainID,
+		Hidden: t.Hidden, Banned: t.Banned,
+		MemberCount: 0, CreatedAt: t.CreatedAt.Time,
+	}}, nil
+}
+
+func (s *Server) adminUpdateTeam(ctx context.Context, in *adminUpdateTeamInput) (*adminTeamOutput, error) {
+	b := in.Body
+	email, clearEmail := b.Email.split()
+	website, clearWebsite := b.Website.split()
+	affiliation, clearAffiliation := b.Affiliation.split()
+	country, clearCountry := b.Country.split()
+
+	t, err := s.opts.AdminOps.UpdateTeam(ctx, s.adminActor(ctx), in.ID, adminops.TeamPatch{
+		Name: b.Name, Email: email, Website: website, Affiliation: affiliation, Country: country,
+		ClearEmail: clearEmail, ClearWebsite: clearWebsite,
+		ClearAffiliation: clearAffiliation, ClearCountry: clearCountry,
+	})
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "update team")
+	}
+	return s.adminGetTeam(ctx, &adminTeamIDInput{ID: t.ID})
 }
 
 func (s *Server) adminSetTeamBanned(ctx context.Context, in *adminTeamBanInput) (*adminTeamBanOutput, error) {

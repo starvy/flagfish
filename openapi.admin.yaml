@@ -948,6 +948,39 @@ components:
         - title
         - content
       type: object
+    AdminCreateTeamInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminCreateTeamInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          maxLength: 255
+          type: string
+        country:
+          maxLength: 64
+          type: string
+        email:
+          format: email
+          maxLength: 255
+          type: string
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+        password:
+          maxLength: 128
+          type: string
+        website:
+          maxLength: 255
+          type: string
+      required:
+        - name
+      type: object
     AdminFileBody:
       additionalProperties: false
       properties:
@@ -1626,6 +1659,42 @@ components:
         title:
           maxLength: 256
           type: string
+      type: object
+    AdminUpdateTeamInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUpdateTeamInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          maxLength: 255
+          type:
+            - string
+            - "null"
+        country:
+          maxLength: 64
+          type:
+            - string
+            - "null"
+        email:
+          format: email
+          maxLength: 255
+          type:
+            - string
+            - "null"
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+        website:
+          maxLength: 255
+          type:
+            - string
+            - "null"
       type: object
     AdminUserBody:
       additionalProperties: false
@@ -2786,6 +2855,30 @@ paths:
       summary: List teams (paginated, searchable)
       tags:
         - admin/teams
+    post:
+      operationId: admin-create-team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateTeamInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a team (captainless until someone joins)
+      tags:
+        - admin/teams
   /teams/{id}:
     get:
       operationId: admin-get-team
@@ -2810,6 +2903,37 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Get one team
+      tags:
+        - admin/teams
+    patch:
+      operationId: admin-update-team
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateTeamInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a team's profile (partial)
       tags:
         - admin/teams
   /teams/{id}/ban:

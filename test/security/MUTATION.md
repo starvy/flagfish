@@ -23,6 +23,7 @@ change to the auth path.
 | Self-team-ban refusal | neutralize the actor-membership check in `SetTeamBanned` | ✅ FAILS: `self-team-ban: 200, want 409`, own team banned, admin walled out (401) |
 | Masked team page is a 404 | drop `hidden = false AND banned = false` from `GetTeamPublicProfile` | ✅ FAILS: `ghost/outlaw team page: 200, want 404` |
 | Masked teams off the public board | team-scoreboard `WHERE (admin OR NOT masked)` → `true` | ✅ FAILS: `public scoreboard shows map[ghost… outlaw…], want honest only` |
+| Team PATCH mass assignment | wire `banned` through the PATCH (body field + `SET banned = COALESCE(…)`) | ✅ FAILS: `PATCH {"banned":true} was accepted` + landed in the row |
 | File download prerequisites | `downloadFile` checks only `meta.Hidden`, not `meta.PrereqsMet` | ✅ FAILS: the file of a prerequisite-locked challenge downloads by id (200, exact bytes) |
 | Hint unlock prerequisites | drop the `challengePrereqsMet` gate from `UnlockHint` | ✅ FAILS: the hint of a prerequisite-locked challenge is sold, content and all |
 

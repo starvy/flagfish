@@ -42,6 +42,10 @@ var (
 	// guarantees a ban can never leave the instance without a usable admin.
 	ErrSelfTeamBan = errors.New("adminops: cannot ban your own team")
 
+	ErrTeamNameTaken  = errors.New("adminops: team name is already taken")
+	ErrTeamEmailTaken = errors.New("adminops: team email is already in use")
+	ErrTeamCapReached = errors.New("adminops: the num_teams cap is reached")
+
 	ErrTagNotFound = errors.New("adminops: tag not found")
 	// ErrTagInUse refuses an unforced delete of a tag still attached to challenges, so a mistyped
 	// delete cannot silently strip a tag off the whole board.

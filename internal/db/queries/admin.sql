@@ -180,6 +180,33 @@ SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
  ORDER BY t.id
  LIMIT @lim::int OFFSET @off::int;
 
+-- name: AdminCreateTeam :one
+-- Same arbiters as the self-serve create: teams_name_uniq and the num_teams caps trigger decide
+-- on the INSERT itself, never in a prior check. captain_id stays NULL — an admin-provisioned team
+-- is captainless until its first member joins and adopts it.
+INSERT INTO teams (name, password_hash, email, website, affiliation, country)
+VALUES (@name, sqlc.narg(password_hash), sqlc.narg(email), sqlc.narg(website),
+        sqlc.narg(affiliation), sqlc.narg(country))
+RETURNING id, name, email, website, affiliation, country, bracket_id, captain_id,
+          hidden, banned, created_at;
+
+-- name: AdminUpdateTeam :one
+-- Deliberately narrow SET: banned, hidden, captain_id, password_hash and membership are not
+-- reachable from this statement — they move through their own routes or not at all.
+UPDATE teams SET
+    name        = COALESCE(sqlc.narg(name), name),
+    email       = CASE WHEN @clear_email::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(email), email) END,
+    website     = CASE WHEN @clear_website::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(website), website) END,
+    affiliation = CASE WHEN @clear_affiliation::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(affiliation), affiliation) END,
+    country     = CASE WHEN @clear_country::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(country), country) END
+WHERE id = @team_id
+RETURNING id, name, email, website, affiliation, country, bracket_id, captain_id,
+          hidden, banned, created_at;
+
 -- name: AdminSetTeamBanned :one
 UPDATE teams SET banned = @banned WHERE id = @team_id
 RETURNING id, name, banned;

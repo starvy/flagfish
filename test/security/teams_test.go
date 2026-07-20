@@ -242,6 +242,59 @@ func TestS19_HiddenAndBannedTeamsAreInvisiblePublicly(t *testing.T) {
 	}
 }
 
+// S20 — the profile PATCH cannot be turned into a moderation tool.
+//
+// banned, hidden and captain_id are absent from both the body schema (strict: unknown keys are
+// refused) and the UPDATE's SET list. A request that smuggles them in must change nothing: mass
+// assignment through a partial-update endpoint is the classic CTFd-shaped hole.
+func TestS20_TeamPatchMassAssignmentIsRefused(t *testing.T) {
+	f := setup(t, withTeamsMode())
+	ctx := context.Background()
+
+	f.user("editor", pw, asAdmin)
+	sess, err := f.acct.Login(ctx, "editor@ctf.test", pw)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	teamID := f.team("target")
+
+	// One smuggled key per request: a combined payload would let one refused key mask another
+	// that a future refactor quietly started accepting.
+	for _, payload := range []string{
+		`{"banned":true}`,
+		`{"hidden":true}`,
+		`{"captain_id":42}`,
+		`{"password_hash":"x"}`,
+		`{"name":"renamed","banned":true}`,
+	} {
+		r := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/teams/%d", teamID),
+			withCookie(sess.ID), withCSRF(sess.CSRFToken),
+			withBody("application/json", []byte(payload)))
+		if r.StatusCode == http.StatusOK {
+			t.Errorf("PATCH %s was accepted (%s)", payload, r.Body)
+		}
+
+		var row struct {
+			Name      string
+			Banned    bool
+			Hidden    bool
+			CaptainID *int64
+			PwHash    *string
+		}
+		if err := f.pool.QueryRow(ctx,
+			`SELECT name, banned, hidden, captain_id, password_hash FROM teams WHERE id = $1`, teamID).
+			Scan(&row.Name, &row.Banned, &row.Hidden, &row.CaptainID, &row.PwHash); err != nil {
+			t.Fatalf("read team: %v", err)
+		}
+		if row.Banned || row.Hidden || row.CaptainID != nil || row.PwHash != nil {
+			t.Errorf("PATCH %s landed: %+v", payload, row)
+		}
+		if row.Name != "target" {
+			t.Errorf("PATCH %s was refused but still renamed the team to %q — a partial write", payload, row.Name)
+		}
+	}
+}
+
 func sameProblemType(a, b string) bool {
 	typeOf := func(s string) string {
 		var v struct {
