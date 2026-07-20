@@ -22,6 +22,14 @@ type Querier interface {
 	// bracket_id NULL clears the assignment. Touching bracket_id does not trip the registration-cap
 	// trigger, which fires only on team_id.
 	AdminAssignUserBracket(ctx context.Context, arg AdminAssignUserBracketParams) (AdminAssignUserBracketRow, error)
+	// Flag counts for the flag_mode switch guards: total decides whether a switch to static would leave
+	// every submission erroring on an empty flag set, and the regex count decides whether a switch to
+	// unique would strand a pattern that cannot be pool-issued.
+	AdminChallengeFlagStats(ctx context.Context, challengeID int64) (AdminChallengeFlagStatsRow, error)
+	// Whether the challenge has any recorded solve. A flag_mode switch is refused while this is nonzero:
+	// the anti-cheat unissued-solve detector is a date-blind anti-join, so flipping static→unique
+	// mid-event would report every legitimate prior solver as an unissued solve.
+	AdminCountChallengeSolves(ctx context.Context, challengeID int64) (int64, error)
 	AdminCountOtherAdmins(ctx context.Context, userID int64) (int64, error)
 	AdminCountTagUses(ctx context.Context, value string) (int64, error)
 	AdminCreateBracket(ctx context.Context, arg AdminCreateBracketParams) (Bracket, error)
@@ -118,6 +126,10 @@ type Querier interface {
 	// Bulk position assignment in one statement: the two arrays are zipped by ordinality, so every
 	// challenge moves or none does. A row count below the input length means an id did not exist.
 	AdminReorderChallenges(ctx context.Context, arg AdminReorderChallengesParams) (int64, error)
+	// The one write path for challenges.flag_mode outside the importer. The switch guards live in the
+	// service, in the same transaction as this update: a mid-event switch would misfire the
+	// unissued-solve detector, so the service refuses it while any solve exists.
+	AdminSetChallengeFlagMode(ctx context.Context, arg AdminSetChallengeFlagModeParams) (Challenge, error)
 	// Whole-value replace: the column is one document, so a partial patch has no meaning here.
 	AdminSetChallengeRequirements(ctx context.Context, arg AdminSetChallengeRequirementsParams) (Challenge, error)
 	AdminSetChallengeState(ctx context.Context, arg AdminSetChallengeStateParams) (Challenge, error)

@@ -67,6 +67,28 @@ RETURNING *;
 -- name: AdminGetChallenge :one
 SELECT * FROM challenges WHERE id = @challenge_id;
 
+-- name: AdminSetChallengeFlagMode :one
+-- The one write path for challenges.flag_mode outside the importer. The switch guards live in the
+-- service, in the same transaction as this update: a mid-event switch would misfire the
+-- unissued-solve detector, so the service refuses it while any solve exists.
+UPDATE challenges SET flag_mode = @flag_mode, updated_at = now()
+WHERE id = @challenge_id
+RETURNING *;
+
+-- name: AdminChallengeFlagStats :one
+-- Flag counts for the flag_mode switch guards: total decides whether a switch to static would leave
+-- every submission erroring on an empty flag set, and the regex count decides whether a switch to
+-- unique would strand a pattern that cannot be pool-issued.
+SELECT count(*)::bigint AS total,
+       count(*) FILTER (WHERE type = 'regex')::bigint AS regex
+  FROM flags WHERE challenge_id = @challenge_id;
+
+-- name: AdminCountChallengeSolves :one
+-- Whether the challenge has any recorded solve. A flag_mode switch is refused while this is nonzero:
+-- the anti-cheat unissued-solve detector is a date-blind anti-join, so flipping static→unique
+-- mid-event would report every legitimate prior solver as an unissued solve.
+SELECT count(*)::bigint FROM solves WHERE challenge_id = @challenge_id;
+
 -- name: AdminSetChallengeRequirements :one
 -- Whole-value replace: the column is one document, so a partial patch has no meaning here.
 UPDATE challenges SET requirements = @requirements::jsonb, updated_at = now()

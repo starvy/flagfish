@@ -95,6 +95,7 @@ type adminChallengeBody struct {
 	Decay           *int32    `json:"decay,omitempty"`
 	MaxAttempts     int32     `json:"max_attempts"`
 	Logic           string    `json:"logic"`
+	FlagMode        string    `json:"flag_mode"`
 	Position        int32     `json:"position"`
 	FirstBlood      string    `json:"first_blood"`
 	FirstBloodBonus *int32    `json:"first_blood_bonus,omitempty"`
@@ -128,7 +129,7 @@ func (s *Server) adminChallenge(c *db.Challenge) (*adminChallengeOutput, error) 
 		Attribution: c.Attribution, ConnectionInfo: c.ConnectionInfo,
 		Type: c.Type, State: c.State, Value: c.Value, Function: c.Function,
 		Initial: c.Initial, Minimum: c.Minimum, Decay: c.Decay,
-		MaxAttempts: c.MaxAttempts, Logic: c.Logic, Position: c.Position,
+		MaxAttempts: c.MaxAttempts, Logic: c.Logic, FlagMode: c.FlagMode, Position: c.Position,
 		FirstBlood: c.FirstBlood, FirstBloodBonus: c.FirstBloodBonus,
 		CreatedAt: c.CreatedAt.Time, UpdatedAt: c.UpdatedAt.Time,
 		Requirements: adminRequirementsBody{
@@ -214,6 +215,13 @@ type adminChallengeStateInput struct {
 	ID   int64 `path:"id"`
 	Body struct {
 		State string `json:"state" enum:"visible,hidden"`
+	}
+}
+
+type adminChallengeFlagModeInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		FlagMode string `json:"flag_mode" enum:"static,unique"`
 	}
 }
 
@@ -348,6 +356,11 @@ func (s *Server) registerAdminChallenges() {
 	}, s.adminSetChallengeState)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-set-challenge-flag-mode", Method: http.MethodPut, Path: "/challenges/{id}/flag-mode",
+		Summary: "Switch a challenge between static and unique flags (guarded)", Tags: []string{"admin/challenges"},
+	}, s.adminSetChallengeFlagMode)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-set-challenge-requirements", Method: http.MethodPut, Path: "/challenges/{id}/requirements",
 		Summary: "Set a challenge's prerequisites (whole-value replace)", Tags: []string{"admin/challenges"},
 	}, s.adminSetChallengeRequirements)
@@ -459,6 +472,18 @@ func (s *Server) adminSetChallengeState(ctx context.Context, in *adminChallengeS
 	out, err := s.adminChallenge(&c)
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "set challenge state")
+	}
+	return out, nil
+}
+
+func (s *Server) adminSetChallengeFlagMode(ctx context.Context, in *adminChallengeFlagModeInput) (*adminChallengeOutput, error) {
+	c, err := s.opts.AdminOps.SetChallengeFlagMode(ctx, s.adminActor(ctx), in.ID, in.Body.FlagMode)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set challenge flag mode")
+	}
+	out, err := s.adminChallenge(&c)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set challenge flag mode")
 	}
 	return out, nil
 }

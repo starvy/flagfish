@@ -38,6 +38,41 @@ func (q *Queries) AdminAddTag(ctx context.Context, arg AdminAddTagParams) (Tag, 
 	return i, err
 }
 
+const adminChallengeFlagStats = `-- name: AdminChallengeFlagStats :one
+SELECT count(*)::bigint AS total,
+       count(*) FILTER (WHERE type = 'regex')::bigint AS regex
+  FROM flags WHERE challenge_id = $1
+`
+
+type AdminChallengeFlagStatsRow struct {
+	Total int64
+	Regex int64
+}
+
+// Flag counts for the flag_mode switch guards: total decides whether a switch to static would leave
+// every submission erroring on an empty flag set, and the regex count decides whether a switch to
+// unique would strand a pattern that cannot be pool-issued.
+func (q *Queries) AdminChallengeFlagStats(ctx context.Context, challengeID int64) (AdminChallengeFlagStatsRow, error) {
+	row := q.db.QueryRow(ctx, adminChallengeFlagStats, challengeID)
+	var i AdminChallengeFlagStatsRow
+	err := row.Scan(&i.Total, &i.Regex)
+	return i, err
+}
+
+const adminCountChallengeSolves = `-- name: AdminCountChallengeSolves :one
+SELECT count(*)::bigint FROM solves WHERE challenge_id = $1
+`
+
+// Whether the challenge has any recorded solve. A flag_mode switch is refused while this is nonzero:
+// the anti-cheat unissued-solve detector is a date-blind anti-join, so flipping static→unique
+// mid-event would report every legitimate prior solver as an unissued solve.
+func (q *Queries) AdminCountChallengeSolves(ctx context.Context, challengeID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, adminCountChallengeSolves, challengeID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const adminCountOtherAdmins = `-- name: AdminCountOtherAdmins :one
 SELECT count(*) FROM users WHERE role = 'admin' AND banned = false AND id <> $1
 `
@@ -1130,6 +1165,51 @@ func (q *Queries) AdminReorderChallenges(ctx context.Context, arg AdminReorderCh
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const adminSetChallengeFlagMode = `-- name: AdminSetChallengeFlagMode :one
+UPDATE challenges SET flag_mode = $1, updated_at = now()
+WHERE id = $2
+RETURNING id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at
+`
+
+type AdminSetChallengeFlagModeParams struct {
+	FlagMode    string
+	ChallengeID int64
+}
+
+// The one write path for challenges.flag_mode outside the importer. The switch guards live in the
+// service, in the same transaction as this update: a mid-event switch would misfire the
+// unissued-solve detector, so the service refuses it while any solve exists.
+func (q *Queries) AdminSetChallengeFlagMode(ctx context.Context, arg AdminSetChallengeFlagModeParams) (Challenge, error) {
+	row := q.db.QueryRow(ctx, adminSetChallengeFlagMode, arg.FlagMode, arg.ChallengeID)
+	var i Challenge
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Category,
+		&i.Description,
+		&i.Attribution,
+		&i.ConnectionInfo,
+		&i.Type,
+		&i.State,
+		&i.Value,
+		&i.Function,
+		&i.Initial,
+		&i.Minimum,
+		&i.Decay,
+		&i.MaxAttempts,
+		&i.Logic,
+		&i.Position,
+		&i.NextID,
+		&i.Requirements,
+		&i.FlagMode,
+		&i.FirstBlood,
+		&i.FirstBloodBonus,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const adminSetChallengeRequirements = `-- name: AdminSetChallengeRequirements :one

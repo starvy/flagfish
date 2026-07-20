@@ -11,6 +11,7 @@ import (
 
 	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/db"
+	"github.com/starvy/flagfish/internal/domain/flags"
 	"github.com/starvy/flagfish/internal/domain/prereq"
 )
 
@@ -101,6 +102,20 @@ func (s *Service) UpdateChallenge(ctx context.Context, actor audit.Actor, challe
 			t := challengeType(*patch.Function)
 			typ = &t
 		}
+		// logic='all' is meaningless on a unique-flag challenge: per-account flags are one flag, so
+		// there is nothing to combine. Refuse it loudly rather than store a value the submit path
+		// never consults.
+		if patch.Logic != nil && *patch.Logic == "all" {
+			ch, getErr := q.AdminGetChallenge(ctx, challengeID)
+			if errors.Is(getErr, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
+			} else if getErr != nil {
+				return fmt.Errorf("adminops: update challenge %d: read for logic guard: %w", challengeID, getErr)
+			}
+			if ch.FlagMode == "unique" {
+				return invalidf("logic 'all' is meaningless for a unique-flag challenge; keep logic 'any'")
+			}
+		}
 		var err error
 		out, err = q.AdminUpdateChallenge(ctx, db.AdminUpdateChallengeParams{
 			ChallengeID: challengeID,
@@ -121,6 +136,77 @@ func (s *Service) UpdateChallenge(ctx context.Context, actor audit.Actor, challe
 			return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
 		} else if err != nil {
 			return fmt.Errorf("adminops: update challenge %d: %w", challengeID, checkViolation(err))
+		}
+		return nil
+	})
+	return out, err
+}
+
+// SetChallengeFlagMode switches how a challenge issues flags (static ↔ unique), in one transaction,
+// behind three guards that a mid-event switch would otherwise walk straight through:
+//
+//   - either direction is refused while the challenge has any solve. The unissued-solve detector is
+//     a date-blind anti-join, so flipping static→unique mid-event would report every legitimate
+//     prior solver as an unissued solve — the docs sell that detector as "not a heuristic", so it
+//     must not be handed a false positive by construction. Deleting and recreating the challenge is
+//     the deliberate escape hatch.
+//   - → unique is refused while a regex flag exists: a pattern cannot be baked into a pool entry, so
+//     it could never be issued. This is the other half of the one-directional guard on flag create.
+//   - → static is refused when the challenge has no flags at all: checkStatic hard-errors on an
+//     empty flag set, so the switch would turn every submission into a 500.
+//
+// Switching to unique with an empty pool is allowed on purpose: the failure is loud by design (a 503
+// on the first view), and refusing it here would just move the authoring order around. logic='all'
+// is meaningless for a unique challenge, so a switch to unique is refused while logic is 'all'.
+func (s *Service) SetChallengeFlagMode(ctx context.Context, actor audit.Actor, challengeID int64, mode string) (db.Challenge, error) {
+	if _, err := flags.ParseMode(mode); err != nil {
+		return db.Challenge{}, invalidf("unknown flag_mode %q", mode)
+	}
+	var out db.Challenge
+	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		ch, err := q.AdminGetChallenge(ctx, challengeID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
+		} else if err != nil {
+			return fmt.Errorf("adminops: set flag_mode: read challenge %d: %w", challengeID, err)
+		}
+		if ch.FlagMode == mode {
+			out = ch
+			return nil
+		}
+
+		solves, err := q.AdminCountChallengeSolves(ctx, challengeID)
+		if err != nil {
+			return fmt.Errorf("adminops: set flag_mode: count solves: %w", err)
+		}
+		if solves > 0 {
+			return invalidf("cannot change flag_mode while the challenge has solves: the unissued-solve " +
+				"detector would report every prior solver as sharing. Delete and recreate the challenge instead")
+		}
+
+		stats, err := q.AdminChallengeFlagStats(ctx, challengeID)
+		if err != nil {
+			return fmt.Errorf("adminops: set flag_mode: flag stats: %w", err)
+		}
+		switch mode {
+		case "unique":
+			if stats.Regex > 0 {
+				return invalidf("cannot switch to unique flags while a regex flag exists: a pattern cannot be pool-issued — remove it first")
+			}
+			if ch.Logic == "all" {
+				return invalidf("cannot switch to unique flags while logic is 'all': per-account flags are one flag, so 'all' is meaningless — set logic to 'any' first")
+			}
+		case "static":
+			if stats.Total == 0 {
+				return invalidf("cannot switch to static flags: the challenge has no flags, so every submission would error — add a flag first")
+			}
+		}
+
+		out, err = q.AdminSetChallengeFlagMode(ctx, db.AdminSetChallengeFlagModeParams{
+			ChallengeID: challengeID, FlagMode: mode,
+		})
+		if err != nil {
+			return fmt.Errorf("adminops: set flag_mode on challenge %d: %w", challengeID, err)
 		}
 		return nil
 	})
