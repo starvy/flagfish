@@ -454,44 +454,96 @@ func checkModeAgreement(rows map[string]string, instanceMode *account.Mode) erro
 	return nil
 }
 
+// A coherenceRule is one cross-key check: a constraint no single key's parser can
+// see. keys names every config key the check reads, so a write can be judged
+// against exactly the rules it could have changed.
+type coherenceRule struct {
+	keys  []string
+	check func(*Snapshot) error
+}
+
+var coherenceRules = []coherenceRule{
+	{keys: []string{"start", "end"}, check: func(s *Snapshot) error {
+		if s.Start != nil && s.End != nil && !s.End.After(*s.Start) {
+			return fmt.Errorf("end (%s) must be after start (%s)", s.End, s.Start)
+		}
+		return nil
+	}},
+	{keys: []string{"freeze", "start"}, check: func(s *Snapshot) error {
+		if s.Freeze != nil && s.Start != nil && s.Freeze.Before(*s.Start) {
+			return fmt.Errorf("freeze (%s) is before start (%s): the whole event would be frozen", s.Freeze, s.Start)
+		}
+		return nil
+	}},
+	{keys: []string{"freeze", "end"}, check: func(s *Snapshot) error {
+		if s.Freeze != nil && s.End != nil && s.Freeze.After(*s.End) {
+			return fmt.Errorf("freeze (%s) is after end (%s): it would never take effect", s.Freeze, s.End)
+		}
+		return nil
+	}},
+	// user_mode is listed even though Mode is sourced from the instance singleton:
+	// the rule reads it, and team_size is the half a write can actually change.
+	{keys: []string{"team_size", "user_mode"}, check: func(s *Snapshot) error {
+		if s.Mode == account.ModeUsers && s.TeamSize > 0 {
+			return errors.New("team_size is set but user_mode is \"users\": one of these is a mistake")
+		}
+		return nil
+	}},
+	// Mail settings are only wrong in combination: half an SMTP config would boot fine
+	// and then fail on the first verification email of the event.
+	{keys: []string{"mail_server", "mail_port"}, check: func(s *Snapshot) error {
+		if s.MailServer != "" && (s.MailPort < 1 || s.MailPort > 65535) {
+			return fmt.Errorf("mail_server is set but mail_port is %d: want 1-65535", s.MailPort)
+		}
+		return nil
+	}},
+	{keys: []string{"mail_server", "mailfrom_addr"}, check: func(s *Snapshot) error {
+		if s.MailServer != "" && s.MailFrom == "" {
+			return errors.New("mail_server is set but mailfrom_addr is not")
+		}
+		return nil
+	}},
+	{keys: []string{"mail_password", "mail_username"}, check: func(s *Snapshot) error {
+		if s.MailPassword != "" && s.MailUsername == "" {
+			return errors.New("mail_password is set but mail_username is not")
+		}
+		return nil
+	}},
+	// An enabled feed with no endpoint would boot fine and then fail on the first
+	// first-blood of the event; refuse the half-configuration up front.
+	{keys: []string{"webhook_enabled", "webhook_url"}, check: func(s *Snapshot) error {
+		if s.WebhookEnabled && s.WebhookURL == "" {
+			return errors.New("webhook_enabled is true but webhook_url is not set")
+		}
+		return nil
+	}},
+}
+
+// A violation pairs a violated rule with what it has to say. The rule index is
+// what lets a caller ask "was this same rule already violated before the write".
+type violation struct {
+	rule int
+	err  error
+}
+
+// violations runs every coherence rule and reports each one the snapshot breaks.
+func (s *Snapshot) violations() []violation {
+	var out []violation
+	for i, r := range coherenceRules {
+		if err := r.check(s); err != nil {
+			out = append(out, violation{rule: i, err: err})
+		}
+	}
+	return out
+}
+
 // validate checks the things that are only wrong in combination — the ones no
 // single key's parser can see.
 func (s *Snapshot) validate() error {
 	var problems []error
-
-	if s.Start != nil && s.End != nil && !s.End.After(*s.Start) {
-		problems = append(problems, fmt.Errorf("end (%s) must be after start (%s)", s.End, s.Start))
+	for _, v := range s.violations() {
+		problems = append(problems, v.err)
 	}
-	if s.Freeze != nil && s.Start != nil && s.Freeze.Before(*s.Start) {
-		problems = append(problems, fmt.Errorf("freeze (%s) is before start (%s): the whole event would be frozen", s.Freeze, s.Start))
-	}
-	if s.Freeze != nil && s.End != nil && s.Freeze.After(*s.End) {
-		problems = append(problems, fmt.Errorf("freeze (%s) is after end (%s): it would never take effect", s.Freeze, s.End))
-	}
-	if s.Mode == account.ModeUsers && s.TeamSize > 0 {
-		problems = append(problems, errors.New("team_size is set but user_mode is \"users\": one of these is a mistake"))
-	}
-
-	// Mail settings are only wrong in combination: half an SMTP config would boot fine
-	// and then fail on the first verification email of the event.
-	if s.MailServer != "" {
-		if s.MailPort < 1 || s.MailPort > 65535 {
-			problems = append(problems, fmt.Errorf("mail_server is set but mail_port is %d: want 1-65535", s.MailPort))
-		}
-		if s.MailFrom == "" {
-			problems = append(problems, errors.New("mail_server is set but mailfrom_addr is not"))
-		}
-	}
-	if s.MailPassword != "" && s.MailUsername == "" {
-		problems = append(problems, errors.New("mail_password is set but mail_username is not"))
-	}
-
-	// An enabled feed with no endpoint would boot fine and then fail on the first
-	// first-blood of the event; refuse the half-configuration up front.
-	if s.WebhookEnabled && s.WebhookURL == "" {
-		problems = append(problems, errors.New("webhook_enabled is true but webhook_url is not set"))
-	}
-
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid configuration (refusing to start):\n%w", errors.Join(problems...))
 	}
