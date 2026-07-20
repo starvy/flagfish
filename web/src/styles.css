@@ -681,6 +681,14 @@ kbd {
   overflow-x: auto;
 }
 
+/* The windowed body scrolls inside a bounded viewport so only the visible rows mount. The sticky
+   header lives at the top of this region, and the scroll is trapped here rather than nudging the
+   page. */
+.ff-table-scroll--virtual {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .ff-table {
   border-collapse: collapse;
   font-size: var(--text-sm);
@@ -718,6 +726,11 @@ kbd {
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
+}
+
+/* The height-only spacers that stand in for the windowed-out rows are not data: no hover tint. */
+.ff-table tbody tr.ff-table__spacer:hover td {
+  background: transparent;
 }
 
 .ff-table tbody tr:last-child td {

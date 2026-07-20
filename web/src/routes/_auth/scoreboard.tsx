@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { Standing } from "../../api/client";
@@ -8,7 +8,16 @@ import { BracketFilter } from "../../scoreboard/BracketFilter";
 import { TimeTravel } from "../../scoreboard/TimeTravel";
 import { clockOf, hasEnded, isFrozen } from "../../scoreboard/clock";
 import { Countdown, ScreenGate, useNow } from "../../scoreboard/states";
-import { Badge, Banner, DataTable, EmptyState, formatAbsolute, type Column } from "../../ui";
+import {
+  Badge,
+  Banner,
+  Button,
+  DataTable,
+  EmptyState,
+  formatAbsolute,
+  type Column,
+  type VirtualScrollHandle,
+} from "../../ui";
 import "../../scoreboard/screens.css";
 
 export interface BoardSearch {
@@ -44,6 +53,10 @@ const authRoute = getRouteApi("/_auth");
 // The clock only has to be right to the minute: it decides whether the freeze banner is up and
 // where the right edge of the scrub range sits. Polling the board is what keeps the rows current.
 const CLOCK_TICK = 30_000;
+
+// Past this many rows the board windows its body, and the "jump to your rank" affordance appears.
+// A small board stays a plain, fully-rendered table so a ten-team event looks exactly as before.
+const VIRTUAL_THRESHOLD = 50;
 
 function ScoreboardPage() {
   const { bracket, as_of } = Route.useSearch();
@@ -87,6 +100,13 @@ function ScoreboardPage() {
 
   const standings = board.data?.standings ?? [];
   const bracketName = brackets.data?.brackets?.find((b) => b.id === bracket)?.name;
+
+  // The viewer's own row can be thousands deep on a big board, and a windowed body only mounts what
+  // is on screen — so give them a control to scroll straight to it. The handle is wired by the table
+  // whenever windowing is engaged; the affordance only shows when there is a row to jump to.
+  const jumpRef = useRef<VirtualScrollHandle | null>(null);
+  const selfOnBoard = standings.some((s) => s.account_id === selfAccount);
+  const large = standings.length >= VIRTUAL_THRESHOLD;
 
   const columns: Column<Standing>[] = [
     {
@@ -163,6 +183,15 @@ function ScoreboardPage() {
               onChange={(next) => setSearch({ as_of: next })}
             />
           )}
+
+          {large && selfOnBoard && (
+            <Button
+              className="ff-board-jump"
+              onClick={() => jumpRef.current?.scrollToKey(selfAccount)}
+            >
+              Jump to your rank
+            </Button>
+          )}
         </div>
 
         <DataTable
@@ -173,6 +202,7 @@ function ScoreboardPage() {
           captionHidden={false}
           loading={board.isPending}
           skeletonRows={10}
+          virtual={{ threshold: VIRTUAL_THRESHOLD, handleRef: jumpRef }}
           rowClassName={(s) => (s.account_id === selfAccount ? "ff-board__row--self" : undefined)}
           empty={
             <EmptyState

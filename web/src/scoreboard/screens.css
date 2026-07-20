@@ -22,6 +22,11 @@
   gap: var(--space-1);
 }
 
+/* Trails the toolbar so it never crowds the scrubber; wraps under it on a narrow screen. */
+.ff-board-jump {
+  margin-left: auto;
+}
+
 .ff-board-control__label {
   color: var(--color-text-muted);
   font-size: var(--text-xs);

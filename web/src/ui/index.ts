@@ -16,6 +16,8 @@ export {
   type ColumnAlign,
   type DataTableProps,
   type PaginationState,
+  type VirtualOptions,
+  type VirtualScrollHandle,
 } from "./DataTable";
 export { Dialog, type DialogProps, type DialogSize } from "./Dialog";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
