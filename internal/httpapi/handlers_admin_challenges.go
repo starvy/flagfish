@@ -67,6 +67,8 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error404NotFound("award not found")
 	case errors.Is(err, adminops.ErrAwardNotManual):
 		return huma.Error409Conflict("that award is a gameplay fact (a hint charge or first-blood bonus), not a manual adjustment, and cannot be revoked")
+	case errors.Is(err, adminops.ErrFieldNotFound):
+		return huma.Error404NotFound("field not found")
 	case errors.Is(err, adminops.ErrTagNotFound):
 		return huma.Error404NotFound("tag not found")
 	case errors.Is(err, adminops.ErrTagInUse):

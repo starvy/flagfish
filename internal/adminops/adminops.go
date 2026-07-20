@@ -51,6 +51,9 @@ var (
 	// facts stamped under the challenge lock, not admin adjustments, and never leave the ledger.
 	ErrAwardNotManual = errors.New("adminops: award is not a manual adjustment")
 
+	// ErrFieldNotFound refuses an update or delete of a custom field that is not there.
+	ErrFieldNotFound = errors.New("adminops: field not found")
+
 	ErrTagNotFound = errors.New("adminops: tag not found")
 	// ErrTagInUse refuses an unforced delete of a tag still attached to challenges, so a mistyped
 	// delete cannot silently strip a tag off the whole board.

@@ -38,6 +38,13 @@ type Querier interface {
 	// as the change itself.
 	// ── challenges ──────────────────────────────────────────────────────────────────
 	AdminCreateChallenge(ctx context.Context, arg AdminCreateChallengeParams) (Challenge, error)
+	// Custom registration fields: admin-defined profile questions (affiliation, eligibility, a consent
+	// checkbox) collected at sign-up. `fields` holds the definitions; `field_entries` holds one answer
+	// per (field, account), enforced by the one-owner CHECK and the per-field UNIQUE. A `required` field
+	// with no entry is what the login `profile_complete` gate reads as an incomplete profile, so the
+	// answer writes below are what keep that gate satisfiable.
+	// ── admin CRUD over the definitions ──────────────────────────────────────────────
+	AdminCreateField(ctx context.Context, arg AdminCreateFieldParams) (Field, error)
 	// Same arbiters as the self-serve create: teams_name_uniq and the num_teams caps trigger decide
 	// on the INSERT itself, never in a prior check. captain_id stays NULL — an admin-provisioned team
 	// is captainless until its first member joins and adopts it.
@@ -48,6 +55,11 @@ type Querier interface {
 	// unlocks, issued flags) RESTRICT: a challenge with recorded history cannot be deleted, and the
 	// caller maps that violation to a conflict.
 	AdminDeleteChallenge(ctx context.Context, challengeID int64) (int64, error)
+	// Answers are cascaded, not blocked: field_entries.field_id is ON DELETE CASCADE. An answer is user
+	// data, not a gameplay ledger row — removing a retired question takes its answers with it, and the
+	// audit trigger on field_entries records each removed answer. execrows so the caller can tell "no
+	// such field" from a real delete.
+	AdminDeleteField(ctx context.Context, fieldID int64) (int64, error)
 	AdminDeleteFile(ctx context.Context, id int64) ([]byte, error)
 	AdminDeleteFlag(ctx context.Context, arg AdminDeleteFlagParams) (int64, error)
 	AdminDeleteHint(ctx context.Context, arg AdminDeleteHintParams) (int64, error)
@@ -65,6 +77,7 @@ type Querier interface {
 	// hash, so the order can never discharge without the password that satisfies it.
 	AdminForcePasswordChange(ctx context.Context, userID int64) (AdminForcePasswordChangeRow, error)
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
+	AdminGetField(ctx context.Context, fieldID int64) (Field, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
 	AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamRow, error)
 	AdminGetUser(ctx context.Context, userID int64) (AdminGetUserRow, error)
@@ -93,6 +106,9 @@ type Querier interface {
 	// The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
 	// read beats a traversal query nothing else needs.
 	AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error)
+	// Every field, in the order a form would render them: user fields then team fields, each by their
+	// authored position, id as the stable tie-break.
+	AdminListFields(ctx context.Context) ([]Field, error)
 	// The pool of one challenge, newest generation first, each row carrying who it was issued to (a NULL
 	// issued_to is a still-free instance). COUNT(*) OVER () rides along so the page and its total agree.
 	AdminListInstances(ctx context.Context, arg AdminListInstancesParams) ([]AdminListInstancesRow, error)
@@ -147,6 +163,10 @@ type Querier interface {
 	// the narg. The dynamic-params CHECK still arbitrates the result, so clearing initial on a decayed
 	// challenge is refused, not silently stored.
 	AdminUpdateChallenge(ctx context.Context, arg AdminUpdateChallengeParams) (Challenge, error)
+	// Partial update: an absent argument keeps its value. field_type and applies_to are immutable —
+	// flipping either would reinterpret every stored answer (a text answer read as a bool, a user
+	// answer counted against a team gate), so they are create-only, exactly as a bracket's applies_to is.
+	AdminUpdateField(ctx context.Context, arg AdminUpdateFieldParams) (Field, error)
 	// Scoped by challenge_id in the WHERE, not checked in Go: a flag id from another challenge's URL
 	// affects zero rows, so there is no window and no forgotten guard.
 	AdminUpdateFlag(ctx context.Context, arg AdminUpdateFlagParams) (Flag, error)
@@ -193,6 +213,8 @@ type Querier interface {
 	// indistinguishable from a bad one, on the database's clock, not the app server's.
 	ConsumeEmailToken(ctx context.Context, arg ConsumeEmailTokenParams) (int64, error)
 	CountAwardsWithoutParent(ctx context.Context) (int64, error)
+	// How many answers a field carries, for the admin delete confirmation ("this removes N answers").
+	CountFieldEntries(ctx context.Context, fieldID int64) (int64, error)
 	// Whether any other row still points at the same stored object, so a delete knows if the object is
 	// now unreferenced and safe to remove.
 	CountFilesBySha(ctx context.Context, sha256sum []byte) (int64, error)
@@ -274,6 +296,9 @@ type Querier interface {
 	// without this — the wall reads team_banned per request — but a live cookie on a banned
 	// team is still a door left unlocked.
 	DeleteTeamSessions(ctx context.Context, teamID *int64) error
+	// Clearing an optional, editable answer. A DELETE, not a value=null write: "no answer" has one
+	// representation (no row), which the gate and the reads all agree on.
+	DeleteUserFieldEntry(ctx context.Context, arg DeleteUserFieldEntryParams) error
 	// "Log out everywhere". Also what a ban should call — a banned user's live cookie is still a live
 	// cookie, and the ban wall stops them on the next request, but there is no reason to leave the door
 	// shut and unlocked.
@@ -588,12 +613,23 @@ type Querier interface {
 	// COUNT(*) OVER () returns the total in the same round trip rather than a second query. Ordered by
 	// a total key (date then id) so pages are stable when two rows share a timestamp.
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]ListNotificationsRow, error)
+	// The public projection of a user's answers: only fields flagged public, only those actually
+	// answered. This is what a public profile view is allowed to show — a non-public answer never
+	// leaves this query.
+	ListPublicUserFieldAnswers(ctx context.Context, userID int64) ([]ListPublicUserFieldAnswersRow, error)
 	ListTeamManualAwards(ctx context.Context, teamID *int64) ([]ListTeamManualAwardsRow, error)
 	// Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 	// scored them regardless of later roster churn. include_masked lifts the hidden/banned member
 	// filter for the team's own view; cutoff is the freeze horizon (strict `<`, NULL = live) for the
 	// public one, where an unclamped per-member breakdown says who scored what during the freeze.
 	ListTeamMembers(ctx context.Context, arg ListTeamMembersParams) ([]ListTeamMembersRow, error)
+	// ── user answers: registration + /me ─────────────────────────────────────────────
+	// The user-applicable field definitions, for the register-time validation and the /me editor. Read
+	// inside the registration transaction so required-field enforcement sees the fields as of the write.
+	ListUserFieldDefs(ctx context.Context) ([]ListUserFieldDefsRow, error)
+	// The /me view: every user field with this caller's current answer (NULL where unanswered), so the
+	// settings form can render both the fields still owed and the ones already filled in.
+	ListUserFieldsWithAnswers(ctx context.Context, userID int64) ([]ListUserFieldsWithAnswersRow, error)
 	// Only type='standard' rows: hint spends and first-blood bonuses are gameplay facts, not admin
 	// adjustments, and must never appear in a revoke list.
 	ListUserManualAwards(ctx context.Context, userID int64) ([]ListUserManualAwardsRow, error)
@@ -753,6 +789,9 @@ type Querier interface {
 	// Runs on every authenticated request. One idempotent statement that cannot raise:
 	// there is no error path left to mishandle.
 	UpsertTracking(ctx context.Context, arg UpsertTrackingParams) (Tracking, error)
+	// One answer per (field, user), so a re-answer is an UPSERT on the UNIQUE(field_id, user_id), never
+	// a second row the profile-complete gate would have to pick a winner from.
+	UpsertUserFieldEntry(ctx context.Context, arg UpsertUserFieldEntryParams) error
 }
 
 var _ Querier = (*Queries)(nil)
