@@ -173,6 +173,23 @@ func limitBody(uploadMax int64) func(http.Handler) http.Handler {
 	}
 }
 
+// requestDeadline attaches a deadline to the request context. A wedged handler or a slow query is
+// then cut instead of pinning a pool connection until the client gives up, which under load is how
+// the pool drains and the whole event stalls. It is a context deadline, not http.TimeoutHandler, on
+// purpose: TimeoutHandler buffers the entire response to substitute a 503, which would break the
+// streaming file download; a context deadline lets pgx and the object store observe cancellation and
+// unwind on their own. It is mounted only on the JSON API group — the SSE stream, which is long-lived
+// by design, is registered outside it.
+func requestDeadline(d time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), d)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // recoverer turns a panic into a 500 and a log line, and keeps the process up.
 func recoverer(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

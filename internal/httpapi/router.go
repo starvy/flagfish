@@ -64,7 +64,18 @@ type Options struct {
 	// MaxUploadBytes caps a multipart upload; zero means the built-in default. Every other body
 	// is capped far lower and is not configurable.
 	MaxUploadBytes int64
+
+	// RequestTimeout is the per-request deadline imposed on the JSON API surfaces; zero means the
+	// built-in default. The SSE stream is mounted outside this deadline — it is long-lived by
+	// design and a deadline would sever it.
+	RequestTimeout time.Duration
 }
+
+// DefaultRequestTimeout bounds a single JSON API request. It is a generous backstop, not an SLA:
+// the point is that a wedged handler releases its pool connection rather than holding it until the
+// client times out. A streaming download does not hold a pool connection while it copies from the
+// object store, so this ceiling does not gate ordinary large downloads.
+const DefaultRequestTimeout = 30 * time.Second
 
 // A Server is the router plus the two Huma APIs — public and admin. Two paths on purpose:
 // a response shape that varies by role cannot be typed in OpenAPI, but one that varies by
@@ -98,6 +109,9 @@ func New(opts Options) *Server {
 	}
 	if opts.MaxUploadBytes <= 0 {
 		opts.MaxUploadBytes = config.DefaultMaxUploadBytes
+	}
+	if opts.RequestTimeout <= 0 {
+		opts.RequestTimeout = DefaultRequestTimeout
 	}
 	if len(opts.TrustedProxies) == 0 {
 		// Not fatal — a bare `flagfish serve` on a laptop has no proxy and is right not to trust
@@ -146,9 +160,20 @@ func New(opts Options) *Server {
 		// the bucket is keyed on the pattern and the parsed id, and the raw path is neither.
 		gated.Use(rateLimit(r, opts.Limiter, opts.Log))
 
+		// s.gated carries the raw routes Huma cannot type — the SSE stream — with NO request
+		// deadline: a live notification stream is long-lived by design.
 		s.gated = gated
-		s.Public = s.newAPI(gated, "/api/v1", "flagfish", policy.SurfacePublic)
-		s.Admin = s.newAPI(gated, "/api/v1/admin", "flagfish (admin)", policy.SurfaceAdmin)
+
+		// The JSON API surfaces get a per-request deadline in their own nested group. The SSE
+		// route stays on s.gated above, structurally outside this timeout — not by a path check
+		// that could rot, but by which router it is registered on. A request to the stream path
+		// matches that specific route ahead of the /api/v1/* mount, so it never inherits the
+		// deadline.
+		gated.Group(func(bounded chi.Router) {
+			bounded.Use(requestDeadline(opts.RequestTimeout))
+			s.Public = s.newAPI(bounded, "/api/v1", "flagfish", policy.SurfacePublic)
+			s.Admin = s.newAPI(bounded, "/api/v1/admin", "flagfish (admin)", policy.SurfaceAdmin)
+		})
 	})
 
 	s.registerRoutes()

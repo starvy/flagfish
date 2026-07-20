@@ -121,7 +121,16 @@ func baseOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Opt
 }
 
 func providePool(ctx context.Context, lc fx.Lifecycle, env config.Env) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, env.DatabaseURL)
+	cfg, err := pgxpool.ParseConfig(env.DatabaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("database: parse dsn: %w", err)
+	}
+	// Size the pool from the environment rather than pgx's NumCPU-shaped default, which queues
+	// the whole fleet on the pool at CTF start. These win over any ?pool_max_conns= in the DSN
+	// on purpose — the env var is the one documented knob.
+	cfg.MaxConns = env.DBMaxConns
+	cfg.MinConns = env.DBMinConns
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("database: %w", err)
 	}

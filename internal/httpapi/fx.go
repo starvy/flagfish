@@ -86,6 +86,13 @@ func runServer(lc fx.Lifecycle, s *Server, addr ListenAddr, log *slog.Logger) {
 		Addr:              string(addr),
 		Handler:           s.Router,
 		ReadHeaderTimeout: 10 * time.Second,
+		// ReadTimeout bounds a slow-body client; IdleTimeout reaps parked keep-alive
+		// connections. WriteTimeout is deliberately OFF: it caps the time to write the whole
+		// response, which would sever the long-lived SSE stream. The per-response bound is
+		// instead a per-request deadline on the JSON surfaces (see router.go), which the
+		// stream is excluded from.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 120 * time.Second,
 	}
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {

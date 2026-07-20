@@ -35,6 +35,16 @@ type Env struct {
 	// fixed cap — an upload is the one route that legitimately carries megabytes.
 	MaxUploadBytes int64
 
+	// DBMaxConns and DBMinConns size the pgx connection pool. They are the first-class knob
+	// for what was otherwise only reachable by appending ?pool_max_conns= to the DSN. The
+	// default max is sized for the CTF-start thundering herd — every team hitting the board and
+	// its first submits inside one minute — rather than pgx's NumCPU-shaped default, which
+	// queues under exactly that load. MinConns keeps a few connections warm so the first wave
+	// does not pay connection setup. Size the max to fit the database's own max_connections
+	// across every replica that shares it.
+	DBMaxConns int32
+	DBMinConns int32
+
 	// RateLimit is the number of requests one caller may make per RateWindow before the
 	// limiter starts denying. It is process-level and not runtime config on purpose: a
 	// brute-force guard an admin can turn down from the UI is a brute-force guard an
@@ -47,6 +57,13 @@ type Env struct {
 // parser spills past its memory budget to a temp file, so this bounds disk more than heap —
 // but unbounded is unbounded either way, and the container it ships in has 512 MB.
 const DefaultMaxUploadBytes int64 = 32 << 20
+
+// Pool defaults. The max is deliberately above pgx's NumCPU-shaped default so the CTF-start
+// burst has connections to hand out instead of queuing; the min keeps a handful warm.
+const (
+	DefaultDBMaxConns int32 = 25
+	DefaultDBMinConns int32 = 2
+)
 
 // EnvError lists everything wrong with the environment at once. Reporting the first
 // failure only means a misconfigured deploy takes four restarts to diagnose.
@@ -118,6 +135,38 @@ func LoadEnv() (Env, error) {
 		default:
 			env.MaxUploadBytes = n
 		}
+	}
+
+	env.DBMaxConns = DefaultDBMaxConns
+	if raw := firstSet("FLAGFISH_DB_MAX_CONNS"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 32)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_DB_MAX_CONNS=%q is not an integer", raw))
+		case n < 1:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_DB_MAX_CONNS=%d must be at least 1", n))
+		default:
+			env.DBMaxConns = int32(n)
+		}
+	}
+
+	env.DBMinConns = DefaultDBMinConns
+	if raw := firstSet("FLAGFISH_DB_MIN_CONNS"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 32)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_DB_MIN_CONNS=%q is not an integer", raw))
+		case n < 0:
+			errs = append(errs, fmt.Sprintf("FLAGFISH_DB_MIN_CONNS=%d must not be negative", n))
+		default:
+			env.DBMinConns = int32(n)
+		}
+	}
+	// A min above max never opens a connection and would fail deep in the pool; reject it here,
+	// loudly, next to the values that caused it.
+	if env.DBMinConns > env.DBMaxConns {
+		errs = append(errs, fmt.Sprintf("FLAGFISH_DB_MIN_CONNS=%d exceeds FLAGFISH_DB_MAX_CONNS=%d",
+			env.DBMinConns, env.DBMaxConns))
 	}
 
 	env.RateLimit = 60

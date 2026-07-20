@@ -40,7 +40,7 @@ type notifyFix struct {
 // newNotifyAPI builds the full server with the notifications service and broadcaster, and runs the
 // LISTEN pump for the duration of the test. The pump holds its own pool connection; cancelling it
 // on cleanup releases that connection before the pool closes.
-func newNotifyAPI(t *testing.T, mode account.Mode) *notifyFix {
+func newNotifyAPI(t *testing.T, mode account.Mode, mut ...func(*httpapi.Options)) *notifyFix {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -67,7 +67,7 @@ func newNotifyAPI(t *testing.T, mode account.Mode) *notifyFix {
 	svc := notify.NewService(pool)
 	bc := notify.NewBroadcaster(pool, svc, log)
 
-	srv := httpapi.New(httpapi.Options{
+	opts := httpapi.Options{
 		Config:      cfg,
 		Auth:        acct,
 		Limiter:     accounts.NewLimiter(pool, 1000, 60_000_000_000),
@@ -79,7 +79,11 @@ func newNotifyAPI(t *testing.T, mode account.Mode) *notifyFix {
 		AdminOps:    adminops.New(pool),
 		Notify:      svc,
 		Broadcaster: bc,
-	})
+	}
+	for _, m := range mut {
+		m(&opts)
+	}
+	srv := httpapi.New(opts)
 
 	ts := httptest.NewServer(srv.Router)
 	t.Cleanup(ts.Close)
