@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"context"
 	"log/slog"
 
 	"go.uber.org/fx"
@@ -14,16 +15,27 @@ var Module = fx.Module(
 	fx.Provide(newMailer),
 )
 
-// newMailer builds the mailer from the boot-time config snapshot. Invalid settings
-// refuse to boot; absent settings yield a mailer whose every Send fails loudly —
-// queued mail then errors and retries instead of vanishing.
-func newMailer(cfg *config.Manager, log *slog.Logger) (Mailer, error) {
-	snap := cfg.Current()
-	if snap.MailServer == "" {
+func newMailer(cfg *config.Manager, log *slog.Logger) Mailer {
+	if cfg.Current().MailServer == "" {
 		log.Warn("mail is not configured (mail_server is unset); outgoing email will fail until it is")
-		return Unconfigured{}, nil
 	}
-	m, err := New(Config{
+	return &liveMailer{cfg: cfg}
+}
+
+// liveMailer reads the CURRENT config snapshot on every Send, so a runtime mail
+// edit takes effect on the next email instead of the next restart. Rebuilding the
+// SMTP client is only validation; the dial was per-send all along.
+type liveMailer struct {
+	cfg *config.Manager
+}
+
+func (m *liveMailer) Send(ctx context.Context, to, subject, body string) error {
+	snap := m.cfg.Current()
+	if snap.MailServer == "" {
+		// Still a hard error: queued mail retries loudly instead of vanishing.
+		return Unconfigured{}.Send(ctx, to, subject, body)
+	}
+	s, err := New(Config{
 		Host:     snap.MailServer,
 		Port:     snap.MailPort,
 		Username: snap.MailUsername,
@@ -32,7 +44,7 @@ func newMailer(cfg *config.Manager, log *slog.Logger) (Mailer, error) {
 		From:     snap.MailFrom,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return m, nil
+	return s.Send(ctx, to, subject, body)
 }
