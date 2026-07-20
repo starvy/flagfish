@@ -1,3 +1,5 @@
+import { preferredLocale } from "./locale";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -37,5 +39,5 @@ export function relativeTickMs(at: Date, now: Date = new Date()): number {
 
 /** Full, unambiguous, locale-formatted — what goes in `title`. */
 export function formatAbsolute(at: Date): string {
-  return at.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+  return at.toLocaleString(preferredLocale(), { dateStyle: "medium", timeStyle: "medium" });
 }

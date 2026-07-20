@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { NotificationBell, NotificationsDrawer } from "../notifications";
 import { instanceQuery, meQuery } from "../queries";
 import { ClockBanners, UserMenu, useInstanceState } from "../shell";
+import { applyLocalePreference } from "../ui";
 
 export const Route = createFileRoute("/_auth")({
   beforeLoad: async ({ context, location }) => {
@@ -20,6 +22,12 @@ export const Route = createFileRoute("/_auth")({
 function AuthLayout() {
   const { me } = Route.useRouteContext();
   const { ctfName, teamsMode } = useInstanceState();
+
+  // The preference becomes real here: every locale-sensitive formatter downstream resolves
+  // against it, and the document lang follows the account rather than the browser.
+  useEffect(() => {
+    applyLocalePreference(me.language);
+  }, [me.language]);
 
   return (
     <div className="sh-app">

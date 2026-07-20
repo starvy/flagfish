@@ -27,6 +27,7 @@ import {
   Form,
   Input,
   RelativeTime,
+  Select,
   Skeleton,
   Tabs,
   useToast,
@@ -134,7 +135,28 @@ const PROFILE_FIELDS = [
   { key: "country", label: "Country", hint: "" },
 ] as const;
 
-/** The player-owned fields. Submitting sends all three; an emptied box clears its field. */
+// A short menu of common language tags. It is a convenience, not a limit: any well-formed
+// BCP 47 tag the server accepts is valid, and an imported preference outside this list is
+// preserved as its own option below rather than silently dropped. When message catalogs
+// ship, the list narrows to what is actually translated.
+const LANGUAGES: readonly { value: string; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "de", label: "Deutsch" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "it", label: "Italiano" },
+  { value: "nl", label: "Nederlands" },
+  { value: "pl", label: "Polski" },
+  { value: "pt-BR", label: "Português (Brasil)" },
+  { value: "ru", label: "Русский" },
+  { value: "uk", label: "Українська" },
+  { value: "tr", label: "Türkçe" },
+  { value: "ja", label: "日本語" },
+  { value: "ko", label: "한국어" },
+  { value: "zh", label: "中文" },
+];
+
+/** The player-owned fields. Submitting sends them all; an emptied box clears its field. */
 function ProfileForm({ me }: { me: Me }) {
   const toast = useToast();
   const update = useUpdateMe();
@@ -142,6 +164,7 @@ function ProfileForm({ me }: { me: Me }) {
     website: me.website ?? "",
     affiliation: me.affiliation ?? "",
     country: me.country ?? "",
+    language: me.language ?? "",
   });
 
   useEffect(() => {
@@ -149,6 +172,7 @@ function ProfileForm({ me }: { me: Me }) {
       website: me.website ?? "",
       affiliation: me.affiliation ?? "",
       country: me.country ?? "",
+      language: me.language ?? "",
     });
   }, [me]);
 
@@ -163,10 +187,19 @@ function ProfileForm({ me }: { me: Me }) {
         website: clean(values.website),
         affiliation: clean(values.affiliation),
         country: clean(values.country),
+        language: clean(values.language),
       },
       { onSuccess: () => toast.success("Profile saved") },
     );
   };
+
+  // Keep an imported preference that is not in the common menu (e.g. "zh-Hant") selectable.
+  const known = LANGUAGES.some((l) => l.value === values.language);
+  const languageOptions = [
+    { value: "", label: "Browser default" },
+    ...LANGUAGES,
+    ...(values.language !== "" && !known ? [{ value: values.language, label: values.language }] : []),
+  ];
 
   return (
     <Card title="Profile">
@@ -189,6 +222,17 @@ function ProfileForm({ me }: { me: Me }) {
             />
           </Field>
         ))}
+        <Field
+          name="language"
+          label="Language"
+          hint="Formats dates and numbers to your preference. Full translations are coming later."
+        >
+          <Select
+            options={languageOptions}
+            value={values.language}
+            onChange={(e) => setValues((v) => ({ ...v, language: e.target.value }))}
+          />
+        </Field>
       </Form>
     </Card>
   );

@@ -32,6 +32,7 @@ import {
   Field,
   Form,
   Input,
+  preferredLocale,
   Select,
   Textarea,
   useToast,
@@ -765,7 +766,7 @@ function ClockField({ name, label, value, current, clearNote, onChange }: ClockF
       onChange={onChange}
       current={
         current ? (
-          <span className="ff-mono">{new Date(current).toLocaleString()}</span>
+          <span className="ff-mono">{new Date(current).toLocaleString(preferredLocale())}</span>
         ) : (
           <span className="muted">not set</span>
         )

@@ -128,7 +128,7 @@ SELECT id, name, email, password_hash, role, verified, banned, must_change_passw
 
 -- name: GetUserByID :one
 SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id,
-       website, affiliation, country
+       website, affiliation, country, language
   FROM users WHERE id = @user_id;
 
 -- name: UpdateOwnProfile :one
@@ -140,9 +140,11 @@ UPDATE users SET
     affiliation = CASE WHEN @clear_affiliation::bool THEN NULL
                        ELSE COALESCE(sqlc.narg(affiliation), affiliation) END,
     country     = CASE WHEN @clear_country::bool THEN NULL
-                       ELSE COALESCE(sqlc.narg(country), country) END
+                       ELSE COALESCE(sqlc.narg(country), country) END,
+    language    = CASE WHEN @clear_language::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(language), language) END
 WHERE id = @user_id
-RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country;
+RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country, language;
 
 -- name: UpdatePasswordHash :exec
 -- The rehash-on-login path only: a bcrypt hash from an import, silently upgraded to Argon2id while

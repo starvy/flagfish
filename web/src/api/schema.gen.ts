@@ -761,6 +761,7 @@ export interface components {
             csrf_token: string;
             email: string;
             is_admin: boolean;
+            language?: string;
             name: string;
             role: string;
             /** Format: int64 */
@@ -923,6 +924,7 @@ export interface components {
             readonly $schema?: string;
             affiliation?: string | null;
             country?: string | null;
+            language?: string | null;
             website?: string | null;
         };
         UpdateMyTeamInputBody: {

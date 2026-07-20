@@ -34,6 +34,7 @@ export { parseMarkdown, safeHref, type Block, type Inline } from "./markdownAst"
 export { Pagination, type PaginationProps } from "./Pagination";
 export { RelativeTime, type RelativeTimeProps } from "./RelativeTime";
 export { formatAbsolute, formatRelative } from "./timeFormat";
+export { applyLocalePreference, preferredLocale } from "./locale";
 export { Select, type SelectOption, type SelectProps } from "./Select";
 export { Skeleton, type SkeletonProps } from "./Skeleton";
 export { Spinner, type SpinnerProps, type SpinnerSize } from "./Spinner";

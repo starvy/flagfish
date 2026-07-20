@@ -54,6 +54,61 @@ func TestSelfServeProfilePatch(t *testing.T) {
 	}
 }
 
+func TestSelfServeLanguagePreference(t *testing.T) {
+	f := newAPI(t, account.ModeUsers)
+	cookie, csrf := f.register("polyglot", "polyglot@example.com", "correct-horse-battery")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	readLang := func() *string {
+		t.Helper()
+		var me struct {
+			Language *string `json:"language"`
+		}
+		res, body := f.do(http.MethodGet, "/api/v1/me", nil, withCookie(cookie))
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("me: %d (%s)", res.StatusCode, body)
+		}
+		if err := json.Unmarshal(body, &me); err != nil {
+			t.Fatalf("decode me: %v", err)
+		}
+		return me.Language
+	}
+
+	// A malformed tag is refused before it touches the column.
+	res, _ := f.do(http.MethodPatch, "/api/v1/me", map[string]any{"language": "not a tag!"}, auth...)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("malformed language: got %d, want 422", res.StatusCode)
+	}
+	if lang := readLang(); lang != nil {
+		t.Fatalf("a rejected language must not persist: %v", *lang)
+	}
+
+	// A well-formed regional tag sets and echoes.
+	res, body := f.do(http.MethodPatch, "/api/v1/me", map[string]any{"language": "pt-BR"}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("set language: %d (%s)", res.StatusCode, body)
+	}
+	if lang := readLang(); lang == nil || *lang != "pt-BR" {
+		t.Fatalf("language did not round-trip: %v", lang)
+	}
+
+	// An unrelated patch keeps the preference; an explicit null clears it.
+	res, _ = f.do(http.MethodPatch, "/api/v1/me", map[string]any{"country": "BR"}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("unrelated patch: %d", res.StatusCode)
+	}
+	if lang := readLang(); lang == nil || *lang != "pt-BR" {
+		t.Fatalf("omitted language must be kept, got %v", lang)
+	}
+	res, _ = f.do(http.MethodPatch, "/api/v1/me", map[string]any{"language": nil}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear language: %d", res.StatusCode)
+	}
+	if lang := readLang(); lang != nil {
+		t.Fatalf("explicit null must clear language, got %v", *lang)
+	}
+}
+
 func TestCaptainTeamSettings(t *testing.T) {
 	f := newAPI(t, account.ModeTeams)
 

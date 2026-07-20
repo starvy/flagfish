@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Alert } from "../ui";
+import { Alert, preferredLocale } from "../ui";
 import { formatRemaining, useCtfClock, useNow, type Phase } from "./instance";
-
-const absolute = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function Countdown({ to }: { to: Date }) {
   const now = useNow(1000);
@@ -17,7 +15,7 @@ function Countdown({ to }: { to: Date }) {
 function At({ date }: { date: Date }) {
   return (
     <time className="ff-time" dateTime={date.toISOString()}>
-      {absolute.format(date)}
+      {date.toLocaleString(preferredLocale(), { dateStyle: "medium", timeStyle: "short" })}
     </time>
   );
 }

@@ -94,6 +94,7 @@ type meOutput struct {
 		Website     *string `json:"website,omitempty"`
 		Affiliation *string `json:"affiliation,omitempty"`
 		Country     *string `json:"country,omitempty"`
+		Language    *string `json:"language,omitempty"`
 		// The session cookie outlives the tab that minted it, and it is HttpOnly, so a client
 		// that comes back with a live cookie and no CSRF token cannot mint one: login and
 		// register are the only other emitters, and even logout is a CSRF-guarded POST. Without
@@ -213,6 +214,7 @@ type updateMeInput struct {
 		Website     Optional[string] `json:"website,omitempty" maxLength:"255"`
 		Affiliation Optional[string] `json:"affiliation,omitempty" maxLength:"255"`
 		Country     Optional[string] `json:"country,omitempty" maxLength:"64"`
+		Language    Optional[string] `json:"language,omitempty" maxLength:"35"`
 	}
 }
 
@@ -240,6 +242,7 @@ func meOut(p accounts.Profile, isAdmin bool, csrf string) *meOutput {
 	out.Body.Website = p.Website
 	out.Body.Affiliation = p.Affiliation
 	out.Body.Country = p.Country
+	out.Body.Language = p.Language
 	out.Body.CSRFToken = csrf
 	return out
 }
@@ -249,12 +252,17 @@ func (s *Server) updateMe(ctx context.Context, in *updateMeInput) (*meOutput, er
 	website, clearWebsite := in.Body.Website.split()
 	affiliation, clearAffiliation := in.Body.Affiliation.split()
 	country, clearCountry := in.Body.Country.split()
+	language, clearLanguage := in.Body.Language.split()
 
 	p, err := s.opts.Accounts.UpdateProfile(ctx, a.Principal.UserID, accounts.ProfilePatch{
-		Website: website, Affiliation: affiliation, Country: country,
-		ClearWebsite: clearWebsite, ClearAffiliation: clearAffiliation, ClearCountry: clearCountry,
+		Website: website, Affiliation: affiliation, Country: country, Language: language,
+		ClearWebsite: clearWebsite, ClearAffiliation: clearAffiliation,
+		ClearCountry: clearCountry, ClearLanguage: clearLanguage,
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, accounts.ErrInvalidLanguage):
+		return nil, huma.Error422UnprocessableEntity("language is not a well-formed BCP 47 tag")
+	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "profile update failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not update your profile")
 	}

@@ -633,6 +633,8 @@ components:
           type: string
         is_admin:
           type: boolean
+        language:
+          type: string
         name:
           type: string
         role:
@@ -967,6 +969,11 @@ components:
             - "null"
         country:
           maxLength: 64
+          type:
+            - string
+            - "null"
+        language:
+          maxLength: 35
           type:
             - string
             - "null"

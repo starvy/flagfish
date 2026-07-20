@@ -364,7 +364,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id,
-       website, affiliation, country
+       website, affiliation, country, language
   FROM users WHERE id = $1
 `
 
@@ -381,6 +381,7 @@ type GetUserByIDRow struct {
 	Website            *string
 	Affiliation        *string
 	Country            *string
+	Language           *string
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, userID int64) (GetUserByIDRow, error) {
@@ -399,6 +400,7 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (GetUserByIDRow
 		&i.Website,
 		&i.Affiliation,
 		&i.Country,
+		&i.Language,
 	)
 	return i, err
 }
@@ -553,9 +555,11 @@ UPDATE users SET
     affiliation = CASE WHEN $3::bool THEN NULL
                        ELSE COALESCE($4, affiliation) END,
     country     = CASE WHEN $5::bool THEN NULL
-                       ELSE COALESCE($6, country) END
-WHERE id = $7
-RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country
+                       ELSE COALESCE($6, country) END,
+    language    = CASE WHEN $7::bool THEN NULL
+                       ELSE COALESCE($8, language) END
+WHERE id = $9
+RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country, language
 `
 
 type UpdateOwnProfileParams struct {
@@ -565,6 +569,8 @@ type UpdateOwnProfileParams struct {
 	Affiliation      *string
 	ClearCountry     bool
 	Country          *string
+	ClearLanguage    bool
+	Language         *string
 	UserID           int64
 }
 
@@ -579,6 +585,7 @@ type UpdateOwnProfileRow struct {
 	Website     *string
 	Affiliation *string
 	Country     *string
+	Language    *string
 }
 
 // The self-serve profile write: the player-owned fields and nothing else. Identity and
@@ -591,6 +598,8 @@ func (q *Queries) UpdateOwnProfile(ctx context.Context, arg UpdateOwnProfilePara
 		arg.Affiliation,
 		arg.ClearCountry,
 		arg.Country,
+		arg.ClearLanguage,
+		arg.Language,
 		arg.UserID,
 	)
 	var i UpdateOwnProfileRow
@@ -605,6 +614,7 @@ func (q *Queries) UpdateOwnProfile(ctx context.Context, arg UpdateOwnProfilePara
 		&i.Website,
 		&i.Affiliation,
 		&i.Country,
+		&i.Language,
 	)
 	return i, err
 }
