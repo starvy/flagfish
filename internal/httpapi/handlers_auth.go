@@ -17,7 +17,50 @@ type registerInput struct {
 		Name     string `json:"name" minLength:"1" maxLength:"128"`
 		Email    string `json:"email" format:"email" maxLength:"255"`
 		Password string `json:"password" minLength:"8" maxLength:"128"`
+		// Answers to the admin-defined registration fields. A required field left out is a 422:
+		// the account is never created in the state that would trap it behind the profile gate.
+		Fields []fieldAnswerInput `json:"fields,omitempty"`
 	}
+}
+
+// fieldAnswerInput is one custom-field answer on the wire. value is a string for a text field or a
+// bool for a checkbox; it is validated against the field type server-side.
+type fieldAnswerInput struct {
+	FieldID int64     `json:"field_id" minimum:"1"`
+	Value   jsonValue `json:"value"`
+}
+
+func fieldAnswers(in []fieldAnswerInput) []accounts.FieldAnswer {
+	out := make([]accounts.FieldAnswer, len(in))
+	for i, a := range in {
+		out[i] = accounts.FieldAnswer{FieldID: a.FieldID, Value: a.Value.Raw}
+	}
+	return out
+}
+
+// meFieldBody is one custom field with the caller's current answer, for the /me editor.
+type meFieldBody struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	FieldType   string    `json:"field_type"`
+	Description *string   `json:"description,omitempty"`
+	Required    bool      `json:"required"`
+	Public      bool      `json:"public"`
+	Editable    bool      `json:"editable"`
+	Position    int32     `json:"position"`
+	Value       jsonValue `json:"value"`
+}
+
+func meFields(fields []accounts.UserField) []meFieldBody {
+	out := make([]meFieldBody, len(fields))
+	for i, f := range fields {
+		out[i] = meFieldBody{
+			ID: f.ID, Name: f.Name, FieldType: f.FieldType, Description: f.Description,
+			Required: f.Required, Public: f.Public, Editable: f.Editable, Position: f.Position,
+			Value: jsonValue{Raw: f.Value},
+		}
+	}
+	return out
 }
 
 type loginInput struct {
@@ -102,6 +145,10 @@ type meOutput struct {
 		// way out. Safe to return: it is the caller's own token, on a request the cookie already
 		// authenticated, and it is never readable cross-origin.
 		CSRFToken string `json:"csrf_token"`
+		// The admin-defined custom fields with this caller's current answers — both the fields
+		// still owed (a required field created after sign-up) and the ones already filled in, so
+		// the settings form can offer the remedy to an otherwise profile-gated account.
+		Fields []meFieldBody `json:"fields"`
 	}
 }
 
@@ -110,6 +157,11 @@ func (s *Server) registerAuth() {
 		OperationID: "register", Method: http.MethodPost, Path: "/register",
 		Summary: "Register a new account", Tags: []string{"auth"},
 	}, s.register)
+
+	Register(s.Public, policy.ClassRegister, huma.Operation{
+		OperationID: "registration-fields", Method: http.MethodGet, Path: "/register/fields",
+		Summary: "List the custom fields shown on the registration form", Tags: []string{"auth"},
+	}, s.registrationFields)
 
 	Register(s.Public, policy.ClassLogin, huma.Operation{
 		OperationID: "login", Method: http.MethodPost, Path: "/login",
@@ -130,6 +182,11 @@ func (s *Server) registerAuth() {
 		OperationID: "update-me", Method: http.MethodPatch, Path: "/me",
 		Summary: "Update the current account's profile", Tags: []string{"auth"},
 	}, s.updateMe)
+
+	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
+		OperationID: "answer-fields", Method: http.MethodPut, Path: "/me/fields",
+		Summary: "Answer or edit the caller's custom registration fields", Tags: []string{"auth"},
+	}, s.answerMyFields)
 
 	// Its own class, not ClassAccountSelf: the forced-change wall must exempt exactly this
 	// route, or the wall traps its own exit.
@@ -167,15 +224,35 @@ func sessionOut(ctx context.Context, sess accounts.Session) *sessionOutput {
 	return out
 }
 
+type registrationFieldsOutput struct {
+	Body struct {
+		Fields []meFieldBody `json:"fields"`
+	}
+}
+
+func (s *Server) registrationFields(ctx context.Context, _ *struct{}) (*registrationFieldsOutput, error) {
+	fields, err := s.opts.Accounts.RegistrationFields(ctx)
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "registration fields lookup failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not load the registration form")
+	}
+	out := &registrationFieldsOutput{}
+	out.Body.Fields = meFields(fields)
+	return out, nil
+}
+
 func (s *Server) register(ctx context.Context, in *registerInput) (*sessionOutput, error) {
 	snap := s.opts.Config.Current()
 	verified := !snap.VerifyEmails
-	sess, err := s.opts.Accounts.Register(ctx, in.Body.Name, in.Body.Email, in.Body.Password, verified, snap.CTFName)
+	sess, err := s.opts.Accounts.Register(ctx, in.Body.Name, in.Body.Email, in.Body.Password, verified, snap.CTFName, fieldAnswers(in.Body.Fields))
+	var fieldErr *accounts.FieldAnswerError
 	switch {
 	case errors.Is(err, accounts.ErrEmailTaken):
 		return nil, huma.Error409Conflict("that email is already registered")
 	case errors.Is(err, accounts.ErrCapReached):
 		return nil, huma.Error403Forbidden("registration is full")
+	case errors.As(err, &fieldErr):
+		return nil, huma.Error422UnprocessableEntity(fieldErr.Reason)
 	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "register failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not register")
@@ -226,11 +303,16 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		s.opts.Log.ErrorContext(ctx, "profile lookup failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load account")
 	}
+	fields, err := s.opts.Accounts.UserFields(ctx, pr.UserID)
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "profile fields lookup failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not load account")
+	}
 	// Empty for bearer auth, which mints no CSRF token because it is exempt from the check.
-	return meOut(p, pr.IsAdmin, a.CSRFToken), nil
+	return meOut(p, pr.IsAdmin, a.CSRFToken, fields), nil
 }
 
-func meOut(p accounts.Profile, isAdmin bool, csrf string) *meOutput {
+func meOut(p accounts.Profile, isAdmin bool, csrf string, fields []accounts.UserField) *meOutput {
 	out := &meOutput{}
 	out.Body.UserID = p.ID
 	out.Body.Name = p.Name
@@ -244,6 +326,7 @@ func meOut(p accounts.Profile, isAdmin bool, csrf string) *meOutput {
 	out.Body.Country = p.Country
 	out.Body.Language = p.Language
 	out.Body.CSRFToken = csrf
+	out.Body.Fields = meFields(fields)
 	return out
 }
 
@@ -266,7 +349,44 @@ func (s *Server) updateMe(ctx context.Context, in *updateMeInput) (*meOutput, er
 		s.opts.Log.ErrorContext(ctx, "profile update failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not update your profile")
 	}
-	return meOut(p, a.Principal.IsAdmin, a.CSRFToken), nil
+	fields, err := s.opts.Accounts.UserFields(ctx, a.Principal.UserID)
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "profile fields lookup failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not update your profile")
+	}
+	return meOut(p, a.Principal.IsAdmin, a.CSRFToken, fields), nil
+}
+
+// answerFieldsInput is the self-serve write over the caller's custom fields.
+type answerFieldsInput struct {
+	Body struct {
+		Fields []fieldAnswerInput `json:"fields"`
+	}
+}
+
+type answerFieldsOutput struct {
+	Body struct {
+		Fields []meFieldBody `json:"fields"`
+	}
+}
+
+// answerMyFields writes the caller's own custom-field answers: the register-time remedy, so a
+// required field created after sign-up can be answered and the account clears the profile gate. A
+// non-editable, already-answered field is refused with a 422 rather than silently ignored.
+func (s *Server) answerMyFields(ctx context.Context, in *answerFieldsInput) (*answerFieldsOutput, error) {
+	pr := AuthOf(ctx).Principal
+	fields, err := s.opts.Accounts.AnswerUserFields(ctx, pr.UserID, fieldAnswers(in.Body.Fields))
+	var fieldErr *accounts.FieldAnswerError
+	switch {
+	case errors.As(err, &fieldErr):
+		return nil, huma.Error422UnprocessableEntity(fieldErr.Reason)
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "answer fields failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not save your answers")
+	}
+	out := &answerFieldsOutput{}
+	out.Body.Fields = meFields(fields)
+	return out, nil
 }
 
 func (s *Server) resendVerification(ctx context.Context, _ *struct{}) (*okOutput, error) {

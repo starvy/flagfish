@@ -19,7 +19,12 @@ var (
 // Register creates a user and mints a session. The unique index and the caps trigger reject a
 // duplicate or over-cap INSERT itself — a prior SELECT would race. An unverified registration
 // enqueues its verification mail on the same transaction: either both happen or neither.
-func (s *Service) Register(ctx context.Context, name, email, password string, verified bool, ctfName string) (Session, error) {
+//
+// answers carries the custom-field answers collected on the registration form. They are validated
+// and written in this same transaction, so a required field is answered atomically with the account
+// — the account is never created in the required-field-unanswered state that would strand it behind
+// the profile-complete login gate.
+func (s *Service) Register(ctx context.Context, name, email, password string, verified bool, ctfName string, answers []FieldAnswer) (Session, error) {
 	hash, err := Hash(password)
 	if err != nil {
 		return Session{}, err
@@ -31,7 +36,8 @@ func (s *Service) Register(ctx context.Context, name, email, password string, ve
 	}
 	defer tx.Rollback(ctx)
 
-	row, err := s.q.WithTx(tx).CreateUser(ctx, db.CreateUserParams{
+	qtx := s.q.WithTx(tx)
+	row, err := qtx.CreateUser(ctx, db.CreateUserParams{
 		Name:         name,
 		Email:        email,
 		PasswordHash: &hash,
@@ -50,6 +56,10 @@ func (s *Service) Register(ctx context.Context, name, email, password string, ve
 			}
 		}
 		return Session{}, fmt.Errorf("accounts: register: %w", err)
+	}
+
+	if err := writeRegistrationAnswers(ctx, qtx, row.ID, answers); err != nil {
+		return Session{}, err
 	}
 
 	if !verified {

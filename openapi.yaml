@@ -1,5 +1,43 @@
 components:
   schemas:
+    AnswerFieldsInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/AnswerFieldsInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        fields:
+          items:
+            $ref: "#/components/schemas/FieldAnswerInput"
+          type:
+            - array
+            - "null"
+      required:
+        - fields
+      type: object
+    AnswerFieldsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/AnswerFieldsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        fields:
+          items:
+            $ref: "#/components/schemas/MeFieldBody"
+          type:
+            - array
+            - "null"
+      required:
+        - fields
+      type: object
     AttemptInputBody:
       additionalProperties: false
       properties:
@@ -456,6 +494,18 @@ components:
           format: uri
           type: string
       type: object
+    FieldAnswerInput:
+      additionalProperties: false
+      properties:
+        field_id:
+          format: int64
+          minimum: 1
+          type: integer
+        value: {}
+      required:
+        - field_id
+        - value
+      type: object
     InstanceOutputBody:
       additionalProperties: false
       properties:
@@ -613,6 +663,38 @@ components:
         - email
         - password
       type: object
+    MeFieldBody:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        editable:
+          type: boolean
+        field_type:
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        position:
+          format: int32
+          type: integer
+        public:
+          type: boolean
+        required:
+          type: boolean
+        value: {}
+      required:
+        - id
+        - name
+        - field_type
+        - required
+        - public
+        - editable
+        - position
+        - value
+      type: object
     MeOutputBody:
       additionalProperties: false
       properties:
@@ -631,6 +713,12 @@ components:
           type: string
         email:
           type: string
+        fields:
+          items:
+            $ref: "#/components/schemas/MeFieldBody"
+          type:
+            - array
+            - "null"
         is_admin:
           type: boolean
         language:
@@ -657,6 +745,7 @@ components:
         - verified
         - is_admin
         - csrf_token
+        - fields
       type: object
     NotificationBody:
       additionalProperties: false
@@ -706,6 +795,12 @@ components:
           format: email
           maxLength: 255
           type: string
+        fields:
+          items:
+            $ref: "#/components/schemas/FieldAnswerInput"
+          type:
+            - array
+            - "null"
         name:
           maxLength: 128
           minLength: 1
@@ -718,6 +813,25 @@ components:
         - name
         - email
         - password
+      type: object
+    RegistrationFieldsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/RegistrationFieldsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        fields:
+          items:
+            $ref: "#/components/schemas/MeFieldBody"
+          type:
+            - array
+            - "null"
+      required:
+        - fields
       type: object
     RequestResetInputBody:
       additionalProperties: false
@@ -1331,6 +1445,31 @@ paths:
       summary: Update the current account's profile
       tags:
         - auth
+  /me/fields:
+    put:
+      operationId: answer-fields
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerFieldsInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerFieldsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Answer or edit the caller's custom registration fields
+      tags:
+        - auth
   /me/password:
     post:
       operationId: change-password
@@ -1556,6 +1695,25 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Register a new account
+      tags:
+        - auth
+  /register/fields:
+    get:
+      operationId: registration-fields
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationFieldsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the custom fields shown on the registration form
       tags:
         - auth
   /reset-password:
