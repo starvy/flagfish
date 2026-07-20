@@ -397,6 +397,17 @@ tasks:
     cmds:
       - go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/security/...
 
+  test-schema:
+    desc: "The standing inventory sweep. Each red subtest names an unbuilt writer, reader or guard."
+    deps: [up-test]
+    # Reads its own SCHEMA_DATABASE_URL with no fallback, so the required sweeps (test-race and
+    # friends, which set only TEST_DATABASE_URL) skip it and stay green while the gaps are open.
+    env:
+      SCHEMA_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/schema/...
+
   test-modesrc:
     desc: "The play-mode source-of-truth suite: instance.user_mode is the single authority"
     deps: [up-test]
