@@ -159,6 +159,34 @@ RETURNING id, name, role;
 -- name: AdminCountOtherAdmins :one
 SELECT count(*) FROM users WHERE role = 'admin' AND banned = false AND id <> @user_id;
 
+-- ── teams ───────────────────────────────────────────────────────────────────────
+
+-- name: AdminListTeams :many
+-- COUNT(*) OVER () carries the total in the same round trip, like AdminListUsers. The search is
+-- one optional (q, field) pair; an unset q drops the filter entirely, and an unknown field falls
+-- back to the name so the CASE can never silently match nothing.
+SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
+       t.bracket_id, t.captain_id, t.hidden, t.banned, t.created_at,
+       (SELECT count(*) FROM users u WHERE u.team_id = t.id)::bigint AS member_count,
+       COUNT(*) OVER () AS total
+  FROM teams t
+ WHERE (sqlc.narg(q)::text IS NULL OR CASE sqlc.narg(field)::text
+            WHEN 'email'       THEN t.email       ILIKE '%' || sqlc.narg(q) || '%'
+            WHEN 'website'     THEN t.website     ILIKE '%' || sqlc.narg(q) || '%'
+            WHEN 'affiliation' THEN t.affiliation ILIKE '%' || sqlc.narg(q) || '%'
+            WHEN 'country'     THEN t.country     ILIKE '%' || sqlc.narg(q) || '%'
+            ELSE t.name ILIKE '%' || sqlc.narg(q) || '%'
+        END)
+ ORDER BY t.id
+ LIMIT @lim::int OFFSET @off::int;
+
+-- name: AdminGetTeam :one
+SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
+       t.bracket_id, t.captain_id, t.hidden, t.banned, t.created_at,
+       (SELECT count(*) FROM users u WHERE u.team_id = t.id)::bigint AS member_count
+  FROM teams t
+ WHERE t.id = @team_id;
+
 -- ── audit trail ───────────────────────────────────────────────────────────────────
 
 -- name: AdminListAudit :many

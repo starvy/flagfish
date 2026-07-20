@@ -48,6 +48,7 @@ type Querier interface {
 	AdminFilterHintIDs(ctx context.Context, arg AdminFilterHintIDsParams) ([]int64, error)
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
+	AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamRow, error)
 	// Challenge file attachments. The blob lives in object storage, content-addressed by sha256; these
 	// rows are the link from a challenge to a stored object plus its human-facing name.
 	// location is derived from the content address and is UNIQUE, so a concurrent upload of the same
@@ -68,6 +69,11 @@ type Querier interface {
 	// read beats a traversal query nothing else needs.
 	AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error)
 	AdminListTags(ctx context.Context) ([]AdminListTagsRow, error)
+	// ── teams ───────────────────────────────────────────────────────────────────────
+	// COUNT(*) OVER () carries the total in the same round trip, like AdminListUsers. The search is
+	// one optional (q, field) pair; an unset q drops the filter entirely, and an unknown field falls
+	// back to the name so the CASE can never silently match nothing.
+	AdminListTeams(ctx context.Context, arg AdminListTeamsParams) ([]AdminListTeamsRow, error)
 	// ── users ───────────────────────────────────────────────────────────────────────
 	// COUNT(*) OVER () carries the total in the same round trip, so the pagination header never
 	// disagrees with the page it describes.

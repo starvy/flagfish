@@ -22,6 +22,7 @@ var (
 	ErrFlagNotFound      = errors.New("adminops: flag not found")
 	ErrHintNotFound      = errors.New("adminops: hint not found")
 	ErrUserNotFound      = errors.New("adminops: user not found")
+	ErrTeamNotFound      = errors.New("adminops: team not found")
 	ErrBracketNotFound   = errors.New("adminops: bracket not found")
 	ErrAccountNotFound   = errors.New("adminops: account not found")
 

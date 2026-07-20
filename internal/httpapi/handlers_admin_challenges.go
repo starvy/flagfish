@@ -37,6 +37,8 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error404NotFound("hint not found")
 	case errors.Is(err, adminops.ErrUserNotFound):
 		return huma.Error404NotFound("user not found")
+	case errors.Is(err, adminops.ErrTeamNotFound):
+		return huma.Error404NotFound("team not found")
 	case errors.Is(err, adminops.ErrBracketNotFound):
 		return huma.Error404NotFound("bracket not found")
 	case errors.Is(err, adminops.ErrAccountNotFound):

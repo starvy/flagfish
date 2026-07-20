@@ -323,6 +323,49 @@ func (q *Queries) AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Fla
 	return i, err
 }
 
+const adminGetTeam = `-- name: AdminGetTeam :one
+SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
+       t.bracket_id, t.captain_id, t.hidden, t.banned, t.created_at,
+       (SELECT count(*) FROM users u WHERE u.team_id = t.id)::bigint AS member_count
+  FROM teams t
+ WHERE t.id = $1
+`
+
+type AdminGetTeamRow struct {
+	ID          int64
+	Name        string
+	Email       *string
+	Website     *string
+	Affiliation *string
+	Country     *string
+	BracketID   *int64
+	CaptainID   *int64
+	Hidden      bool
+	Banned      bool
+	CreatedAt   pgtype.Timestamptz
+	MemberCount int64
+}
+
+func (q *Queries) AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamRow, error) {
+	row := q.db.QueryRow(ctx, adminGetTeam, teamID)
+	var i AdminGetTeamRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+		&i.BracketID,
+		&i.CaptainID,
+		&i.Hidden,
+		&i.Banned,
+		&i.CreatedAt,
+		&i.MemberCount,
+	)
+	return i, err
+}
+
 const adminInsertFlag = `-- name: AdminInsertFlag :one
 
 INSERT INTO flags (challenge_id, type, content, case_insensitive)
@@ -526,6 +569,90 @@ func (q *Queries) AdminListTags(ctx context.Context) ([]AdminListTagsRow, error)
 	for rows.Next() {
 		var i AdminListTagsRow
 		if err := rows.Scan(&i.Value, &i.Uses); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListTeams = `-- name: AdminListTeams :many
+
+SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
+       t.bracket_id, t.captain_id, t.hidden, t.banned, t.created_at,
+       (SELECT count(*) FROM users u WHERE u.team_id = t.id)::bigint AS member_count,
+       COUNT(*) OVER () AS total
+  FROM teams t
+ WHERE ($1::text IS NULL OR CASE $2::text
+            WHEN 'email'       THEN t.email       ILIKE '%' || $1 || '%'
+            WHEN 'website'     THEN t.website     ILIKE '%' || $1 || '%'
+            WHEN 'affiliation' THEN t.affiliation ILIKE '%' || $1 || '%'
+            WHEN 'country'     THEN t.country     ILIKE '%' || $1 || '%'
+            ELSE t.name ILIKE '%' || $1 || '%'
+        END)
+ ORDER BY t.id
+ LIMIT $4::int OFFSET $3::int
+`
+
+type AdminListTeamsParams struct {
+	Q     *string
+	Field *string
+	Off   int32
+	Lim   int32
+}
+
+type AdminListTeamsRow struct {
+	ID          int64
+	Name        string
+	Email       *string
+	Website     *string
+	Affiliation *string
+	Country     *string
+	BracketID   *int64
+	CaptainID   *int64
+	Hidden      bool
+	Banned      bool
+	CreatedAt   pgtype.Timestamptz
+	MemberCount int64
+	Total       int64
+}
+
+// ── teams ───────────────────────────────────────────────────────────────────────
+// COUNT(*) OVER () carries the total in the same round trip, like AdminListUsers. The search is
+// one optional (q, field) pair; an unset q drops the filter entirely, and an unknown field falls
+// back to the name so the CASE can never silently match nothing.
+func (q *Queries) AdminListTeams(ctx context.Context, arg AdminListTeamsParams) ([]AdminListTeamsRow, error) {
+	rows, err := q.db.Query(ctx, adminListTeams,
+		arg.Q,
+		arg.Field,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminListTeamsRow{}
+	for rows.Next() {
+		var i AdminListTeamsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Website,
+			&i.Affiliation,
+			&i.Country,
+			&i.BracketID,
+			&i.CaptainID,
+			&i.Hidden,
+			&i.Banned,
+			&i.CreatedAt,
+			&i.MemberCount,
+			&i.Total,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
