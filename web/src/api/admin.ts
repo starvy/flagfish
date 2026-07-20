@@ -23,6 +23,7 @@ export type AdminTag = Schemas["AdminTag"];
 export type AdminUser = Schemas["AdminUserBody"];
 export type AdminTeam = Schemas["AdminTeamBody"];
 export type AdminBracket = Schemas["AdminBracketBody"];
+export type AdminAward = Schemas["AdminAwardBody"];
 export type AdminAuditEntry = Schemas["AdminAuditEntry"];
 export type AdminNotification = Schemas["NotificationBody"];
 export type AcSharingPair = Schemas["AcSharingPairBody"];
@@ -190,6 +191,19 @@ export const adminApi = {
       `${P}/accounts/${accountId}/bracket`,
       { bracket_id: bracketId },
     ),
+
+  // Manual awards (out-of-band point adjustments). account_id is the scoring account — a team in
+  // teams mode, a user in users mode — resolved server-side from the instance's account model.
+  listAwards: (accountId: number) =>
+    request<Schemas["AdminListAwardsOutputBody"]>(
+      "GET",
+      `${P}/awards${query({ account_id: accountId })}`,
+    ),
+
+  grantAward: (body: Body<Schemas["AdminGrantAwardInputBody"]>) =>
+    request<AdminAward>("POST", `${P}/awards`, body),
+
+  revokeAward: (id: number) => request<void>("DELETE", `${P}/awards/${id}`),
 
   // Notifications
   createNotification: (body: Body<Schemas["AdminCreateNotificationInputBody"]>) =>

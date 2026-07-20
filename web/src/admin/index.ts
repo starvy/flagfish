@@ -3,6 +3,7 @@
 
 export { AdminPage, Def, DefList, Stat, StatGrid, type AdminPageProps, type StatProps, type StatTone } from "./AdminPage";
 export { AsyncState, ErrorState, LoadingState, type AsyncStateProps, type ErrorStateProps } from "./states";
+export { AwardsPanel } from "./AwardsPanel";
 export { errorDetail, fieldErrorsOf, formErrorOf } from "./errors";
 export { isoToLocalInput, localInputToIso, localZone } from "./datetime";
 export {

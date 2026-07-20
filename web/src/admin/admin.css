@@ -430,3 +430,25 @@
 .config-danger {
   color: var(--color-danger);
 }
+
+/* Manual awards: the point-adjustment ledger on a team/user detail. */
+.ff-award-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ff-award-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: var(--border);
+}
+
+.ff-award-row:first-child {
+  border-top: none;
+}

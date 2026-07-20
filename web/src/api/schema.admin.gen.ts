@@ -106,6 +106,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/awards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List an account's manual adjustments */
+        get: operations["admin-list-awards"];
+        put?: never;
+        /** Grant a manual point adjustment */
+        post: operations["admin-grant-award"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/awards/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a manual point adjustment */
+        delete: operations["admin-revoke-award"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/brackets": {
         parameters: {
             query?: never;
@@ -827,6 +862,23 @@ export interface components {
             target_id?: number;
             target_table: string;
         };
+        AdminAwardBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminAwardBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            account_id: number;
+            /** Format: date-time */
+            date: string;
+            /** Format: int64 */
+            id: number;
+            reason: string;
+            /** Format: int32 */
+            value: number;
+        };
         AdminBanInputBody: {
             /**
              * Format: uri
@@ -1139,6 +1191,19 @@ export interface components {
             must_change_password: boolean;
             name: string;
         };
+        AdminGrantAwardInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminGrantAwardInputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            account_id: number;
+            reason: string;
+            /** Format: int32 */
+            value: number;
+        };
         AdminHintBody: {
             /**
              * Format: uri
@@ -1172,6 +1237,15 @@ export interface components {
             per_page: number;
             /** Format: int64 */
             total: number;
+        };
+        AdminListAwardsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminListAwardsOutputBody.json
+             */
+            readonly $schema?: string;
+            awards: components["schemas"]["AdminAwardBody"][] | null;
         };
         AdminListBracketsOutputBody: {
             /**
@@ -1777,6 +1851,99 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminListAuditOutputBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-list-awards": {
+        parameters: {
+            query?: {
+                account_id?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListAwardsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-grant-award": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminGrantAwardInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAwardBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-revoke-award": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

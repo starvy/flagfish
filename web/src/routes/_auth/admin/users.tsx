@@ -6,6 +6,7 @@ import { isApiError } from "../../../api/errors";
 import { denialOf, PolicyGate } from "../../../policy";
 import {
   adminUsersQuery,
+  instanceQuery,
   useForcePasswordChange,
   useSetUserBanned,
   useSetUserHidden,
@@ -13,6 +14,7 @@ import {
   useUpdateUser,
 } from "../../../queries";
 import {
+  AwardsPanel,
   TriStateField,
   encodeText,
   triInvalid,
@@ -79,6 +81,12 @@ function UsersPage() {
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
   const [hideTarget, setHideTarget] = useState<AdminUser | null>(null);
   const [forceTarget, setForceTarget] = useState<AdminUser | null>(null);
+  const [pointsTarget, setPointsTarget] = useState<AdminUser | null>(null);
+
+  // A manual award moves the scoring account. In users mode that is the user, so the per-user grant
+  // belongs here; in teams mode the team is the scoring account and the control lives on the team.
+  const instance = useQuery(instanceQuery);
+  const usersMode = instance.data?.mode === "users";
 
   const setBanned = useSetUserBanned();
   const setRole = useSetUserRole();
@@ -190,6 +198,11 @@ function UsersPage() {
           <Button size="sm" variant="ghost" onClick={() => setEditTarget(u)}>
             Edit
           </Button>
+          {usersMode && (
+            <Button size="sm" variant="ghost" onClick={() => setPointsTarget(u)}>
+              Points
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={() => setHideTarget(u)}>
             {u.hidden ? "Unhide" : "Hide"}
           </Button>
@@ -379,6 +392,17 @@ function UsersPage() {
           busy={force.isPending}
           description="Use this when the credential is suspect. Every session dies now; the account is walled everywhere except the password-change form until they comply."
         />
+      )}
+
+      {pointsTarget !== null && (
+        <Dialog
+          open
+          size="lg"
+          onClose={() => setPointsTarget(null)}
+          title={`Points — ${pointsTarget.name}`}
+        >
+          <AwardsPanel accountId={pointsTarget.id} accountKind="user" />
+        </Dialog>
       )}
 
       {roleTarget !== null && (

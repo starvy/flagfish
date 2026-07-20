@@ -94,6 +94,8 @@ export {
   useDeleteBracket,
 } from "./queries/admin/brackets";
 
+export { adminAwardsQuery, useGrantAward, useRevokeAward } from "./queries/admin/awards";
+
 export {
   adminAuditQuery,
   flagSharingQuery,

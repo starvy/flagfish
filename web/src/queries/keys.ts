@@ -45,6 +45,7 @@ export const qk = {
     team: (id: number) => ["admin", "teams", "detail", id] as const,
     tags: () => ["admin", "tags"] as const,
     brackets: () => ["admin", "brackets"] as const,
+    awards: (accountId: number) => ["admin", "awards", accountId] as const,
     audit: (params?: AuditParams) =>
       (params === undefined ? ["admin", "audit"] : ["admin", "audit", params]) as
         | readonly ["admin", "audit"]
