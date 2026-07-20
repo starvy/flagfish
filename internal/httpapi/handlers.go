@@ -56,6 +56,7 @@ func (s *Server) registerRoutes() {
 	}
 	if s.opts.AdminOps != nil {
 		s.registerAdminChallenges()
+		s.registerAdminInstances()
 		s.registerAdminUsers()
 		s.registerAdminTeams()
 		s.registerAdminBrackets()
