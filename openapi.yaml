@@ -66,6 +66,9 @@ components:
           type: string
         first_blood:
           type: boolean
+        next_id:
+          format: int64
+          type: integer
         status:
           type: string
         value:
@@ -155,6 +158,9 @@ components:
           type: integer
         name:
           type: string
+        next_id:
+          format: int64
+          type: integer
         solve_count:
           format: int64
           type:

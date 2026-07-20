@@ -111,7 +111,7 @@ counts AS (
 )
 SELECT
     c.id, c.name, c.category, c.description, c.attribution, c.connection_info,
-    c.type, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
+    c.type, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode, c.next_id,
     (CASE
         WHEN sqlc.narg(cutoff)::timestamptz IS NULL OR c.function = 'static' THEN c.value
         ELSE GREATEST(

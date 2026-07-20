@@ -26,6 +26,10 @@ type Result struct {
 	FirstBlood bool
 	// Value is the price snapshotted under the lock at solve time.
 	Value int32
+	// NextID is the suggested-next challenge, set only on a fresh correct solve. It is read off
+	// the challenge row the correct path already holds under the lock — no extra query, and the
+	// wrong-answer path returns long before it, so the lazy lock is untouched.
+	NextID *int64
 }
 
 // Submit is the hot path: flag compare, solve insert, first-blood detection and the
@@ -231,7 +235,7 @@ func (s *Service) Submit(ctx context.Context, in SubmitInput) (Result, error) {
 		return Result{}, fmt.Errorf("gameplay: submit: commit correct: %w", err)
 	}
 
-	return Result{Status: StatusCorrect, FirstBlood: firstBlood, Value: solve.Value}, nil
+	return Result{Status: StatusCorrect, FirstBlood: firstBlood, Value: solve.Value, NextID: locked.NextID}, nil
 }
 
 type match struct {

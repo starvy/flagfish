@@ -79,6 +79,7 @@ type attemptResult struct {
 	Status     string `json:"status"`
 	FirstBlood bool   `json:"first_blood"`
 	Value      int32  `json:"value"`
+	NextID     *int64 `json:"next_id"`
 }
 
 func decodeAttempt(t *testing.T, body []byte) attemptResult {

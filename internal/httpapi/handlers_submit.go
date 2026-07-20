@@ -25,6 +25,8 @@ type attemptOutput struct {
 		Status     string `json:"status"`
 		FirstBlood bool   `json:"first_blood"`
 		Value      int32  `json:"value"`
+		// NextID is the suggested-next challenge, present only on a fresh correct solve.
+		NextID *int64 `json:"next_id,omitempty"`
 	}
 }
 
@@ -83,6 +85,7 @@ func (s *Server) attempt(ctx context.Context, in *attemptInput) (*attemptOutput,
 	out.Body.Status = res.Status.String()
 	out.Body.FirstBlood = res.FirstBlood
 	out.Body.Value = res.Value
+	out.Body.NextID = res.NextID
 	return out, nil
 }
 

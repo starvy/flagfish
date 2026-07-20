@@ -541,6 +541,8 @@ export interface components {
              */
             readonly $schema?: string;
             first_blood: boolean;
+            /** Format: int64 */
+            next_id?: number;
             status: string;
             /** Format: int32 */
             value: number;
@@ -582,6 +584,8 @@ export interface components {
             /** Format: int32 */
             max_attempts: number;
             name: string;
+            /** Format: int64 */
+            next_id?: number;
             /** Format: int64 */
             solve_count: number | null;
             solved: boolean;

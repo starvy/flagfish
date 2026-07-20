@@ -68,6 +68,9 @@ type Challenge struct {
 	// eligible account's view of the detail assigns it an instance — the caller decides who is
 	// eligible; this package only reports the mode.
 	FlagMode flags.Mode
+	// NextID is the suggested-next challenge, carried on the unlocked detail only. A locked stub
+	// withholds it: a challenge whose prerequisites are unmet must not advertise the graph.
+	NextID *int64
 }
 
 type File struct {
@@ -206,7 +209,7 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 			ID: ch.ID, Name: ch.Name, Category: ch.Category, Description: ch.Description,
 			Attribution: ch.Attribution, ConnectionInfo: ch.ConnectionInfo, Type: ch.Type,
 			Value: ch.Value, Function: ch.Function, MaxAttempts: ch.MaxAttempts, State: ch.State,
-			SolveCount: ch.SolveCount, Solved: ch.Solved, FlagMode: mode,
+			SolveCount: ch.SolveCount, Solved: ch.Solved, FlagMode: mode, NextID: ch.NextID,
 		},
 		Tags:  tags,
 		Files: make([]File, len(files)),

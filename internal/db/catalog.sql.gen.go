@@ -32,7 +32,7 @@ counts AS (
 )
 SELECT
     c.id, c.name, c.category, c.description, c.attribution, c.connection_info,
-    c.type, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode,
+    c.type, c.function, c.max_attempts, c.state, c.requirements, c.flag_mode, c.next_id,
     (CASE
         WHEN $1::timestamptz IS NULL OR c.function = 'static' THEN c.value
         ELSE GREATEST(
@@ -100,6 +100,7 @@ type GetChallengeForViewRow struct {
 	State          string
 	Requirements   json.RawMessage
 	FlagMode       string
+	NextID         *int64
 	Value          int32
 	SolveCount     int64
 	Solved         bool
@@ -130,6 +131,7 @@ func (q *Queries) GetChallengeForView(ctx context.Context, arg GetChallengeForVi
 		&i.State,
 		&i.Requirements,
 		&i.FlagMode,
+		&i.NextID,
 		&i.Value,
 		&i.SolveCount,
 		&i.Solved,

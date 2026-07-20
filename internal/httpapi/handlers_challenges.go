@@ -93,6 +93,7 @@ type challengeDetailOutput struct {
 		SolveCount     *int64             `json:"solve_count"`
 		Solved         bool               `json:"solved"`
 		Locked         bool               `json:"locked"`
+		NextID         *int64             `json:"next_id,omitempty"`
 		Tags           []string           `json:"tags"`
 		Files          []challengeFile    `json:"files"`
 		Hints          []challengeHint    `json:"hints"`
@@ -207,6 +208,7 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 	out.Body.SolveCount = redactSolveCount(policy.NewRedactor(p), c.SolveCount)
 	out.Body.Solved = c.Solved
 	out.Body.Locked = c.Locked
+	out.Body.NextID = c.NextID
 
 	out.Body.Tags = d.Tags
 	if out.Body.Tags == nil {
