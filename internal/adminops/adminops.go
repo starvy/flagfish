@@ -27,8 +27,13 @@ var (
 
 	// ErrChallengeHasSolves refuses a delete that would destroy scoreboard history.
 	ErrChallengeHasSolves = errors.New("adminops: challenge has solves")
+	// ErrChallengeHasHistory refuses a delete that would erase recorded attempts, awards or hint
+	// unlocks. Attempts are anticheat evidence even when every one of them was wrong.
+	ErrChallengeHasHistory = errors.New("adminops: challenge has recorded history")
 	// ErrChallengeInUse refuses a delete blocked by other gameplay evidence (issued unique flags).
 	ErrChallengeInUse = errors.New("adminops: challenge is in use")
+	// ErrHintUnlocked refuses deleting a hint somebody has paid for.
+	ErrHintUnlocked = errors.New("adminops: hint has been unlocked")
 
 	ErrLastAdmin = errors.New("adminops: cannot demote the last admin")
 	ErrSelfBan   = errors.New("adminops: cannot ban yourself")

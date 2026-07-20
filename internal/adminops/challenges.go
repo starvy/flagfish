@@ -133,20 +133,26 @@ func (s *Service) SetChallengeState(ctx context.Context, actor audit.Actor, chal
 	return out, err
 }
 
-// DeleteChallenge removes a challenge and its cascading content. Solves do not cascade — they are
-// stamped scoreboard facts — so the delete is refused by the database while any exist, and that
-// refusal surfaces as ErrChallengeHasSolves. There is no pre-check: the constraint IS the check,
-// and a solve landing mid-delete fails the same way a pre-existing one does.
+// DeleteChallenge removes a challenge and its cascading content (flags, hints, tags, file links).
+// Ledger rows never cascade: solves are scoreboard facts, and submissions, awards and hint unlocks
+// are gameplay history and anticheat evidence, so the database refuses the delete while any exist.
+// There is no pre-check: the constraint IS the check, and a row landing mid-delete fails the same
+// way a pre-existing one does.
 func (s *Service) DeleteChallenge(ctx context.Context, actor audit.Actor, challengeID int64) error {
 	return s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
 		n, err := q.AdminDeleteChallenge(ctx, challengeID)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				if pgErr.ConstraintName == "solves_challenge_id_fkey" {
+				switch pgErr.ConstraintName {
+				case "solves_challenge_id_fkey":
 					return fmt.Errorf("%w: id=%d", ErrChallengeHasSolves, challengeID)
+				// hint_unlocks_hint_id_fkey fires through the challenges→hints cascade.
+				case "submissions_challenge_id_fkey", "awards_challenge_id_fkey", "hint_unlocks_hint_id_fkey":
+					return fmt.Errorf("%w: id=%d (%s)", ErrChallengeHasHistory, challengeID, pgErr.ConstraintName)
+				default:
+					return fmt.Errorf("%w: id=%d (%s)", ErrChallengeInUse, challengeID, pgErr.ConstraintName)
 				}
-				return fmt.Errorf("%w: id=%d (%s)", ErrChallengeInUse, challengeID, pgErr.ConstraintName)
 			}
 			return fmt.Errorf("adminops: delete challenge %d: %w", challengeID, err)
 		}
@@ -359,6 +365,11 @@ func (s *Service) DeleteHint(ctx context.Context, actor audit.Actor, challengeID
 	return s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
 		n, err := q.AdminDeleteHint(ctx, db.AdminDeleteHintParams{HintID: hintID, ChallengeID: challengeID})
 		if err != nil {
+			// An unlocked hint stays: the unlock and its charge are ledger rows.
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.ConstraintName == "hint_unlocks_hint_id_fkey" {
+				return fmt.Errorf("%w: id=%d", ErrHintUnlocked, hintID)
+			}
 			return fmt.Errorf("adminops: delete hint %d: %w", hintID, err)
 		}
 		if n == 0 {

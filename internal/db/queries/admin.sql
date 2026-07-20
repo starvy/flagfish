@@ -65,8 +65,9 @@ RETURNING *;
 SELECT * FROM challenges WHERE id = @challenge_id;
 
 -- name: AdminDeleteChallenge :execrows
--- Flags, hints, tags, files and failed attempts cascade. Solves RESTRICT (00008): a challenge with
--- recorded solves cannot be deleted, and the caller maps that violation to a conflict.
+-- Flags, hints, tags and file links cascade. Ledger rows (solves, submissions, awards, hint
+-- unlocks, issued flags) RESTRICT: a challenge with recorded history cannot be deleted, and the
+-- caller maps that violation to a conflict.
 DELETE FROM challenges WHERE id = @challenge_id;
 
 -- ── flags ───────────────────────────────────────────────────────────────────────

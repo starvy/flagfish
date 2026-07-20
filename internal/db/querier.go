@@ -25,8 +25,9 @@ type Querier interface {
 	AdminCreateChallenge(ctx context.Context, arg AdminCreateChallengeParams) (Challenge, error)
 	// Members are not blocked: bracket_id is ON DELETE SET NULL, so a delete simply unassigns them.
 	AdminDeleteBracket(ctx context.Context, bracketID int64) (int64, error)
-	// Flags, hints, tags, files and failed attempts cascade. Solves RESTRICT (00008): a challenge with
-	// recorded solves cannot be deleted, and the caller maps that violation to a conflict.
+	// Flags, hints, tags and file links cascade. Ledger rows (solves, submissions, awards, hint
+	// unlocks, issued flags) RESTRICT: a challenge with recorded history cannot be deleted, and the
+	// caller maps that violation to a conflict.
 	AdminDeleteChallenge(ctx context.Context, challengeID int64) (int64, error)
 	AdminDeleteFile(ctx context.Context, id int64) ([]byte, error)
 	AdminDeleteFlag(ctx context.Context, arg AdminDeleteFlagParams) (int64, error)

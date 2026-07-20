@@ -262,6 +262,88 @@ func TestAdminDeleteChallengeWithSolvesConflicts(t *testing.T) {
 	}
 }
 
+// A wrong attempt is anticheat evidence, not debris: a challenge that was never solved but was
+// attempted can no longer be deleted. This pins the reversal of the old carve-out that cascaded
+// failed attempts away with the challenge.
+func TestAdminDeleteChallengeWithAttemptsConflicts(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	cookie, csrf, adminID := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	res, body := f.do(http.MethodPost, "/api/v1/admin/challenges",
+		map[string]any{"name": "attempted", "category": "misc", "value": 100}, auth...)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create: got %d (%s)", res.StatusCode, body)
+	}
+	chID := decodeID(t, body)
+
+	if _, err := f.pool.Exec(context.Background(),
+		`INSERT INTO submissions (challenge_id, user_id, type, provided) VALUES ($1, $2, 'incorrect', 'flag{nope}')`,
+		chID, adminID); err != nil {
+		t.Fatalf("seed submission: %v", err)
+	}
+
+	res, body = f.do(http.MethodDelete, "/api/v1/admin/challenges/"+itoa(chID), nil, auth...)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("delete with attempts: got %d, want 409 (%s)", res.StatusCode, body)
+	}
+}
+
+// An unlocked hint was paid for: neither the hint nor its challenge can be deleted, and both the
+// unlock row and the charge award survive the attempts.
+func TestAdminDeleteHintUnlockedConflicts(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	cookie, csrf, adminID := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	res, body := f.do(http.MethodPost, "/api/v1/admin/challenges",
+		map[string]any{"name": "hinted", "category": "misc", "value": 100}, auth...)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create: got %d (%s)", res.StatusCode, body)
+	}
+	chID := decodeID(t, body)
+
+	res, body = f.do(http.MethodPost, "/api/v1/admin/challenges/"+itoa(chID)+"/hints",
+		map[string]any{"content": "look harder", "cost": 50}, auth...)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("add hint: got %d (%s)", res.StatusCode, body)
+	}
+	hintID := decodeID(t, body)
+
+	ctx := context.Background()
+	var awardID int64
+	if err := f.pool.QueryRow(ctx,
+		`INSERT INTO awards (user_id, type, challenge_id, name, value) VALUES ($1, 'hint_unlock', $2, 'hint', -50) RETURNING id`,
+		adminID, chID).Scan(&awardID); err != nil {
+		t.Fatalf("seed charge award: %v", err)
+	}
+	if _, err := f.pool.Exec(ctx,
+		`INSERT INTO hint_unlocks (hint_id, user_id, award_id) VALUES ($1, $2, $3)`,
+		hintID, adminID, awardID); err != nil {
+		t.Fatalf("seed hint unlock: %v", err)
+	}
+
+	res, body = f.do(http.MethodDelete, "/api/v1/admin/challenges/"+itoa(chID)+"/hints/"+itoa(hintID), nil, auth...)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("delete unlocked hint: got %d, want 409 (%s)", res.StatusCode, body)
+	}
+	res, body = f.do(http.MethodDelete, "/api/v1/admin/challenges/"+itoa(chID), nil, auth...)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("delete challenge with unlocked hint: got %d, want 409 (%s)", res.StatusCode, body)
+	}
+
+	var unlocks, charges int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM hint_unlocks WHERE hint_id = $1`, hintID).Scan(&unlocks); err != nil {
+		t.Fatalf("count unlocks: %v", err)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM awards WHERE id = $1`, awardID).Scan(&charges); err != nil {
+		t.Fatalf("count charge awards: %v", err)
+	}
+	if unlocks != 1 || charges != 1 {
+		t.Errorf("ledger rows lost to a refused delete: unlocks=%d charges=%d, want 1 and 1", unlocks, charges)
+	}
+}
+
 func TestAdminBanKillsSessions(t *testing.T) {
 	f := newAdminAPI(t, account.ModeUsers)
 	cookie, csrf, _ := f.admin("root", "root@example.com")

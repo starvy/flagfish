@@ -8,11 +8,13 @@ import (
 	"testing"
 )
 
-// fkgLedgerTables are the append-only score-history tables. A row in one is a stamped fact —
-// a scoreboard sum, an audit entry, a first-blood claim — so no parent delete may quietly
-// erase it, and no delete rule that silently rewrites a row (CASCADE, SET NULL, SET DEFAULT)
-// is acceptable; only RESTRICT and NO ACTION turn a destructive delete into a loud error.
-var fkgLedgerTables = []string{"solves", "submissions", "awards", "hint_unlocks"}
+// fkgLedgerTables are the append-only history tables: the four score-history tables plus
+// flag_issues, the anti-cheat record of which account was issued which unique flag. A row in
+// one is a stamped fact — a scoreboard sum, an audit entry, a first-blood claim, an issuance —
+// so no parent delete may quietly erase it, and no delete rule that silently rewrites a row
+// (CASCADE, SET NULL, SET DEFAULT) is acceptable; only RESTRICT and NO ACTION turn a
+// destructive delete into a loud error.
+var fkgLedgerTables = []string{"solves", "submissions", "awards", "hint_unlocks", "flag_issues"}
 
 // fkgExempt names the FKs allowed a destructive delete rule, each with its recorded reason.
 // Anything not listed here fails, so a future migration must either pick RESTRICT or add an

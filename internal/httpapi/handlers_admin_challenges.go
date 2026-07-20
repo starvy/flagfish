@@ -41,8 +41,12 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error404NotFound("account not found")
 	case errors.Is(err, adminops.ErrChallengeHasSolves):
 		return huma.Error409Conflict("challenge has solves: solves are scoreboard history and are never deleted with a challenge — hide it instead")
+	case errors.Is(err, adminops.ErrChallengeHasHistory):
+		return huma.Error409Conflict("challenge has recorded attempts, awards or hint unlocks: gameplay history is never deleted with a challenge — hide it instead")
 	case errors.Is(err, adminops.ErrChallengeInUse):
 		return huma.Error409Conflict("challenge has issued unique flags and cannot be deleted — hide it instead")
+	case errors.Is(err, adminops.ErrHintUnlocked):
+		return huma.Error409Conflict("hint has been unlocked: players paid for it, and the unlock and its charge stay on the ledger")
 	case errors.Is(err, adminops.ErrLastAdmin):
 		return huma.Error409Conflict("cannot demote the last admin")
 	case errors.Is(err, adminops.ErrSelfBan):
