@@ -39,6 +39,9 @@ export {
   useJoinTeam,
   useLeaveTeam,
   useUpdateMyTeam,
+  useKickMember,
+  useTransferCaptaincy,
+  useDisbandTeam,
 } from "./queries/teams";
 
 export { notificationsQuery } from "./queries/notifications";

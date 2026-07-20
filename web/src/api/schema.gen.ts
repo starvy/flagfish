@@ -220,11 +220,29 @@ export interface paths {
         get: operations["my-team"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Disband the caller's team (captain only, no history) */
+        delete: operations["disband-team"];
         options?: never;
         head?: never;
         /** Update the caller's team (captain only) */
         patch: operations["update-my-team"];
+        trace?: never;
+    };
+    "/me/team/captain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Hand captaincy to another member (captain only) */
+        put: operations["transfer-captaincy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/me/team/leave": {
@@ -239,6 +257,23 @@ export interface paths {
         /** Leave the caller's team */
         post: operations["leave-team"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/team/members/{userID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a member from the caller's team (captain only) */
+        delete: operations["kick-team-member"];
         options?: never;
         head?: never;
         patch?: never;
@@ -900,6 +935,16 @@ export interface components {
             /** Format: int64 */
             id: number;
         };
+        TransferCaptainInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TransferCaptainInputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            user_id: number;
+        };
         UnlockOutputBody: {
             /**
              * Format: uri
@@ -1385,6 +1430,35 @@ export interface operations {
             };
         };
     };
+    "disband-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeftTeamOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "update-my-team": {
         parameters: {
             query?: never;
@@ -1395,6 +1469,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateMyTeamInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "transfer-captaincy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferCaptainInputBody"];
             };
         };
         responses: {
@@ -1434,6 +1541,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeftTeamOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "kick-team-member": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamBody"];
                 };
             };
             /** @description Error */

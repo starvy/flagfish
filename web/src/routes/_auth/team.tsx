@@ -10,6 +10,9 @@ import {
   useJoinTeam,
   useLeaveTeam,
   useUpdateMyTeam,
+  useKickMember,
+  useTransferCaptaincy,
+  useDisbandTeam,
 } from "../../queries";
 import { denialOf, PolicyGate } from "../../policy";
 import {
@@ -19,6 +22,7 @@ import {
   Card,
   ConfirmDestructive,
   DataTable,
+  Dialog,
   EmptyState,
   Field,
   Form,
@@ -239,13 +243,20 @@ type TeamMember = NonNullable<Team["members"]>[number];
 function MemberView({ team, userId }: { team: Team; userId: number | undefined }) {
   const toast = useToast();
   const leave = useLeaveTeam();
+  const kick = useKickMember();
+  const transfer = useTransferCaptaincy();
+  const disband = useDisbandTeam();
   const [confirming, setConfirming] = useState(false);
+  const [kicking, setKicking] = useState<TeamMember | null>(null);
+  const [promoting, setPromoting] = useState<TeamMember | null>(null);
+  const [disbanding, setDisbanding] = useState(false);
 
   const members = team.members ?? [];
   const solves = members.reduce((n, m) => n + m.solve_count, 0);
   // Points are attributed to the account at solve time, so leaving cannot rewrite history —
-  // which is exactly why the server refuses to let a scored team shed a member.
+  // which is exactly why the server refuses to let a scored team shed a member or be disbanded.
   const locked = solves > 0;
+  const isCaptain = team.is_captain ?? false;
 
   const columns: readonly Column<TeamMember>[] = [
     {
@@ -261,6 +272,35 @@ function MemberView({ team, userId }: { team: Team; userId: number | undefined }
     },
     { key: "solves", header: "Solves", align: "right", width: "8rem", cell: (m) => m.solve_count },
     { key: "points", header: "Points", align: "right", width: "8rem", cell: (m) => m.points },
+    // The captain gets per-member controls. The buttons are a convenience: every one of these
+    // writes is refused server-side for anyone but the captain, so nothing here is a security gate.
+    ...(isCaptain
+      ? [
+          {
+            key: "actions",
+            header: "",
+            align: "right" as const,
+            width: "16rem",
+            cell: (m: TeamMember) =>
+              m.captain ? null : (
+                <span className="ff-row" style={{ justifyContent: "flex-end", gap: "0.5rem" }}>
+                  <Button size="sm" variant="secondary" onClick={() => setPromoting(m)}>
+                    Make captain
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={locked}
+                    title={locked ? "A team that has scored cannot shed a member" : undefined}
+                    onClick={() => setKicking(m)}
+                  >
+                    Kick
+                  </Button>
+                </span>
+              ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -310,6 +350,29 @@ function MemberView({ team, userId }: { team: Team; userId: number | undefined }
             Leave {team.name}
           </Button>
         </Card>
+
+        {isCaptain && (
+          <Card title="Disband team">
+            {disband.error && (
+              <Alert tone="danger" title="Could not disband">
+                {messageOf(disband.error)}
+              </Alert>
+            )}
+            <p className="muted">
+              {locked
+                ? `This team has ${solves} ${solves === 1 ? "solve" : "solves"} on the board. A team with a scoreboard history is never deleted — ask an organiser to hide or ban it instead.`
+                : "This permanently deletes the team and frees every member. It only works while the team has no scoreboard history."}
+            </p>
+            <Button
+              variant="danger"
+              disabled={locked}
+              loading={disband.isPending}
+              onClick={() => setDisbanding(true)}
+            >
+              Disband {team.name}
+            </Button>
+          </Card>
+        )}
       </div>
 
       <ConfirmDestructive
@@ -330,6 +393,102 @@ function MemberView({ team, userId }: { team: Team; userId: number | undefined }
         description="You will be teamless until you join or create another team."
         confirmLabel="Leave team"
         busy={leave.isPending}
+      />
+
+      <Dialog
+        open={kicking !== null}
+        onClose={() => setKicking(null)}
+        title="Remove member"
+        description={
+          kicking !== null
+            ? `${kicking.name} will be removed from ${team.name} and left teamless. Their past solves stay on the record.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setKicking(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={kick.isPending}
+              onClick={() => {
+                if (kicking === null) return;
+                const name = kicking.name;
+                kick.mutate(kicking.user_id, {
+                  onSuccess: () => {
+                    setKicking(null);
+                    toast.success("Member removed", `${name} is no longer on the team.`);
+                  },
+                  onError: (e) => {
+                    setKicking(null);
+                    toast.error("Could not remove member", messageOf(e));
+                  },
+                });
+              }}
+            >
+              Remove
+            </Button>
+          </>
+        }
+      />
+
+      <Dialog
+        open={promoting !== null}
+        onClose={() => setPromoting(null)}
+        title="Transfer captaincy"
+        description={
+          promoting !== null
+            ? `${promoting.name} will become captain of ${team.name}. You will stay on the team as an ordinary member and lose the captain's controls.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPromoting(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={transfer.isPending}
+              onClick={() => {
+                if (promoting === null) return;
+                const name = promoting.name;
+                transfer.mutate(promoting.user_id, {
+                  onSuccess: () => {
+                    setPromoting(null);
+                    toast.success("Captaincy transferred", `${name} is now the captain.`);
+                  },
+                  onError: (e) => {
+                    setPromoting(null);
+                    toast.error("Could not transfer captaincy", messageOf(e));
+                  },
+                });
+              }}
+            >
+              Make captain
+            </Button>
+          </>
+        }
+      />
+
+      <ConfirmDestructive
+        open={disbanding}
+        onClose={() => setDisbanding(false)}
+        onConfirm={() =>
+          disband.mutate(undefined, {
+            onSuccess: () => {
+              setDisbanding(false);
+              toast.success("Team disbanded");
+            },
+            onError: () => setDisbanding(false),
+          })
+        }
+        resourceName={team.name}
+        resourceKind="team"
+        title="Disband team"
+        description="This permanently deletes the team and frees every member. It cannot be undone."
+        confirmLabel="Disband team"
+        busy={disband.isPending}
       />
     </>
   );

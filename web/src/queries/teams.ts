@@ -61,3 +61,17 @@ export function useLeaveTeam() {
 export function useUpdateMyTeam() {
   return useTeamMutation(api.updateMyTeam);
 }
+
+// Captain-only roster controls. Captaincy is enforced in the write itself, so the client gate is
+// only there to keep the UI honest — the server is the authority on every one of these.
+export function useKickMember() {
+  return useTeamMutation((userId: number) => api.kickMember(userId));
+}
+
+export function useTransferCaptaincy() {
+  return useTeamMutation((userId: number) => api.transferCaptaincy({ user_id: userId }));
+}
+
+export function useDisbandTeam() {
+  return useTeamMutation(() => api.disbandTeam());
+}

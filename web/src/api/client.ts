@@ -290,6 +290,14 @@ export const api = {
 
   leaveTeam: () => request<Schemas["LeftTeamOutputBody"]>("POST", "/me/team/leave"),
 
+  // Captain-only roster controls; the server enforces captaincy in each write itself.
+  kickMember: (userId: number) => request<Team>("DELETE", `/me/team/members/${userId}`),
+
+  transferCaptaincy: (body: Body<Schemas["TransferCaptainInputBody"]>) =>
+    request<Team>("PUT", "/me/team/captain", body),
+
+  disbandTeam: () => request<Schemas["LeftTeamOutputBody"]>("DELETE", "/me/team"),
+
   team: (id: number) => request<Team>("GET", `/teams/${id}`),
 
   tokens: () => request<Schemas["ListTokensOutputBody"]>("GET", "/tokens"),
