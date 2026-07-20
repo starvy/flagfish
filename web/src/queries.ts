@@ -6,10 +6,12 @@ export { instanceQuery } from "./queries/instance";
 
 export {
   meQuery,
+  registrationFieldsQuery,
   useLogin,
   useRegister,
   useLogout,
   useUpdateMe,
+  useAnswerFields,
   useChangePassword,
   useResetRequest,
   useResetApply,
@@ -103,6 +105,13 @@ export {
   useUpdateBracket,
   useDeleteBracket,
 } from "./queries/admin/brackets";
+
+export {
+  adminFieldsQuery,
+  useCreateField,
+  useUpdateField,
+  useDeleteField,
+} from "./queries/admin/fields";
 
 export { adminAwardsQuery, useGrantAward, useRevokeAward } from "./queries/admin/awards";
 

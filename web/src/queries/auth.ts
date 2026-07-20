@@ -56,6 +56,25 @@ export function useUpdateMe() {
   });
 }
 
+export const registrationFieldsQuery = queryOptions({
+  queryKey: qk.registrationFields(),
+  queryFn: () => api.registrationFields(),
+  staleTime: 60_000,
+  retry: false,
+});
+
+// Answering a field can clear the profile-complete gate, so a success refreshes /me — the value
+// the whole gated surface reads from.
+export function useAnswerFields() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.answerFields,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.me() });
+    },
+  });
+}
+
 export function useChangePassword() {
   const qc = useQueryClient();
   return useMutation({

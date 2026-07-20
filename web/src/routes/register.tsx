@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { isApiError } from "../api/client";
+import {
+  answersFor,
+  CustomFieldInputs,
+  initialFieldValues,
+  type FieldValue,
+  type FieldValues,
+} from "../lib/customFields";
 import { PolicyGate, denialOf, type Denial } from "../policy";
-import { useRegister } from "../queries";
+import { registrationFieldsQuery, useRegister } from "../queries";
 import { Alert, Button, Card, Field, Form, Input } from "../ui";
 
 export const Route = createFileRoute("/register")({
@@ -26,6 +34,19 @@ function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  // The custom registration fields, if any. A closed registration denies this the same way it
+  // denies the page, so an error here just means "no fields to show"; the base form still works.
+  const fieldsQuery = useQuery(registrationFieldsQuery);
+  const customFields = fieldsQuery.data?.fields ?? [];
+  const [fieldValues, setFieldValues] = useState<FieldValues>({});
+  useEffect(() => {
+    setFieldValues(initialFieldValues(customFields));
+    // Re-seed only when the set of fields changes, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldsQuery.data]);
+  const setFieldValue = (id: number, value: FieldValue) =>
+    setFieldValues((v) => ({ ...v, [id]: value }));
 
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -67,7 +88,15 @@ function RegisterPage() {
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     register.mutate(
-      { name, email, password },
+      {
+        name,
+        email,
+        password,
+        fields: answersFor(
+          customFields.map((f) => f.id),
+          fieldValues,
+        ),
+      },
       {
         onSuccess: async () => {
           await router.invalidate();
@@ -135,6 +164,14 @@ function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
+
+          {customFields.length > 0 && (
+            <CustomFieldInputs
+              fields={customFields}
+              values={fieldValues}
+              onChange={setFieldValue}
+            />
+          )}
 
           {message !== null && (
             <div ref={alertRef} tabIndex={-1}>

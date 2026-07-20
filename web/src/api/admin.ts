@@ -23,6 +23,7 @@ export type AdminTag = Schemas["AdminTag"];
 export type AdminUser = Schemas["AdminUserBody"];
 export type AdminTeam = Schemas["AdminTeamBody"];
 export type AdminBracket = Schemas["AdminBracketBody"];
+export type AdminField = Schemas["AdminFieldBody"];
 export type AdminAward = Schemas["AdminAwardBody"];
 export type AdminAuditEntry = Schemas["AdminAuditEntry"];
 export type AdminNotification = Schemas["NotificationBody"];
@@ -203,6 +204,17 @@ export const adminApi = {
     request<AdminBracket>("PATCH", `${P}/brackets/${id}`, body),
 
   deleteBracket: (id: number) => request<void>("DELETE", `${P}/brackets/${id}`),
+
+  // Custom registration fields
+  createField: (body: Body<Schemas["AdminCreateFieldInputBody"]>) =>
+    request<AdminField>("POST", `${P}/fields`, body),
+
+  listFields: () => request<Schemas["AdminListFieldsOutputBody"]>("GET", `${P}/fields`),
+
+  updateField: (id: number, body: Body<Schemas["AdminUpdateFieldInputBody"]>) =>
+    request<AdminField>("PATCH", `${P}/fields/${id}`, body),
+
+  deleteField: (id: number) => request<void>("DELETE", `${P}/fields/${id}`),
 
   // An explicit null clears the assignment; the field is required, so it is always sent.
   assignBracket: (accountId: number, bracketId: number | null) =>

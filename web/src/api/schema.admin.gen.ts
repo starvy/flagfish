@@ -437,6 +437,42 @@ export interface paths {
         patch: operations["admin-update-config"];
         trace?: never;
     };
+    "/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List custom registration fields */
+        get: operations["admin-list-fields"];
+        put?: never;
+        /** Create a custom registration field */
+        post: operations["admin-create-field"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fields/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a custom field (its answers are removed with it) */
+        delete: operations["admin-delete-field"];
+        options?: never;
+        head?: never;
+        /** Update a custom field (partial) */
+        patch: operations["admin-update-field"];
+        trace?: never;
+    };
     "/files/{fileID}": {
         parameters: {
             query?: never;
@@ -1186,6 +1222,31 @@ export interface components {
             /** Format: int32 */
             value: number;
         };
+        AdminCreateFieldInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminCreateFieldInputBody.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            applies_to: "user" | "team";
+            description?: string;
+            /** @default false */
+            editable: boolean;
+            /** @enum {string} */
+            field_type: "text" | "boolean";
+            name: string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            position: number;
+            /** @default false */
+            public: boolean;
+            /** @default false */
+            required: boolean;
+        };
         AdminCreateNotificationInputBody: {
             /**
              * Format: uri
@@ -1210,6 +1271,25 @@ export interface components {
             name: string;
             password?: string;
             website?: string;
+        };
+        AdminFieldBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminFieldBody.json
+             */
+            readonly $schema?: string;
+            applies_to: string;
+            description?: string;
+            editable: boolean;
+            field_type: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            position: number;
+            public: boolean;
+            required: boolean;
         };
         AdminFileBody: {
             /**
@@ -1332,6 +1412,15 @@ export interface components {
              */
             readonly $schema?: string;
             brackets: components["schemas"]["AdminBracketBody"][] | null;
+        };
+        AdminListFieldsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminListFieldsOutputBody.json
+             */
+            readonly $schema?: string;
+            fields: components["schemas"]["AdminFieldBody"][] | null;
         };
         AdminListInstancesOutputBody: {
             /**
@@ -1622,6 +1711,21 @@ export interface components {
             position?: number;
             /** Format: int32 */
             value?: number;
+        };
+        AdminUpdateFieldInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUpdateFieldInputBody.json
+             */
+            readonly $schema?: string;
+            description?: string;
+            editable?: boolean;
+            name?: string;
+            /** Format: int32 */
+            position?: number;
+            public?: boolean;
+            required?: boolean;
         };
         AdminUpdateFlagInputBody: {
             /**
@@ -2889,6 +2993,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminConfigOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-list-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListFieldsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-create-field": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateFieldInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminFieldBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-delete-field": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-update-field": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateFieldInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminFieldBody"];
                 };
             };
             /** @description Error */

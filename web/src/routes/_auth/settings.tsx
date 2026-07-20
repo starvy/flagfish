@@ -1,10 +1,24 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { isApiError, type CreatedToken, type Me, type TokenListItem } from "../../api/client";
+import {
+  isApiError,
+  type CreatedToken,
+  type Me,
+  type MeField,
+  type TokenListItem,
+} from "../../api/client";
+import {
+  answersFor,
+  CustomFieldInputs,
+  initialFieldValues,
+  type FieldValue,
+  type FieldValues,
+} from "../../lib/customFields";
 import {
   meQuery,
   tokensQuery,
+  useAnswerFields,
   useChangePassword,
   useCreateToken,
   useDeleteToken,
@@ -122,6 +136,8 @@ function Profile() {
 
       <ProfileForm me={me} />
 
+      {(me.fields ?? []).length > 0 && <CustomFields me={me} />}
+
       <Card title="Appearance">
         <ThemeSwitcher />
       </Card>
@@ -233,6 +249,74 @@ function ProfileForm({ me }: { me: Me }) {
             onChange={(e) => setValues((v) => ({ ...v, language: e.target.value }))}
           />
         </Field>
+      </Form>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------ custom fields */
+
+// A field's answer is present when a text field is non-empty or a checkbox has a value — the same
+// rule the server's profile-complete gate applies.
+function fieldAnswered(f: MeField): boolean {
+  if (f.field_type === "boolean") return typeof f.value === "boolean";
+  return typeof f.value === "string" && f.value.trim() !== "";
+}
+
+// A field is writable here when it is editable, or when it is required and not yet answered — the
+// second clause is the remedy that lets a player clear a profile gate a new required field raised.
+function fieldWritable(f: MeField): boolean {
+  return f.editable || (f.required && !fieldAnswered(f));
+}
+
+/**
+ * The custom registration fields, answerable from settings. This is the login-gate remedy: a
+ * required field added after sign-up shows here, and answering it clears the wall that was
+ * redirecting the player to this page.
+ */
+function CustomFields({ me }: { me: Me }) {
+  const toast = useToast();
+  const answer = useAnswerFields();
+  const fields = me.fields ?? [];
+  const [values, setValues] = useState<FieldValues>(() => initialFieldValues(fields));
+
+  useEffect(() => {
+    setValues(initialFieldValues(fields));
+  }, [fields]);
+
+  const writableIds = fields.filter(fieldWritable).map((f) => f.id);
+  const owed = fields.some((f) => f.required && !fieldAnswered(f));
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    answer.mutate(
+      { fields: answersFor(writableIds, values) },
+      { onSuccess: () => toast.success("Answers saved") },
+    );
+  };
+
+  return (
+    <Card title="Registration fields">
+      {owed && (
+        <Alert tone="warn" title="A required field needs an answer">
+          An organiser added a required field. Answer it below to reach the challenges.
+        </Alert>
+      )}
+      <Form
+        onSubmit={submit}
+        error={answer.error ? messageOf(answer.error) : undefined}
+        footer={
+          <Button type="submit" variant="primary" loading={answer.isPending} disabled={writableIds.length === 0}>
+            Save answers
+          </Button>
+        }
+      >
+        <CustomFieldInputs
+          fields={fields}
+          values={values}
+          onChange={(id: number, value: FieldValue) => setValues((v) => ({ ...v, [id]: value }))}
+          disabled={(f) => !fieldWritable(f)}
+        />
       </Form>
     </Card>
   );

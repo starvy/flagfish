@@ -8,6 +8,7 @@ import type { AuditParams, IPOverlapParams, PageParams, SearchParams } from "../
 export const qk = {
   instance: () => ["instance"] as const,
   me: () => ["me"] as const,
+  registrationFields: () => ["register", "fields"] as const,
 
   challenges: () => ["challenges"] as const,
   challenge: (id: number) => ["challenges", id] as const,
@@ -45,6 +46,7 @@ export const qk = {
     team: (id: number) => ["admin", "teams", "detail", id] as const,
     tags: () => ["admin", "tags"] as const,
     brackets: () => ["admin", "brackets"] as const,
+    fields: () => ["admin", "fields"] as const,
     awards: (accountId: number) => ["admin", "awards", accountId] as const,
     poolStats: () => ["admin", "pool", "stats"] as const,
     instances: (challengeId: number, params?: PageParams) =>

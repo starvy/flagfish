@@ -28,11 +28,11 @@ func TestRequestDeadline_BoundsJSONButNotSSE(t *testing.T) {
 
 	// Seed the accounts in-process: Argon2id hashing must not run under the short HTTP deadline —
 	// it would be cut, and it is not what this test is about.
-	player, err := nf.acct.Register(ctx, "player", "player@example.com", "correct-horse-battery", true, "")
+	player, err := nf.acct.Register(ctx, "player", "player@example.com", "correct-horse-battery", true, "", nil)
 	if err != nil {
 		t.Fatalf("seed player: %v", err)
 	}
-	admin, err := nf.acct.Register(ctx, "root", "root@example.com", "correct-horse-battery", true, "")
+	admin, err := nf.acct.Register(ctx, "root", "root@example.com", "correct-horse-battery", true, "", nil)
 	if err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}

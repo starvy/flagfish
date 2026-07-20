@@ -11,6 +11,7 @@ export { ApiError, isApiError, type FieldError } from "./errors";
 export type Instance = Schemas["InstanceOutputBody"];
 export type Session = Schemas["SessionOutputBody"];
 export type Me = Schemas["MeOutputBody"];
+export type MeField = Schemas["MeFieldBody"];
 export type ChallengeListItem = Schemas["ChallengeListItem"];
 export type ChallengeDetail = Schemas["ChallengeDetailOutputBody"];
 export type ChallengeSolve = Schemas["ChallengeSolve"];
@@ -236,6 +237,15 @@ export const api = {
   },
 
   me: () => request<Me>("GET", "/me"),
+
+  // The custom fields the registration form renders, before an account exists.
+  registrationFields: () =>
+    request<Schemas["RegistrationFieldsOutputBody"]>("GET", "/register/fields"),
+
+  // Answer or edit the caller's own custom fields. A required field created after sign-up is
+  // answerable here even when it is not otherwise editable — the profile-gate remedy.
+  answerFields: (body: Body<Schemas["AnswerFieldsInputBody"]>) =>
+    request<Schemas["AnswerFieldsOutputBody"]>("PUT", "/me/fields", body),
 
   // Profile PATCH semantics: an omitted key keeps, an explicit null clears, a value sets.
   updateMe: (body: Body<Schemas["UpdateMeInputBody"]>) => request<Me>("PATCH", "/me", body),
