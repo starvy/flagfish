@@ -53,6 +53,7 @@ type Querier interface {
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
 	AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamRow, error)
+	AdminGetUser(ctx context.Context, userID int64) (AdminGetUserRow, error)
 	// Challenge file attachments. The blob lives in object storage, content-addressed by sha256; these
 	// rows are the link from a challenge to a stored object plus its human-facing name.
 	// location is derived from the content address and is UNIQUE, so a concurrent upload of the same
@@ -80,7 +81,8 @@ type Querier interface {
 	AdminListTeams(ctx context.Context, arg AdminListTeamsParams) ([]AdminListTeamsRow, error)
 	// ── users ───────────────────────────────────────────────────────────────────────
 	// COUNT(*) OVER () carries the total in the same round trip, so the pagination header never
-	// disagrees with the page it describes.
+	// disagrees with the page it describes. The (q, field) search mirrors the team list; email is
+	// searchable here and nowhere public.
 	AdminListUsers(ctx context.Context, arg AdminListUsersParams) ([]AdminListUsersRow, error)
 	// Drop the source rows on challenges that already carry the destination, so the rename that follows
 	// cannot trip UNIQUE(challenge_id, value). These deletions are real merges and are audited as such.
@@ -96,6 +98,7 @@ type Querier interface {
 	AdminSetTeamBanned(ctx context.Context, arg AdminSetTeamBannedParams) (AdminSetTeamBannedRow, error)
 	AdminSetTeamHidden(ctx context.Context, arg AdminSetTeamHiddenParams) (AdminSetTeamHiddenRow, error)
 	AdminSetUserBanned(ctx context.Context, arg AdminSetUserBannedParams) (AdminSetUserBannedRow, error)
+	AdminSetUserHidden(ctx context.Context, arg AdminSetUserHiddenParams) (AdminSetUserHiddenRow, error)
 	AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error)
 	// Partial update: an absent field keeps its value. applies_to is immutable — flipping it would
 	// silently strand every current member, whose account kind no longer matches.
@@ -113,6 +116,9 @@ type Querier interface {
 	// Deliberately narrow SET: banned, hidden, captain_id, password_hash and membership are not
 	// reachable from this statement — they move through their own routes or not at all.
 	AdminUpdateTeam(ctx context.Context, arg AdminUpdateTeamParams) (AdminUpdateTeamRow, error)
+	// Deliberately narrow SET: email, role, banned, hidden, team_id and must_change_password are not
+	// reachable from this statement — each moves through its own route or not at all.
+	AdminUpdateUser(ctx context.Context, arg AdminUpdateUserParams) (AdminUpdateUserRow, error)
 	// A sole member adopts a captainless team (the captain's user row was deleted, FK SET NULL).
 	AdoptCaptainlessTeam(ctx context.Context, arg AdoptCaptainlessTeamParams) error
 	// Hands the account an unissued instance from the pool.

@@ -426,6 +426,52 @@ func (q *Queries) AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamR
 	return i, err
 }
 
+const adminGetUser = `-- name: AdminGetUser :one
+SELECT id, name, email, role, verified, banned, hidden, team_id, bracket_id,
+       website, affiliation, country, must_change_password, created_at
+  FROM users
+ WHERE id = $1
+`
+
+type AdminGetUserRow struct {
+	ID                 int64
+	Name               string
+	Email              string
+	Role               string
+	Verified           bool
+	Banned             bool
+	Hidden             bool
+	TeamID             *int64
+	BracketID          *int64
+	Website            *string
+	Affiliation        *string
+	Country            *string
+	MustChangePassword bool
+	CreatedAt          pgtype.Timestamptz
+}
+
+func (q *Queries) AdminGetUser(ctx context.Context, userID int64) (AdminGetUserRow, error) {
+	row := q.db.QueryRow(ctx, adminGetUser, userID)
+	var i AdminGetUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.Verified,
+		&i.Banned,
+		&i.Hidden,
+		&i.TeamID,
+		&i.BracketID,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+		&i.MustChangePassword,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const adminInsertFlag = `-- name: AdminInsertFlag :one
 
 INSERT INTO flags (challenge_id, type, content, case_insensitive)
@@ -725,36 +771,56 @@ func (q *Queries) AdminListTeams(ctx context.Context, arg AdminListTeamsParams) 
 
 const adminListUsers = `-- name: AdminListUsers :many
 
-SELECT id, name, email, role, verified, banned, hidden, team_id, created_at,
+SELECT id, name, email, role, verified, banned, hidden, team_id,
+       website, affiliation, country, must_change_password, created_at,
        COUNT(*) OVER () AS total
   FROM users
+ WHERE ($1::text IS NULL OR CASE $2::text
+            WHEN 'email'       THEN email       ILIKE '%' || $1 || '%'
+            WHEN 'website'     THEN website     ILIKE '%' || $1 || '%'
+            WHEN 'affiliation' THEN affiliation ILIKE '%' || $1 || '%'
+            WHEN 'country'     THEN country     ILIKE '%' || $1 || '%'
+            ELSE name ILIKE '%' || $1 || '%'
+        END)
  ORDER BY id
- LIMIT $2::int OFFSET $1::int
+ LIMIT $4::int OFFSET $3::int
 `
 
 type AdminListUsersParams struct {
-	Off int32
-	Lim int32
+	Q     *string
+	Field *string
+	Off   int32
+	Lim   int32
 }
 
 type AdminListUsersRow struct {
-	ID        int64
-	Name      string
-	Email     string
-	Role      string
-	Verified  bool
-	Banned    bool
-	Hidden    bool
-	TeamID    *int64
-	CreatedAt pgtype.Timestamptz
-	Total     int64
+	ID                 int64
+	Name               string
+	Email              string
+	Role               string
+	Verified           bool
+	Banned             bool
+	Hidden             bool
+	TeamID             *int64
+	Website            *string
+	Affiliation        *string
+	Country            *string
+	MustChangePassword bool
+	CreatedAt          pgtype.Timestamptz
+	Total              int64
 }
 
 // ── users ───────────────────────────────────────────────────────────────────────
 // COUNT(*) OVER () carries the total in the same round trip, so the pagination header never
-// disagrees with the page it describes.
+// disagrees with the page it describes. The (q, field) search mirrors the team list; email is
+// searchable here and nowhere public.
 func (q *Queries) AdminListUsers(ctx context.Context, arg AdminListUsersParams) ([]AdminListUsersRow, error) {
-	rows, err := q.db.Query(ctx, adminListUsers, arg.Off, arg.Lim)
+	rows, err := q.db.Query(ctx, adminListUsers,
+		arg.Q,
+		arg.Field,
+		arg.Off,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -771,6 +837,10 @@ func (q *Queries) AdminListUsers(ctx context.Context, arg AdminListUsersParams) 
 			&i.Banned,
 			&i.Hidden,
 			&i.TeamID,
+			&i.Website,
+			&i.Affiliation,
+			&i.Country,
+			&i.MustChangePassword,
 			&i.CreatedAt,
 			&i.Total,
 		); err != nil {
@@ -1014,6 +1084,29 @@ func (q *Queries) AdminSetUserBanned(ctx context.Context, arg AdminSetUserBanned
 	row := q.db.QueryRow(ctx, adminSetUserBanned, arg.Banned, arg.UserID)
 	var i AdminSetUserBannedRow
 	err := row.Scan(&i.ID, &i.Name, &i.Banned)
+	return i, err
+}
+
+const adminSetUserHidden = `-- name: AdminSetUserHidden :one
+UPDATE users SET hidden = $1 WHERE id = $2
+RETURNING id, name, hidden
+`
+
+type AdminSetUserHiddenParams struct {
+	Hidden bool
+	UserID int64
+}
+
+type AdminSetUserHiddenRow struct {
+	ID     int64
+	Name   string
+	Hidden bool
+}
+
+func (q *Queries) AdminSetUserHidden(ctx context.Context, arg AdminSetUserHiddenParams) (AdminSetUserHiddenRow, error) {
+	row := q.db.QueryRow(ctx, adminSetUserHidden, arg.Hidden, arg.UserID)
+	var i AdminSetUserHiddenRow
+	err := row.Scan(&i.ID, &i.Name, &i.Hidden)
 	return i, err
 }
 
@@ -1307,6 +1400,81 @@ func (q *Queries) AdminUpdateTeam(ctx context.Context, arg AdminUpdateTeamParams
 		&i.CaptainID,
 		&i.Hidden,
 		&i.Banned,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const adminUpdateUser = `-- name: AdminUpdateUser :one
+UPDATE users SET
+    name        = COALESCE($1, name),
+    website     = CASE WHEN $2::bool THEN NULL
+                       ELSE COALESCE($3, website) END,
+    affiliation = CASE WHEN $4::bool THEN NULL
+                       ELSE COALESCE($5, affiliation) END,
+    country     = CASE WHEN $6::bool THEN NULL
+                       ELSE COALESCE($7, country) END
+WHERE id = $8
+RETURNING id, name, email, role, verified, banned, hidden, team_id, bracket_id,
+          website, affiliation, country, must_change_password, created_at
+`
+
+type AdminUpdateUserParams struct {
+	Name             *string
+	ClearWebsite     bool
+	Website          *string
+	ClearAffiliation bool
+	Affiliation      *string
+	ClearCountry     bool
+	Country          *string
+	UserID           int64
+}
+
+type AdminUpdateUserRow struct {
+	ID                 int64
+	Name               string
+	Email              string
+	Role               string
+	Verified           bool
+	Banned             bool
+	Hidden             bool
+	TeamID             *int64
+	BracketID          *int64
+	Website            *string
+	Affiliation        *string
+	Country            *string
+	MustChangePassword bool
+	CreatedAt          pgtype.Timestamptz
+}
+
+// Deliberately narrow SET: email, role, banned, hidden, team_id and must_change_password are not
+// reachable from this statement — each moves through its own route or not at all.
+func (q *Queries) AdminUpdateUser(ctx context.Context, arg AdminUpdateUserParams) (AdminUpdateUserRow, error) {
+	row := q.db.QueryRow(ctx, adminUpdateUser,
+		arg.Name,
+		arg.ClearWebsite,
+		arg.Website,
+		arg.ClearAffiliation,
+		arg.Affiliation,
+		arg.ClearCountry,
+		arg.Country,
+		arg.UserID,
+	)
+	var i AdminUpdateUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.Verified,
+		&i.Banned,
+		&i.Hidden,
+		&i.TeamID,
+		&i.BracketID,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+		&i.MustChangePassword,
 		&i.CreatedAt,
 	)
 	return i, err

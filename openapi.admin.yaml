@@ -1696,11 +1696,52 @@ components:
             - string
             - "null"
       type: object
+    AdminUpdateUserInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUpdateUserInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          maxLength: 255
+          type:
+            - string
+            - "null"
+        country:
+          maxLength: 64
+          type:
+            - string
+            - "null"
+        name:
+          maxLength: 128
+          minLength: 1
+          type: string
+        website:
+          maxLength: 255
+          type:
+            - string
+            - "null"
+      type: object
     AdminUserBody:
       additionalProperties: false
       properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUserBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          type: string
         banned:
           type: boolean
+        country:
+          type: string
         created_at:
           format: date-time
           type: string
@@ -1711,6 +1752,8 @@ components:
         id:
           format: int64
           type: integer
+        must_change_password:
+          type: boolean
         name:
           type: string
         role:
@@ -1720,6 +1763,8 @@ components:
           type: integer
         verified:
           type: boolean
+        website:
+          type: string
       required:
         - id
         - name
@@ -1728,7 +1773,45 @@ components:
         - verified
         - banned
         - hidden
+        - must_change_password
         - created_at
+      type: object
+    AdminUserHiddenInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUserHiddenInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hidden:
+          type: boolean
+      required:
+        - hidden
+      type: object
+    AdminUserHiddenOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminUserHiddenOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hidden:
+          type: boolean
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - hidden
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -3022,6 +3105,24 @@ paths:
             maximum: 100
             minimum: 1
             type: integer
+        - explode: false
+          in: query
+          name: q
+          schema:
+            maxLength: 256
+            type: string
+        - explode: false
+          in: query
+          name: field
+          schema:
+            default: name
+            enum:
+              - name
+              - email
+              - website
+              - affiliation
+              - country
+            type: string
       responses:
         "200":
           content:
@@ -3036,6 +3137,63 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List users (paginated)
+      tags:
+        - admin/users
+  /users/{id}:
+    get:
+      operationId: admin-get-user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get one user
+      tags:
+        - admin/users
+    patch:
+      operationId: admin-update-user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a user's profile (partial)
       tags:
         - admin/users
   /users/{id}/ban:
@@ -3068,6 +3226,38 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Ban or unban a user
+      tags:
+        - admin/users
+  /users/{id}/hidden:
+    put:
+      operationId: admin-set-user-hidden
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserHiddenInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserHiddenOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Hide or unhide a user on the public surfaces
       tags:
         - admin/users
   /users/{id}/role:

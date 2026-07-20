@@ -141,12 +141,46 @@ DELETE FROM hints WHERE id = @hint_id AND challenge_id = @challenge_id;
 
 -- name: AdminListUsers :many
 -- COUNT(*) OVER () carries the total in the same round trip, so the pagination header never
--- disagrees with the page it describes.
-SELECT id, name, email, role, verified, banned, hidden, team_id, created_at,
+-- disagrees with the page it describes. The (q, field) search mirrors the team list; email is
+-- searchable here and nowhere public.
+SELECT id, name, email, role, verified, banned, hidden, team_id,
+       website, affiliation, country, must_change_password, created_at,
        COUNT(*) OVER () AS total
   FROM users
+ WHERE (sqlc.narg(q)::text IS NULL OR CASE sqlc.narg(field)::text
+            WHEN 'email'       THEN email       ILIKE '%' || sqlc.narg(q) || '%'
+            WHEN 'website'     THEN website     ILIKE '%' || sqlc.narg(q) || '%'
+            WHEN 'affiliation' THEN affiliation ILIKE '%' || sqlc.narg(q) || '%'
+            WHEN 'country'     THEN country     ILIKE '%' || sqlc.narg(q) || '%'
+            ELSE name ILIKE '%' || sqlc.narg(q) || '%'
+        END)
  ORDER BY id
  LIMIT @lim::int OFFSET @off::int;
+
+-- name: AdminGetUser :one
+SELECT id, name, email, role, verified, banned, hidden, team_id, bracket_id,
+       website, affiliation, country, must_change_password, created_at
+  FROM users
+ WHERE id = @user_id;
+
+-- name: AdminUpdateUser :one
+-- Deliberately narrow SET: email, role, banned, hidden, team_id and must_change_password are not
+-- reachable from this statement — each moves through its own route or not at all.
+UPDATE users SET
+    name        = COALESCE(sqlc.narg(name), name),
+    website     = CASE WHEN @clear_website::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(website), website) END,
+    affiliation = CASE WHEN @clear_affiliation::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(affiliation), affiliation) END,
+    country     = CASE WHEN @clear_country::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(country), country) END
+WHERE id = @user_id
+RETURNING id, name, email, role, verified, banned, hidden, team_id, bracket_id,
+          website, affiliation, country, must_change_password, created_at;
+
+-- name: AdminSetUserHidden :one
+UPDATE users SET hidden = @hidden WHERE id = @user_id
+RETURNING id, name, hidden;
 
 -- name: AdminSetUserBanned :one
 UPDATE users SET banned = @banned WHERE id = @user_id
