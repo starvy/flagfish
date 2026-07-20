@@ -196,6 +196,10 @@ jobs:
       TEST_DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
       DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
       MODESRC_DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test_modesrc?sslmode=disable
+      # The standing inventory sweep reads its own variable so it only runs where it is set.
+      # The gaps it enumerated are closed, so it is now enforced: a migration that adds an
+      # unclassified column, an unwritable config key, or a destructive ledger FK fails here.
+      SCHEMA_DATABASE_URL: postgres://flagfish:flagfish@localhost:5433/flagfish_test?sslmode=disable
       # The files suite talks to a real object store — a mock cannot fail the way S3 does.
       # Same values the Taskfile defaults to, so a CI failure reproduces locally unchanged.
       TEST_S3_ENDPOINT: localhost:9002

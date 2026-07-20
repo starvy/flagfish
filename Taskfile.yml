@@ -398,10 +398,11 @@ tasks:
       - go test -race -count=1 -p 1 -tags=integration -timeout=10m -v ./test/security/...
 
   test-schema:
-    desc: "The standing inventory sweep. Each red subtest names an unbuilt writer, reader or guard."
+    desc: "The standing inventory sweep: every column, config key and ledger FK is classified."
     deps: [up-test]
-    # Reads its own SCHEMA_DATABASE_URL with no fallback, so the required sweeps (test-race and
-    # friends, which set only TEST_DATABASE_URL) skip it and stay green while the gaps are open.
+    # Reads its own SCHEMA_DATABASE_URL so it runs only where the variable is set. The gaps it
+    # enumerated are closed, so it is now part of `ci` — a migration that adds an unclassified
+    # column, an unwritable config key or a destructive ledger FK fails the build here.
     env:
       SCHEMA_DATABASE_URL: "{{.TEST_DATABASE_URL}}"
       CGO_ENABLED: "1"
@@ -607,6 +608,7 @@ tasks:
       - task: test-concurrency
       - task: test-security
       - task: test-modesrc
+      - task: test-schema
 
   check-generated:
     desc: Fail if generated code or the OpenAPI documents are stale (contract drift ⇒ build fails)
