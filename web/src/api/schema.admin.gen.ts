@@ -1031,6 +1031,8 @@ export interface components {
             /** Format: int32 */
             minimum?: number;
             name: string;
+            /** Format: int64 */
+            next_id?: number;
             /** Format: int32 */
             position: number;
             requirements: components["schemas"]["AdminRequirementsBody"];
@@ -1707,6 +1709,8 @@ export interface components {
             /** Format: int32 */
             minimum?: number | null;
             name?: string;
+            /** Format: int64 */
+            next_id?: number | null;
             /** Format: int32 */
             position?: number;
             /** Format: int32 */

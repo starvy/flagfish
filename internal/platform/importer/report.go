@@ -28,6 +28,7 @@ const (
 	CodeUnknownChalType = "UNKNOWN_CHALLENGE_TYPE"
 	CodeCorruptSolve    = "CORRUPT_SOLVE" // a solve with no matching correct submission, or vice versa
 	CodeRequirementsFix = "REQUIREMENTS_NORMALIZED"
+	CodeNextSelfCleared = "NEXT_SELF_CLEARED" // a challenge suggesting itself as next; nulled, import survives
 )
 
 // A Finding is one structured line in the report. Nothing is dropped silently; everything the

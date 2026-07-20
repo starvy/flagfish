@@ -571,6 +571,9 @@ components:
           type: integer
         name:
           type: string
+        next_id:
+          format: int64
+          type: integer
         position:
           format: int32
           type: integer
@@ -1965,6 +1968,11 @@ components:
           maxLength: 256
           minLength: 1
           type: string
+        next_id:
+          format: int64
+          type:
+            - integer
+            - "null"
         position:
           format: int32
           type: integer

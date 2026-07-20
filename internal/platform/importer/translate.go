@@ -307,10 +307,20 @@ func translateChallenges(a *Archive, plan *Plan, rep *Report, opts Options) (map
 			state = "hidden"
 		}
 
+		// A challenge pointing at itself would fail the self-reference CHECK mid-COPY and abort the
+		// whole restore. The source UI cannot produce one, but a hand-edited archive can, so null it
+		// and record the loss rather than let one bad row sink the import.
+		nextID := c.NextID
+		if nextID != nil && *nextID == c.ID {
+			nextID = nil
+			rep.note(SeverityWarning, CodeNextSelfCleared, "challenges", 1,
+				fmt.Sprintf("challenge %d suggested itself as the next challenge; cleared", c.ID))
+		}
+
 		p := db.ImportChallengesParams{
 			ID: c.ID, Name: c.Name, Category: c.Category, Description: c.Description,
 			Attribution: c.Attribution, ConnectionInfo: c.ConnectionInfo, Type: kind, State: state,
-			MaxAttempts: derefOr(c.MaxAttempts, 0), Logic: "any", Position: 0, NextID: c.NextID,
+			MaxAttempts: derefOr(c.MaxAttempts, 0), Logic: "any", Position: 0, NextID: nextID,
 			Requirements: peelRequirements(c.Requirements, rep), FlagMode: "static",
 			FirstBlood: "none", Function: "static", CreatedAt: nowTS(), UpdatedAt: nowTS(),
 		}

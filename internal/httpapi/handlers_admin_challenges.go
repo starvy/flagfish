@@ -101,6 +101,7 @@ type adminChallengeBody struct {
 	Position        int32     `json:"position"`
 	FirstBlood      string    `json:"first_blood"`
 	FirstBloodBonus *int32    `json:"first_blood_bonus,omitempty"`
+	NextID          *int64    `json:"next_id,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 
@@ -132,7 +133,7 @@ func (s *Server) adminChallenge(c *db.Challenge) (*adminChallengeOutput, error) 
 		Type: c.Type, State: c.State, Value: c.Value, Function: c.Function,
 		Initial: c.Initial, Minimum: c.Minimum, Decay: c.Decay,
 		MaxAttempts: c.MaxAttempts, Logic: c.Logic, FlagMode: c.FlagMode, Position: c.Position,
-		FirstBlood: c.FirstBlood, FirstBloodBonus: c.FirstBloodBonus,
+		FirstBlood: c.FirstBlood, FirstBloodBonus: c.FirstBloodBonus, NextID: c.NextID,
 		CreatedAt: c.CreatedAt.Time, UpdatedAt: c.UpdatedAt.Time,
 		Requirements: adminRequirementsBody{
 			Prerequisites: prereqs,
@@ -210,6 +211,9 @@ type adminUpdateChallengeInput struct {
 		// the pairing CHECK refuses the half-switched row.
 		FirstBlood      *string         `json:"first_blood,omitempty" enum:"none,announce,bonus"`
 		FirstBloodBonus Optional[int32] `json:"first_blood_bonus,omitempty" minimum:"1"`
+		// The suggested-next challenge: omit to keep, null to clear, an id to set. Existence and
+		// self-reference are arbitrated by the FK and a CHECK, so a bad id comes back as a 422.
+		NextID Optional[int64] `json:"next_id,omitempty"`
 	}
 }
 
@@ -441,6 +445,7 @@ func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChalle
 	minimum, clearMinimum := b.Minimum.split()
 	decay, clearDecay := b.Decay.split()
 	firstBloodBonus, clearFirstBloodBonus := b.FirstBloodBonus.split()
+	nextID, clearNextID := b.NextID.split()
 
 	c, err := s.opts.AdminOps.UpdateChallenge(ctx, s.adminActor(ctx), in.ID, adminops.ChallengePatch{
 		Name: b.Name, Category: b.Category, Description: b.Description,
@@ -448,13 +453,14 @@ func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChalle
 		Value: b.Value, Function: b.Function,
 		Initial: initial, Minimum: minimum, Decay: decay,
 		MaxAttempts: b.MaxAttempts, Logic: b.Logic, Position: b.Position,
-		FirstBlood: b.FirstBlood, FirstBloodBonus: firstBloodBonus,
+		FirstBlood: b.FirstBlood, FirstBloodBonus: firstBloodBonus, NextID: nextID,
 		ClearAttribution:     clearAttribution,
 		ClearConnectionInfo:  clearConnectionInfo,
 		ClearInitial:         clearInitial,
 		ClearMinimum:         clearMinimum,
 		ClearDecay:           clearDecay,
 		ClearFirstBloodBonus: clearFirstBloodBonus,
+		ClearNextID:          clearNextID,
 	})
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "update challenge")

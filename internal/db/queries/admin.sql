@@ -45,6 +45,8 @@ UPDATE challenges SET
     first_blood     = COALESCE(sqlc.narg(first_blood), first_blood),
     first_blood_bonus = CASE WHEN @clear_first_blood_bonus::bool THEN NULL
                              ELSE COALESCE(sqlc.narg(first_blood_bonus), first_blood_bonus) END,
+    next_id         = CASE WHEN @clear_next_id::bool THEN NULL
+                           ELSE COALESCE(sqlc.narg(next_id), next_id) END,
     updated_at      = now()
 WHERE id = @challenge_id
 RETURNING *;

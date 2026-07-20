@@ -57,6 +57,9 @@ type ChallengePatch struct {
 	Position        *int32
 	FirstBlood      *string
 	FirstBloodBonus *int32
+	// NextID is the suggested-next challenge shown after a solve. Existence is the FK's job and
+	// self-reference is a CHECK — both surface as a 422 here, never a pre-read.
+	NextID *int64
 
 	ClearAttribution     bool
 	ClearConnectionInfo  bool
@@ -64,6 +67,7 @@ type ChallengePatch struct {
 	ClearMinimum         bool
 	ClearDecay           bool
 	ClearFirstBloodBonus bool
+	ClearNextID          bool
 }
 
 func challengeType(function string) string {
@@ -125,17 +129,19 @@ func (s *Service) UpdateChallenge(ctx context.Context, actor audit.Actor, challe
 			Initial: patch.Initial, Minimum: patch.Minimum, Decay: patch.Decay,
 			MaxAttempts: patch.MaxAttempts, Logic: patch.Logic, Position: patch.Position,
 			FirstBlood: patch.FirstBlood, FirstBloodBonus: patch.FirstBloodBonus,
+			NextID:               patch.NextID,
 			ClearAttribution:     patch.ClearAttribution,
 			ClearConnectionInfo:  patch.ClearConnectionInfo,
 			ClearInitial:         patch.ClearInitial,
 			ClearMinimum:         patch.ClearMinimum,
 			ClearDecay:           patch.ClearDecay,
 			ClearFirstBloodBonus: patch.ClearFirstBloodBonus,
+			ClearNextID:          patch.ClearNextID,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
 		} else if err != nil {
-			return fmt.Errorf("adminops: update challenge %d: %w", challengeID, checkViolation(err))
+			return fmt.Errorf("adminops: update challenge %d: %w", challengeID, challengeWriteViolation(err, patch.NextID))
 		}
 		return nil
 	})
@@ -513,6 +519,23 @@ func checkViolation(err error) error {
 		return invalidf("first_blood 'bonus' needs a first_blood_bonus, and any other mode must not carry one")
 	case "challenges_fb_bonus_positive":
 		return invalidf("first_blood_bonus must be positive: zero scores nothing and a negative bonus would penalize the first solver")
+	case "challenges_next_not_self":
+		return invalidf("a challenge cannot suggest itself as the next one")
 	}
 	return err
+}
+
+// challengeWriteViolation adds the next_id foreign key to checkViolation's translations: a supplied
+// target that does not exist trips the FK, and the caller wants the id it sent named rather than a
+// bare database error. nextID is the value the patch set, for the message; a clear or an omitted
+// next_id never trips this.
+func challengeWriteViolation(err error, nextID *int64) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.ConstraintName == "challenges_next_id_fkey" {
+		if nextID != nil {
+			return invalidf("next_id references challenge %d, which does not exist", *nextID)
+		}
+		return invalidf("next_id references a challenge that does not exist")
+	}
+	return checkViolation(err)
 }

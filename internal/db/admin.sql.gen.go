@@ -1436,8 +1436,10 @@ UPDATE challenges SET
     first_blood     = COALESCE($20, first_blood),
     first_blood_bonus = CASE WHEN $21::bool THEN NULL
                              ELSE COALESCE($22, first_blood_bonus) END,
+    next_id         = CASE WHEN $23::bool THEN NULL
+                           ELSE COALESCE($24, next_id) END,
     updated_at      = now()
-WHERE id = $23
+WHERE id = $25
 RETURNING id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at
 `
 
@@ -1464,6 +1466,8 @@ type AdminUpdateChallengeParams struct {
 	FirstBlood           *string
 	ClearFirstBloodBonus bool
 	FirstBloodBonus      *int32
+	ClearNextID          bool
+	NextID               *int64
 	ChallengeID          int64
 }
 
@@ -1496,6 +1500,8 @@ func (q *Queries) AdminUpdateChallenge(ctx context.Context, arg AdminUpdateChall
 		arg.FirstBlood,
 		arg.ClearFirstBloodBonus,
 		arg.FirstBloodBonus,
+		arg.ClearNextID,
+		arg.NextID,
 		arg.ChallengeID,
 	)
 	var i Challenge

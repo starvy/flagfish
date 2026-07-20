@@ -122,10 +122,15 @@ func referenceArchive(t *testing.T) archiveTables {
 			map[string]any{
 				"id": 1, "name": "Warmup", "category": "misc", "description": "warm up",
 				"type": "standard", "value": 100, "state": "visible", "max_attempts": 0,
+				// A real suggested-next chain: solving Warmup points the player at Regexy.
+				"next_id": 2,
 			},
 			map[string]any{
 				"id": 2, "name": "Regexy", "category": "misc", "description": "match me",
 				"type": "standard", "value": 200, "state": "visible",
+				// A self-reference a hand-edited archive can carry: the translator nulls it and
+				// emits NEXT_SELF_CLEARED rather than let the CHECK abort the whole restore.
+				"next_id": 2,
 			},
 			map[string]any{
 				"id": 3, "name": "Decayer", "category": "pwn", "description": "worth less over time",
@@ -213,7 +218,7 @@ func projectState(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []byte 
 		{"brackets", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, name, description, applies_to FROM brackets) t`},
 		{"teams", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, name, email, password_hash, secret, captain_id, bracket_id, hidden, banned FROM teams) t`},
 		{"users", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, name, email, password_hash, secret, role, team_id, bracket_id, hidden, banned, verified, must_change_password FROM users) t`},
-		{"challenges", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, name, category, type, state, value, function, initial, minimum, decay, max_attempts, logic, flag_mode, first_blood, requirements FROM challenges) t`},
+		{"challenges", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, name, category, type, state, value, function, initial, minimum, decay, max_attempts, logic, flag_mode, first_blood, next_id, requirements FROM challenges) t`},
 		{"files", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, location, encode(sha256sum,'hex') AS sha256, size_bytes, challenge_id FROM files) t`},
 		{"flags", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, challenge_id, type, content, case_insensitive FROM flags) t`},
 		{"tags", `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]')::text FROM (SELECT id, challenge_id, value FROM tags) t`},

@@ -118,6 +118,13 @@
       "detail": "key \"user_mode\" kept verbatim via the raw config seam"
     },
     {
+      "severity": "warning",
+      "code": "NEXT_SELF_CLEARED",
+      "table": "challenges",
+      "count": 1,
+      "detail": "challenge 2 suggested itself as the next challenge; cleared"
+    },
+    {
       "severity": "info",
       "code": "REQUIREMENTS_NORMALIZED",
       "count": 1,
