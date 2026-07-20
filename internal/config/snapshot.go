@@ -398,6 +398,20 @@ func visSetter(kind policy.VisKind, assign func(*Snapshot, policy.Vis)) setter {
 // config should get the whole list in one boot, not discover the next one on the
 // next restart.
 func Build(rows map[string]string, instanceMode *account.Mode) (*Snapshot, error) {
+	snap, err := buildParsed(rows, instanceMode)
+	if err != nil {
+		return nil, err
+	}
+	if err := snap.validate(); err != nil {
+		return nil, err
+	}
+	return snap, nil
+}
+
+// buildParsed is the per-key half of Build: every value parsed, no cross-key
+// judgement. The caller decides what to do about coherence — Build refuses the
+// whole table, the manager judges rule by rule.
+func buildParsed(rows map[string]string, instanceMode *account.Mode) (*Snapshot, error) {
 	snap := defaults()
 	snap.raw = make(map[string]string, len(rows))
 	if instanceMode != nil {
@@ -425,9 +439,6 @@ func Build(rows map[string]string, instanceMode *account.Mode) (*Snapshot, error
 
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid configuration (refusing to start):\n%w", errors.Join(problems...))
-	}
-	if err := snap.validate(); err != nil {
-		return nil, err
 	}
 	return &snap, nil
 }

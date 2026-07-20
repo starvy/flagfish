@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/starvy/flagfish/internal/domain/account"
@@ -56,6 +58,10 @@ type Manager struct {
 	store Store
 	log   *slog.Logger
 	snap  atomic.Pointer[Snapshot]
+
+	// problems are the coherence violations the current snapshot is serving with —
+	// swapped together with it, so the two never disagree.
+	problems atomic.Pointer[[]string]
 }
 
 // New loads the table, parses it, validates it, and stores the snapshot.
@@ -69,11 +75,27 @@ func New(ctx context.Context, store Store, log *slog.Logger) (*Manager, error) {
 	if err := m.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("config: load: %w", err)
 	}
+	// At boot an incoherent table is as fatal as an unparseable one: never start on
+	// half an SMTP config. A running instance is judged more gently — see Refresh.
+	if problems := m.Problems(); len(problems) > 0 {
+		return nil, fmt.Errorf("config: load: invalid configuration (refusing to start):\n%s",
+			strings.Join(problems, "\n"))
+	}
 	return m, nil
 }
 
 // Current is the read path, and it is the whole read path.
 func (m *Manager) Current() *Snapshot { return m.snap.Load() }
+
+// Problems reports the coherence violations the current snapshot carries. Empty on
+// a healthy instance; non-empty only when incoherence arrived out of band and a
+// write to unrelated keys was allowed through anyway. Callers must not mutate it.
+func (m *Manager) Problems() []string {
+	if p := m.problems.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
 
 // Refresh re-reads the table and swaps the snapshot.
 //
@@ -81,6 +103,11 @@ func (m *Manager) Current() *Snapshot { return m.snap.Load() }
 // wrote a broken value keeps serving the last good config and logs loudly, rather
 // than falling back to defaults or serving half a config. At boot there is no old
 // snapshot, so the same error is fatal — never run on a config nobody validated.
+//
+// A coherence violation is different: every value parsed, so the snapshot is real —
+// it is served, logged loudly, and surfaced through Problems. Refusing the swap
+// would pin the fleet to a stale snapshot over an incoherence Set refuses to
+// create, and would brick the very API that can repair it.
 func (m *Manager) Refresh(ctx context.Context) error {
 	rows, err := m.store.All(ctx)
 	if err != nil {
@@ -90,11 +117,19 @@ func (m *Manager) Refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	snap, err := Build(rows, mode)
+	snap, err := buildParsed(rows, mode)
 	if err != nil {
 		return err
 	}
+	problems := []string{}
+	for _, v := range snap.violations() {
+		problems = append(problems, v.err.Error())
+	}
+	if len(problems) > 0 {
+		m.log.Error("config is incoherent; serving it anyway", "problems", problems)
+	}
 	m.snap.Store(snap)
+	m.problems.Store(&problems)
 	return nil
 }
 
@@ -114,6 +149,12 @@ func (m *Manager) instanceMode(ctx context.Context) (*account.Mode, error) {
 // Set validates the result of the write before performing it, so a value that
 // would not survive a boot cannot be stored in the first place. Refusing at the
 // write is the same principle as failing at boot, moved one step earlier.
+//
+// Coherence is judged rule by rule: a violated rule refuses the write only when
+// it reads a key being written. A violation among untouched keys — seeded out of
+// band, where boot would have refused it — is logged loudly and left standing
+// rather than holding every other knob hostage behind a repair the route may not
+// even be able to express.
 func (m *Manager) Set(ctx context.Context, kv map[string]string) error {
 	current, err := m.store.All(ctx)
 	if err != nil {
@@ -129,8 +170,14 @@ func (m *Manager) Set(ctx context.Context, kv map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := Build(merged, mode); err != nil {
+	mergedSnap, err := buildParsed(merged, mode)
+	if err != nil {
+		// Everything already stored parsed at the last load, so the key this error
+		// names is one the caller sent.
 		return fmt.Errorf("%w: %w", ErrRejected, err)
+	}
+	if err := m.checkCoherence(mergedSnap, current, kv, mode); err != nil {
+		return err
 	}
 	if err := m.store.Replace(ctx, kv); err != nil {
 		return err
@@ -139,6 +186,57 @@ func (m *Manager) Set(ctx context.Context, kv map[string]string) error {
 	// Refresh locally rather than waiting for our own NOTIFY to come back: the
 	// caller's next read must see their own write.
 	return m.Refresh(ctx)
+}
+
+// checkCoherence refuses the write for every violated rule that reads a written
+// key, and tolerates — loudly — the violations the write could not have caused.
+func (m *Manager) checkCoherence(merged *Snapshot, current, kv map[string]string, mode *account.Mode) error {
+	violated := merged.violations()
+	if len(violated) == 0 {
+		return nil
+	}
+
+	// Which rules were already broken before this write. A parse failure here means
+	// the table was corrupted out of band since the last load; treat it as "nothing
+	// was broken before" so the backstop below refuses rather than tolerates.
+	before := map[int]bool{}
+	if snap, err := buildParsed(current, mode); err == nil {
+		for _, v := range snap.violations() {
+			before[v.rule] = true
+		}
+	}
+
+	var refused []error
+	for _, v := range violated {
+		rule := coherenceRules[v.rule]
+		if touchesAny(rule.keys, kv) {
+			refused = append(refused, v.err)
+			continue
+		}
+		// Backstop: the write is disjoint from every key this rule declares, so the
+		// rule's inputs cannot have changed — a violation that is new anyway means
+		// the rule under-declares its keys. That is a bug here, not operator error,
+		// and it must not pass as "pre-existing".
+		if !before[v.rule] {
+			return fmt.Errorf("config: rule over %v newly violated by a write to %v — the rule under-declares its keys: %w",
+				rule.keys, slices.Sorted(maps.Keys(kv)), v.err)
+		}
+		m.log.Error("config: tolerating pre-existing incoherence among keys this write does not touch",
+			"keys", rule.keys, "problem", v.err.Error())
+	}
+	if len(refused) > 0 {
+		return fmt.Errorf("%w: invalid configuration:\n%w", ErrRejected, errors.Join(refused...))
+	}
+	return nil
+}
+
+func touchesAny(keys []string, kv map[string]string) bool {
+	for _, k := range keys {
+		if _, ok := kv[k]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Run watches for changes until ctx is done. It is one goroutine per process.

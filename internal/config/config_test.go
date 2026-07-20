@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"maps"
@@ -352,6 +353,90 @@ func TestNewRefusesToStartOnABrokenConfig(t *testing.T) {
 	if _, err := config.New(context.Background(), &mapStore{rows: rows}, discard()); err == nil {
 		t.Fatal("the process must not start on a config that does not parse")
 	}
+}
+
+// Set judges coherence rule by rule: a write is refused only for incoherence
+// among the keys it touches. Anything else — incoherence seeded out of band,
+// which boot would have refused — is tolerated loudly, or the config API of a
+// running instance is bricked by a table no route can repair.
+func TestSetJudgesCoherenceOnlyAmongWrittenKeys(t *testing.T) {
+	ctx := context.Background()
+
+	// Half an SMTP config: mail_server with no mailfrom_addr and no mail_port.
+	seedIncoherentMail := func(s *mapStore) {
+		s.rows["mail_server"] = "smtp.seeded.example"
+	}
+
+	t.Run("a disjoint write over pre-existing incoherence is accepted and logged", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		var logbuf strings.Builder
+		m, err := config.New(ctx, store, slog.New(slog.NewTextHandler(&logbuf, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		seedIncoherentMail(store) // out of band: after boot, behind the manager's back
+
+		if err := m.Set(ctx, map[string]string{"ctf_name": "still alive"}); err != nil {
+			t.Fatalf("a write to ctf_name was refused over mail incoherence it did not touch: %v", err)
+		}
+		if m.Current().CTFName != "still alive" {
+			t.Error("the write did not land")
+		}
+		if !strings.Contains(logbuf.String(), "incoheren") {
+			t.Error("tolerated incoherence must be logged loudly, not waved through in silence")
+		}
+		problems := m.Problems()
+		if len(problems) == 0 {
+			t.Fatal("Problems() is empty: the operator who can repair the table is never told it is broken")
+		}
+		if !strings.Contains(strings.Join(problems, "\n"), "mailfrom_addr") {
+			t.Errorf("Problems() does not name the missing key: %q", problems)
+		}
+	})
+
+	t.Run("a write touching a violated rule's keys is refused whole", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		m, err := config.New(ctx, store, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = m.Set(ctx, map[string]string{"mail_server": "smtp.example.com", "mail_port": "587"})
+		if !errors.Is(err, config.ErrRejected) {
+			t.Fatalf("mail_server without mailfrom_addr: got %v, want ErrRejected", err)
+		}
+		rows, allErr := store.All(ctx)
+		if allErr != nil {
+			t.Fatal(allErr)
+		}
+		if _, ok := rows["mail_server"]; ok {
+			t.Error("the refused write reached the store")
+		}
+	})
+
+	t.Run("a repairing write is accepted and clears the problems", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		m, err := config.New(ctx, store, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+		seedIncoherentMail(store)
+
+		if err := m.Set(ctx, map[string]string{"mailfrom_addr": "ops@example.com", "mail_port": "587"}); err != nil {
+			t.Fatalf("the repair was refused: %v", err)
+		}
+		if got := m.Problems(); len(got) != 0 {
+			t.Errorf("Problems() = %q after the repair, want none", got)
+		}
+	})
+
+	t.Run("boot on an incoherent table still fails whole", func(t *testing.T) {
+		rows := sane()
+		rows["mail_server"] = "smtp.seeded.example"
+		if _, err := config.New(ctx, &mapStore{rows: rows, mode: modep(account.ModeTeams)}, discard()); err == nil {
+			t.Fatal("a process must not start on half an SMTP config; the gentler write-path rule is for running instances only")
+		}
+	})
 }
 
 // The projection onto the policy layer, including the phase derivation.
