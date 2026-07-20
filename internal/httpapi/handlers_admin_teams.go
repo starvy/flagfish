@@ -51,6 +51,37 @@ type adminTeamIDInput struct {
 	ID int64 `path:"id"`
 }
 
+type adminTeamBanInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Banned bool `json:"banned"`
+	}
+}
+
+// Narrow like the user ban response: the row that changed, nothing a stale read could invent.
+type adminTeamBanOutput struct {
+	Body struct {
+		ID     int64  `json:"id"`
+		Name   string `json:"name"`
+		Banned bool   `json:"banned"`
+	}
+}
+
+type adminTeamHiddenInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Hidden bool `json:"hidden"`
+	}
+}
+
+type adminTeamHiddenOutput struct {
+	Body struct {
+		ID     int64  `json:"id"`
+		Name   string `json:"name"`
+		Hidden bool   `json:"hidden"`
+	}
+}
+
 func (s *Server) registerAdminTeams() {
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-list-teams", Method: http.MethodGet, Path: "/teams",
@@ -61,6 +92,36 @@ func (s *Server) registerAdminTeams() {
 		OperationID: "admin-get-team", Method: http.MethodGet, Path: "/teams/{id}",
 		Summary: "Get one team", Tags: []string{"admin/teams"},
 	}, s.adminGetTeam)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-set-team-banned", Method: http.MethodPut, Path: "/teams/{id}/ban",
+		Summary: "Ban or unban a team (a ban walls every member)", Tags: []string{"admin/teams"},
+	}, s.adminSetTeamBanned)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-set-team-hidden", Method: http.MethodPut, Path: "/teams/{id}/hidden",
+		Summary: "Hide or unhide a team on the public surfaces", Tags: []string{"admin/teams"},
+	}, s.adminSetTeamHidden)
+}
+
+func (s *Server) adminSetTeamBanned(ctx context.Context, in *adminTeamBanInput) (*adminTeamBanOutput, error) {
+	row, err := s.opts.AdminOps.SetTeamBanned(ctx, s.adminActor(ctx), in.ID, in.Body.Banned)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set team ban")
+	}
+	out := &adminTeamBanOutput{}
+	out.Body.ID, out.Body.Name, out.Body.Banned = row.ID, row.Name, row.Banned
+	return out, nil
+}
+
+func (s *Server) adminSetTeamHidden(ctx context.Context, in *adminTeamHiddenInput) (*adminTeamHiddenOutput, error) {
+	row, err := s.opts.AdminOps.SetTeamHidden(ctx, s.adminActor(ctx), in.ID, in.Body.Hidden)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set team hidden")
+	}
+	out := &adminTeamHiddenOutput{}
+	out.Body.ID, out.Body.Name, out.Body.Hidden = row.ID, row.Name, row.Hidden
+	return out, nil
 }
 
 func (s *Server) adminListTeams(ctx context.Context, in *adminListTeamsInput) (*adminListTeamsOutput, error) {

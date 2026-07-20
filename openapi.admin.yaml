@@ -1355,6 +1355,43 @@ components:
         - value
         - uses
       type: object
+    AdminTeamBanInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminTeamBanInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        banned:
+          type: boolean
+      required:
+        - banned
+      type: object
+    AdminTeamBanOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminTeamBanOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        banned:
+          type: boolean
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - banned
+      type: object
     AdminTeamBody:
       additionalProperties: false
       properties:
@@ -1401,6 +1438,43 @@ components:
         - banned
         - member_count
         - created_at
+      type: object
+    AdminTeamHiddenInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminTeamHiddenInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hidden:
+          type: boolean
+      required:
+        - hidden
+      type: object
+    AdminTeamHiddenOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminTeamHiddenOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hidden:
+          type: boolean
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - hidden
       type: object
     AdminUpdateBracketInputBody:
       additionalProperties: false
@@ -2736,6 +2810,70 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Get one team
+      tags:
+        - admin/teams
+  /teams/{id}/ban:
+    put:
+      operationId: admin-set-team-banned
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamBanInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamBanOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ban or unban a team (a ban walls every member)
+      tags:
+        - admin/teams
+  /teams/{id}/hidden:
+    put:
+      operationId: admin-set-team-hidden
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamHiddenInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamHiddenOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Hide or unhide a team on the public surfaces
       tags:
         - admin/teams
   /users:

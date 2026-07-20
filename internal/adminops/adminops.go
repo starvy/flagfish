@@ -38,6 +38,9 @@ var (
 
 	ErrLastAdmin = errors.New("adminops: cannot demote the last admin")
 	ErrSelfBan   = errors.New("adminops: cannot ban yourself")
+	// ErrSelfTeamBan refuses banning a team the acting admin is on: like ErrSelfBan, it is what
+	// guarantees a ban can never leave the instance without a usable admin.
+	ErrSelfTeamBan = errors.New("adminops: cannot ban your own team")
 
 	ErrTagNotFound = errors.New("adminops: tag not found")
 	// ErrTagInUse refuses an unforced delete of a tag still attached to challenges, so a mistyped

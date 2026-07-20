@@ -55,6 +55,8 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error409Conflict("cannot demote the last admin")
 	case errors.Is(err, adminops.ErrSelfBan):
 		return huma.Error409Conflict("you cannot ban yourself")
+	case errors.Is(err, adminops.ErrSelfTeamBan):
+		return huma.Error409Conflict("you cannot ban your own team")
 	case errors.Is(err, adminops.ErrTagNotFound):
 		return huma.Error404NotFound("tag not found")
 	case errors.Is(err, adminops.ErrTagInUse):

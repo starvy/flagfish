@@ -888,6 +888,52 @@ func (q *Queries) AdminSetChallengeState(ctx context.Context, arg AdminSetChalle
 	return i, err
 }
 
+const adminSetTeamBanned = `-- name: AdminSetTeamBanned :one
+UPDATE teams SET banned = $1 WHERE id = $2
+RETURNING id, name, banned
+`
+
+type AdminSetTeamBannedParams struct {
+	Banned bool
+	TeamID int64
+}
+
+type AdminSetTeamBannedRow struct {
+	ID     int64
+	Name   string
+	Banned bool
+}
+
+func (q *Queries) AdminSetTeamBanned(ctx context.Context, arg AdminSetTeamBannedParams) (AdminSetTeamBannedRow, error) {
+	row := q.db.QueryRow(ctx, adminSetTeamBanned, arg.Banned, arg.TeamID)
+	var i AdminSetTeamBannedRow
+	err := row.Scan(&i.ID, &i.Name, &i.Banned)
+	return i, err
+}
+
+const adminSetTeamHidden = `-- name: AdminSetTeamHidden :one
+UPDATE teams SET hidden = $1 WHERE id = $2
+RETURNING id, name, hidden
+`
+
+type AdminSetTeamHiddenParams struct {
+	Hidden bool
+	TeamID int64
+}
+
+type AdminSetTeamHiddenRow struct {
+	ID     int64
+	Name   string
+	Hidden bool
+}
+
+func (q *Queries) AdminSetTeamHidden(ctx context.Context, arg AdminSetTeamHiddenParams) (AdminSetTeamHiddenRow, error) {
+	row := q.db.QueryRow(ctx, adminSetTeamHidden, arg.Hidden, arg.TeamID)
+	var i AdminSetTeamHiddenRow
+	err := row.Scan(&i.ID, &i.Name, &i.Hidden)
+	return i, err
+}
+
 const adminSetUserBanned = `-- name: AdminSetUserBanned :one
 UPDATE users SET banned = $1 WHERE id = $2
 RETURNING id, name, banned

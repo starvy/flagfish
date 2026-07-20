@@ -229,6 +229,19 @@ func (q *Queries) DeleteSession(ctx context.Context, idHash []byte) error {
 	return err
 }
 
+const deleteTeamSessions = `-- name: DeleteTeamSessions :exec
+DELETE FROM sessions
+ WHERE user_id IN (SELECT id FROM users WHERE team_id = $1)
+`
+
+// A team ban's session sweep. The ban wall stops every member on their next request even
+// without this — the wall reads team_banned per request — but a live cookie on a banned
+// team is still a door left unlocked.
+func (q *Queries) DeleteTeamSessions(ctx context.Context, teamID *int64) error {
+	_, err := q.db.Exec(ctx, deleteTeamSessions, teamID)
+	return err
+}
+
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = $1
 `

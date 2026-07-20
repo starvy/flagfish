@@ -79,6 +79,13 @@ DELETE FROM sessions WHERE id_hash = @id_hash;
 -- shut and unlocked.
 DELETE FROM sessions WHERE user_id = @user_id;
 
+-- name: DeleteTeamSessions :exec
+-- A team ban's session sweep. The ban wall stops every member on their next request even
+-- without this — the wall reads team_banned per request — but a live cookie on a banned
+-- team is still a door left unlocked.
+DELETE FROM sessions
+ WHERE user_id IN (SELECT id FROM users WHERE team_id = @team_id);
+
 -- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at <= now();
 

@@ -18,6 +18,11 @@ change to the auth path.
 | Auth error leak | auth failure → `401` with `err.Error()` | ✅ FAILS: 401 instead of 503, driver text in the body |
 | Admin spec exposure | let Huma register the admin docs/schema (it bypasses the middleware) | ✅ FAILS: anonymous and player both read the admin OpenAPI document |
 | Rate-limit bucket identity | bucket key → `r.Method + ":" + r.URL.Path` (the raw path) | ✅ FAILS: `/probe/007` and `/probe/+7` each get a fresh budget after `/probe/7` is spent |
+| Team ban wall covers both credentials | `Decide` team-ban check → `if false`, **and** the middleware wall's team case disabled | ✅ FAILS: `member token after team ban: 200, want 403` (both members) |
+| Team ban kills member sessions in-tx | drop the `DeleteTeamSessions` call from `SetTeamBanned` | ✅ FAILS: `member still holds 1 live sessions after the team ban` |
+| Self-team-ban refusal | neutralize the actor-membership check in `SetTeamBanned` | ✅ FAILS: `self-team-ban: 200, want 409`, own team banned, admin walled out (401) |
+| Masked team page is a 404 | drop `hidden = false AND banned = false` from `GetTeamPublicProfile` | ✅ FAILS: `ghost/outlaw team page: 200, want 404` |
+| Masked teams off the public board | team-scoreboard `WHERE (admin OR NOT masked)` → `true` | ✅ FAILS: `public scoreboard shows map[ghost… outlaw…], want honest only` |
 | File download prerequisites | `downloadFile` checks only `meta.Hidden`, not `meta.PrereqsMet` | ✅ FAILS: the file of a prerequisite-locked challenge downloads by id (200, exact bytes) |
 | Hint unlock prerequisites | drop the `challengePrereqsMet` gate from `UnlockHint` | ✅ FAILS: the hint of a prerequisite-locked challenge is sold, content and all |
 

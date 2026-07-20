@@ -89,6 +89,8 @@ type Querier interface {
 	// Whole-value replace: the column is one document, so a partial patch has no meaning here.
 	AdminSetChallengeRequirements(ctx context.Context, arg AdminSetChallengeRequirementsParams) (Challenge, error)
 	AdminSetChallengeState(ctx context.Context, arg AdminSetChallengeStateParams) (Challenge, error)
+	AdminSetTeamBanned(ctx context.Context, arg AdminSetTeamBannedParams) (AdminSetTeamBannedRow, error)
+	AdminSetTeamHidden(ctx context.Context, arg AdminSetTeamHiddenParams) (AdminSetTeamHiddenRow, error)
 	AdminSetUserBanned(ctx context.Context, arg AdminSetUserBannedParams) (AdminSetUserBannedRow, error)
 	AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error)
 	// Partial update: an absent field keeps its value. applies_to is immutable — flipping it would
@@ -217,6 +219,10 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteOldRateLimits(ctx context.Context, before pgtype.Timestamptz) error
 	DeleteSession(ctx context.Context, idHash []byte) error
+	// A team ban's session sweep. The ban wall stops every member on their next request even
+	// without this — the wall reads team_banned per request — but a live cookie on a banned
+	// team is still a door left unlocked.
+	DeleteTeamSessions(ctx context.Context, teamID *int64) error
 	// "Log out everywhere". Also what a ban should call — a banned user's live cookie is still a live
 	// cookie, and the ban wall stops them on the next request, but there is no reason to leave the door
 	// shut and unlocked.

@@ -28,6 +28,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/starvy/flagfish/internal/accounts"
+	"github.com/starvy/flagfish/internal/adminops"
+	"github.com/starvy/flagfish/internal/board"
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/db"
 
@@ -65,8 +67,13 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 	}
 	t.Cleanup(pool.Close)
 
+	mode := account.ModeUsers
+	if o.teams {
+		mode = account.ModeTeams
+	}
+
 	truncate(t, ctx, pool)
-	seedInstance(t, ctx, pool)
+	seedInstance(t, ctx, pool, mode)
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -75,7 +82,7 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		t.Fatalf("config: %v", err)
 	}
 
-	acct := accounts.NewService(pool, account.ModeUsers, log)
+	acct := accounts.NewService(pool, mode, log)
 
 	limit := 1000 // generous by default; the rate-limit test builds its own fixture
 	if o.limit > 0 {
@@ -95,6 +102,10 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		Accounts: acct,
 		Limiter:  accounts.NewLimiter(pool, limit, time.Minute),
 		Log:      log,
+
+		// The write side the ban/hide tests drive, and the board their visibility is asserted on.
+		AdminOps: adminops.New(pool),
+		Board:    board.New(pool, mode),
 
 		// Everything else is left at its zero value on purpose: the fixture is the server a
 		// forgetful operator gets, and the tests below assert that server is the safe one.
@@ -128,9 +139,13 @@ type fixOpts struct {
 	trustedProxies []*net.IPNet
 	maxUpload      int64
 	auth           httpapi.Authenticator
+	teams          bool
 }
 
 func withLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.limit = n } }
+
+// withTeamsMode boots the instance in teams mode — the mode the team-ban wall exists in.
+func withTeamsMode() func(*fixOpts) { return func(o *fixOpts) { o.teams = true } }
 
 // withTrustedProxy trusts the loopback the httptest client dials from, so X-Forwarded-For is
 // believed exactly as it would be behind a real reverse proxy.
@@ -206,10 +221,10 @@ RESTART IDENTITY CASCADE`
 	}
 }
 
-func seedInstance(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+func seedInstance(t *testing.T, ctx context.Context, pool *pgxpool.Pool, mode account.Mode) {
 	t.Helper()
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO instance (user_mode, version) VALUES ('users','test')`); err != nil {
+		`INSERT INTO instance (user_mode, version) VALUES ($1,'test')`, mode.String()); err != nil {
 		t.Fatalf("seed instance: %v", err)
 	}
 	// Without this the policy layer redirects every route to /setup, and every test below

@@ -180,6 +180,14 @@ SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
  ORDER BY t.id
  LIMIT @lim::int OFFSET @off::int;
 
+-- name: AdminSetTeamBanned :one
+UPDATE teams SET banned = @banned WHERE id = @team_id
+RETURNING id, name, banned;
+
+-- name: AdminSetTeamHidden :one
+UPDATE teams SET hidden = @hidden WHERE id = @team_id
+RETURNING id, name, hidden;
+
 -- name: AdminGetTeam :one
 SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
        t.bracket_id, t.captain_id, t.hidden, t.banned, t.created_at,
