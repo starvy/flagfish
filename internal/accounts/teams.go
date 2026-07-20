@@ -26,6 +26,9 @@ var (
 	ErrTeamNotFound  = errors.New("accounts: team not found")
 	ErrNotOnTeam     = errors.New("accounts: user is not on a team")
 	ErrTeamHasScored = errors.New("accounts: cannot leave a team that has solves")
+
+	ErrNotCaptain     = errors.New("accounts: only the captain can edit the team")
+	ErrTeamEmailTaken = errors.New("accounts: team email is already in use")
 )
 
 // TeamMember is one roster row, with the member's contribution read from the stamped
@@ -40,8 +43,10 @@ type TeamMember struct {
 
 // Team is a team profile: the public view, or the caller's own.
 type Team struct {
-	ID          int64
-	Name        string
+	ID   int64
+	Name string
+	// Email is contact data for the team's own view; the public profile never carries it.
+	Email       *string
 	Website     *string
 	Affiliation *string
 	Country     *string
@@ -235,12 +240,59 @@ func (s *Service) OwnTeam(ctx context.Context, userID int64) (Team, error) {
 	}
 
 	return Team{
-		ID: row.ID, Name: row.Name,
+		ID: row.ID, Name: row.Name, Email: row.Email,
 		Website: row.Website, Affiliation: row.Affiliation, Country: row.Country,
 		Score: row.Score, CreatedAt: row.CreatedAt.Time,
 		IsCaptain: row.CaptainID != nil && *row.CaptainID == userID,
 		Members:   members,
 	}, nil
+}
+
+// TeamPatch is the captain-editable slice of the team: nil keeps, the Clear flags null.
+type TeamPatch struct {
+	Email       *string
+	Website     *string
+	Affiliation *string
+	Country     *string
+
+	ClearEmail       bool
+	ClearWebsite     bool
+	ClearAffiliation bool
+	ClearCountry     bool
+}
+
+// UpdateOwnTeam lets the captain edit the team's contact and profile data. Captaincy is enforced
+// in the UPDATE's WHERE clause, so a demoted captain's in-flight write affects zero rows rather
+// than racing past a check.
+func (s *Service) UpdateOwnTeam(ctx context.Context, userID int64, patch TeamPatch) (Team, error) {
+	_, err := s.q.UpdateTeamByCaptain(ctx, db.UpdateTeamByCaptainParams{
+		UserID: userID,
+		Email:  patch.Email, Website: patch.Website,
+		Affiliation: patch.Affiliation, Country: patch.Country,
+		ClearEmail:       patch.ClearEmail,
+		ClearWebsite:     patch.ClearWebsite,
+		ClearAffiliation: patch.ClearAffiliation,
+		ClearCountry:     patch.ClearCountry,
+	})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// Not the captain — or not on a team at all. Tell those two apart for the caller.
+		u, uerr := s.q.GetUserByID(ctx, userID)
+		if uerr != nil {
+			return Team{}, fmt.Errorf("accounts: update team: %w", uerr)
+		}
+		if u.TeamID == nil {
+			return Team{}, ErrNotOnTeam
+		}
+		return Team{}, ErrNotCaptain
+	case err != nil:
+		var pg *pgconn.PgError
+		if errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == "teams_email_uniq" {
+			return Team{}, ErrTeamEmailTaken
+		}
+		return Team{}, fmt.Errorf("accounts: update team: %w", err)
+	}
+	return s.OwnTeam(ctx, userID)
 }
 
 // cutoff is the freeze horizon: a non-nil value hides solves at or after it. nil means live.

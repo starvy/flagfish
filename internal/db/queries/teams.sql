@@ -57,10 +57,27 @@ SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at,
   FROM teams t
  WHERE t.id = @team_id AND t.hidden = false AND t.banned = false;
 
+-- name: UpdateTeamByCaptain :one
+-- Captaincy is the WHERE clause, not a prior read: zero rows means the caller is not the captain
+-- (or has no team) by the time this runs, so there is no window and no forgotten guard.
+UPDATE teams t SET
+    email       = CASE WHEN @clear_email::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(email), t.email) END,
+    website     = CASE WHEN @clear_website::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(website), t.website) END,
+    affiliation = CASE WHEN @clear_affiliation::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(affiliation), t.affiliation) END,
+    country     = CASE WHEN @clear_country::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(country), t.country) END
+WHERE t.id = (SELECT u.team_id FROM users u WHERE u.id = @user_id)
+  AND t.captain_id = @user_id
+RETURNING t.id;
+
 -- name: GetOwnTeam :one
 -- No cutoff: an account always sees its own live score, freeze or not. Withholding it would tell
 -- the team nothing an attacker wants and everything they already know.
-SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at, t.captain_id,
+-- t.email rides along because this is the team's own view — the public profile never selects it.
+SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country, t.created_at, t.captain_id,
        (COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id), 0)
       + COALESCE((SELECT sum(a.value) FROM awards a WHERE a.team_id = t.id), 0))::bigint AS score
   FROM teams t

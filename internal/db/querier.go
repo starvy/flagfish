@@ -369,6 +369,7 @@ type Querier interface {
 	GetNotification(ctx context.Context, id int64) (Notification, error)
 	// No cutoff: an account always sees its own live score, freeze or not. Withholding it would tell
 	// the team nothing an attacker wants and everything they already know.
+	// t.email rides along because this is the team's own view — the public profile never selects it.
 	GetOwnTeam(ctx context.Context, userID int64) (GetOwnTeamRow, error)
 	// Expiry is a WHERE clause, not a Go comparison: an expired session must be indistinguishable from
 	// a missing one, and it must be so at the only place that can be tricked into disagreeing — the
@@ -652,6 +653,9 @@ type Querier interface {
 	// without paging. The caller emits them oldest-first.
 	RecentNotifications(ctx context.Context, lim int32) ([]Notification, error)
 	TouchSession(ctx context.Context, idHash []byte) error
+	// The self-serve profile write: the player-owned fields and nothing else. Identity and
+	// moderation state are not in the SET list, so this statement cannot be talked into touching them.
+	UpdateOwnProfile(ctx context.Context, arg UpdateOwnProfileParams) (UpdateOwnProfileRow, error)
 	// A real password change: the user chose a new password, so a pending forced change is satisfied.
 	// One statement, so the flag can never clear without the hash that justifies it.
 	UpdatePasswordAndClearForcedChange(ctx context.Context, arg UpdatePasswordAndClearForcedChangeParams) error
@@ -659,6 +663,9 @@ type Querier interface {
 	// we hold the plaintext. The password itself has not changed, so must_change_password stays put —
 	// a forced user logging in must not discharge the order by the act of logging in.
 	UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error
+	// Captaincy is the WHERE clause, not a prior read: zero rows means the caller is not the captain
+	// (or has no team) by the time this runs, so there is no window and no forgotten guard.
+	UpdateTeamByCaptain(ctx context.Context, arg UpdateTeamByCaptainParams) (int64, error)
 	// Rehash-on-join: an imported bcrypt join password is upgraded while the plaintext is in hand.
 	UpdateTeamPasswordHash(ctx context.Context, arg UpdateTeamPasswordHashParams) error
 	// Runs on every authenticated request. One idempotent statement that cannot raise:

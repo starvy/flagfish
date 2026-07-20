@@ -84,13 +84,16 @@ type resetPasswordInput struct {
 
 type meOutput struct {
 	Body struct {
-		UserID   int64  `json:"user_id"`
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Role     string `json:"role"`
-		Verified bool   `json:"verified"`
-		IsAdmin  bool   `json:"is_admin"`
-		TeamID   *int64 `json:"team_id,omitempty"`
+		UserID      int64   `json:"user_id"`
+		Name        string  `json:"name"`
+		Email       string  `json:"email"`
+		Role        string  `json:"role"`
+		Verified    bool    `json:"verified"`
+		IsAdmin     bool    `json:"is_admin"`
+		TeamID      *int64  `json:"team_id,omitempty"`
+		Website     *string `json:"website,omitempty"`
+		Affiliation *string `json:"affiliation,omitempty"`
+		Country     *string `json:"country,omitempty"`
 		// The session cookie outlives the tab that minted it, and it is HttpOnly, so a client
 		// that comes back with a live cookie and no CSRF token cannot mint one: login and
 		// register are the only other emitters, and even logout is a CSRF-guarded POST. Without
@@ -121,6 +124,11 @@ func (s *Server) registerAuth() {
 		OperationID: "me", Method: http.MethodGet, Path: "/me",
 		Summary: "Get the current account", Tags: []string{"auth"},
 	}, s.me)
+
+	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
+		OperationID: "update-me", Method: http.MethodPatch, Path: "/me",
+		Summary: "Update the current account's profile", Tags: []string{"auth"},
+	}, s.updateMe)
 
 	// Its own class, not ClassAccountSelf: the forced-change wall must exempt exactly this
 	// route, or the wall traps its own exit.
@@ -198,6 +206,16 @@ func (s *Server) logout(ctx context.Context, in *logoutInput) (*clearedOutput, e
 	return out, nil
 }
 
+// updateMeInput is the player-owned profile slice. Name and email are identity, not profile;
+// moderation state is not even representable here.
+type updateMeInput struct {
+	Body struct {
+		Website     Optional[string] `json:"website,omitempty" maxLength:"255"`
+		Affiliation Optional[string] `json:"affiliation,omitempty" maxLength:"255"`
+		Country     Optional[string] `json:"country,omitempty" maxLength:"64"`
+	}
+}
+
 func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	a := AuthOf(ctx)
 	pr := a.Principal
@@ -206,17 +224,41 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		s.opts.Log.ErrorContext(ctx, "profile lookup failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load account")
 	}
+	// Empty for bearer auth, which mints no CSRF token because it is exempt from the check.
+	return meOut(p, pr.IsAdmin, a.CSRFToken), nil
+}
+
+func meOut(p accounts.Profile, isAdmin bool, csrf string) *meOutput {
 	out := &meOutput{}
 	out.Body.UserID = p.ID
 	out.Body.Name = p.Name
 	out.Body.Email = p.Email
 	out.Body.Role = p.Role
 	out.Body.Verified = p.Verified
-	out.Body.IsAdmin = pr.IsAdmin
+	out.Body.IsAdmin = isAdmin
 	out.Body.TeamID = p.TeamID
-	// Empty for bearer auth, which mints no CSRF token because it is exempt from the check.
-	out.Body.CSRFToken = a.CSRFToken
-	return out, nil
+	out.Body.Website = p.Website
+	out.Body.Affiliation = p.Affiliation
+	out.Body.Country = p.Country
+	out.Body.CSRFToken = csrf
+	return out
+}
+
+func (s *Server) updateMe(ctx context.Context, in *updateMeInput) (*meOutput, error) {
+	a := AuthOf(ctx)
+	website, clearWebsite := in.Body.Website.split()
+	affiliation, clearAffiliation := in.Body.Affiliation.split()
+	country, clearCountry := in.Body.Country.split()
+
+	p, err := s.opts.Accounts.UpdateProfile(ctx, a.Principal.UserID, accounts.ProfilePatch{
+		Website: website, Affiliation: affiliation, Country: country,
+		ClearWebsite: clearWebsite, ClearAffiliation: clearAffiliation, ClearCountry: clearCountry,
+	})
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "profile update failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not update your profile")
+	}
+	return meOut(p, a.Principal.IsAdmin, a.CSRFToken), nil
 }
 
 func (s *Server) resendVerification(ctx context.Context, _ *struct{}) (*okOutput, error) {

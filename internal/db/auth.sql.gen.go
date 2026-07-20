@@ -363,7 +363,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id
+SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id,
+       website, affiliation, country
   FROM users WHERE id = $1
 `
 
@@ -377,6 +378,9 @@ type GetUserByIDRow struct {
 	Banned             bool
 	MustChangePassword bool
 	TeamID             *int64
+	Website            *string
+	Affiliation        *string
+	Country            *string
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, userID int64) (GetUserByIDRow, error) {
@@ -392,6 +396,9 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (GetUserByIDRow
 		&i.Banned,
 		&i.MustChangePassword,
 		&i.TeamID,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
 	)
 	return i, err
 }
@@ -537,6 +544,69 @@ UPDATE sessions SET last_seen = now() WHERE id_hash = $1
 func (q *Queries) TouchSession(ctx context.Context, idHash []byte) error {
 	_, err := q.db.Exec(ctx, touchSession, idHash)
 	return err
+}
+
+const updateOwnProfile = `-- name: UpdateOwnProfile :one
+UPDATE users SET
+    website     = CASE WHEN $1::bool THEN NULL
+                       ELSE COALESCE($2, website) END,
+    affiliation = CASE WHEN $3::bool THEN NULL
+                       ELSE COALESCE($4, affiliation) END,
+    country     = CASE WHEN $5::bool THEN NULL
+                       ELSE COALESCE($6, country) END
+WHERE id = $7
+RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country
+`
+
+type UpdateOwnProfileParams struct {
+	ClearWebsite     bool
+	Website          *string
+	ClearAffiliation bool
+	Affiliation      *string
+	ClearCountry     bool
+	Country          *string
+	UserID           int64
+}
+
+type UpdateOwnProfileRow struct {
+	ID          int64
+	Name        string
+	Email       string
+	Role        string
+	Verified    bool
+	Banned      bool
+	TeamID      *int64
+	Website     *string
+	Affiliation *string
+	Country     *string
+}
+
+// The self-serve profile write: the player-owned fields and nothing else. Identity and
+// moderation state are not in the SET list, so this statement cannot be talked into touching them.
+func (q *Queries) UpdateOwnProfile(ctx context.Context, arg UpdateOwnProfileParams) (UpdateOwnProfileRow, error) {
+	row := q.db.QueryRow(ctx, updateOwnProfile,
+		arg.ClearWebsite,
+		arg.Website,
+		arg.ClearAffiliation,
+		arg.Affiliation,
+		arg.ClearCountry,
+		arg.Country,
+		arg.UserID,
+	)
+	var i UpdateOwnProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.Verified,
+		&i.Banned,
+		&i.TeamID,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+	)
+	return i, err
 }
 
 const updatePasswordAndClearForcedChange = `-- name: UpdatePasswordAndClearForcedChange :exec

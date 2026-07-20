@@ -127,8 +127,22 @@ SELECT id, name, email, password_hash, role, verified, banned, must_change_passw
   FROM users WHERE lower(email) = lower(@email);
 
 -- name: GetUserByID :one
-SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id
+SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id,
+       website, affiliation, country
   FROM users WHERE id = @user_id;
+
+-- name: UpdateOwnProfile :one
+-- The self-serve profile write: the player-owned fields and nothing else. Identity and
+-- moderation state are not in the SET list, so this statement cannot be talked into touching them.
+UPDATE users SET
+    website     = CASE WHEN @clear_website::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(website), website) END,
+    affiliation = CASE WHEN @clear_affiliation::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(affiliation), affiliation) END,
+    country     = CASE WHEN @clear_country::bool THEN NULL
+                       ELSE COALESCE(sqlc.narg(country), country) END
+WHERE id = @user_id
+RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country;
 
 -- name: UpdatePasswordHash :exec
 -- The rehash-on-login path only: a bcrypt hash from an import, silently upgraded to Argon2id while

@@ -78,7 +78,7 @@ func (q *Queries) EnrollUser(ctx context.Context, arg EnrollUserParams) (int64, 
 }
 
 const getOwnTeam = `-- name: GetOwnTeam :one
-SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at, t.captain_id,
+SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country, t.created_at, t.captain_id,
        (COALESCE((SELECT sum(s.value) FROM solves s WHERE s.team_id = t.id), 0)
       + COALESCE((SELECT sum(a.value) FROM awards a WHERE a.team_id = t.id), 0))::bigint AS score
   FROM teams t
@@ -89,6 +89,7 @@ SELECT t.id, t.name, t.website, t.affiliation, t.country, t.created_at, t.captai
 type GetOwnTeamRow struct {
 	ID          int64
 	Name        string
+	Email       *string
 	Website     *string
 	Affiliation *string
 	Country     *string
@@ -99,12 +100,14 @@ type GetOwnTeamRow struct {
 
 // No cutoff: an account always sees its own live score, freeze or not. Withholding it would tell
 // the team nothing an attacker wants and everything they already know.
+// t.email rides along because this is the team's own view — the public profile never selects it.
 func (q *Queries) GetOwnTeam(ctx context.Context, userID int64) (GetOwnTeamRow, error) {
 	row := q.db.QueryRow(ctx, getOwnTeam, userID)
 	var i GetOwnTeamRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Email,
 		&i.Website,
 		&i.Affiliation,
 		&i.Country,
@@ -279,6 +282,52 @@ type ReassignCaptainAfterLeaveParams struct {
 func (q *Queries) ReassignCaptainAfterLeave(ctx context.Context, arg ReassignCaptainAfterLeaveParams) error {
 	_, err := q.db.Exec(ctx, reassignCaptainAfterLeave, arg.TeamID, arg.UserID)
 	return err
+}
+
+const updateTeamByCaptain = `-- name: UpdateTeamByCaptain :one
+UPDATE teams t SET
+    email       = CASE WHEN $1::bool THEN NULL
+                       ELSE COALESCE($2, t.email) END,
+    website     = CASE WHEN $3::bool THEN NULL
+                       ELSE COALESCE($4, t.website) END,
+    affiliation = CASE WHEN $5::bool THEN NULL
+                       ELSE COALESCE($6, t.affiliation) END,
+    country     = CASE WHEN $7::bool THEN NULL
+                       ELSE COALESCE($8, t.country) END
+WHERE t.id = (SELECT u.team_id FROM users u WHERE u.id = $9)
+  AND t.captain_id = $9
+RETURNING t.id
+`
+
+type UpdateTeamByCaptainParams struct {
+	ClearEmail       bool
+	Email            *string
+	ClearWebsite     bool
+	Website          *string
+	ClearAffiliation bool
+	Affiliation      *string
+	ClearCountry     bool
+	Country          *string
+	UserID           int64
+}
+
+// Captaincy is the WHERE clause, not a prior read: zero rows means the caller is not the captain
+// (or has no team) by the time this runs, so there is no window and no forgotten guard.
+func (q *Queries) UpdateTeamByCaptain(ctx context.Context, arg UpdateTeamByCaptainParams) (int64, error) {
+	row := q.db.QueryRow(ctx, updateTeamByCaptain,
+		arg.ClearEmail,
+		arg.Email,
+		arg.ClearWebsite,
+		arg.Website,
+		arg.ClearAffiliation,
+		arg.Affiliation,
+		arg.ClearCountry,
+		arg.Country,
+		arg.UserID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateTeamPasswordHash = `-- name: UpdateTeamPasswordHash :exec

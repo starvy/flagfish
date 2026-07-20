@@ -44,8 +44,10 @@ type teamMember struct {
 // composed body would silently drop everything but is_captain over the wire. is_captain is omitted
 // on the public profile, where it is always false.
 type teamBody struct {
-	ID          int64        `json:"id"`
-	Name        string       `json:"name"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// Email appears only on the own-team view; the public profile query never selects it.
+	Email       *string      `json:"email,omitempty"`
 	Website     *string      `json:"website,omitempty"`
 	Affiliation *string      `json:"affiliation,omitempty"`
 	Country     *string      `json:"country,omitempty"`
@@ -87,6 +89,11 @@ func (s *Server) registerTeams() {
 	}, s.myTeam)
 
 	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+		OperationID: "update-my-team", Method: http.MethodPatch, Path: "/me/team",
+		Summary: "Update the caller's team (captain only)", Tags: []string{"teams"},
+	}, s.updateMyTeam)
+
+	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
 		OperationID: "leave-team", Method: http.MethodPost, Path: "/me/team/leave",
 		Summary: "Leave the caller's team", Tags: []string{"teams"},
 	}, s.leaveTeam)
@@ -101,9 +108,19 @@ func teamBodyOf(t accounts.Team) teamBody {
 		})
 	}
 	return teamBody{
-		ID: t.ID, Name: t.Name,
+		ID: t.ID, Name: t.Name, Email: t.Email,
 		Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,
 		Score: t.Score, CreatedAt: t.CreatedAt, IsCaptain: t.IsCaptain, Members: members,
+	}
+}
+
+// updateMyTeamInput is the captain-editable slice of the team, tri-state per field.
+type updateMyTeamInput struct {
+	Body struct {
+		Email       Optional[string] `json:"email,omitempty" format:"email" maxLength:"255"`
+		Website     Optional[string] `json:"website,omitempty" maxLength:"255"`
+		Affiliation Optional[string] `json:"affiliation,omitempty" maxLength:"255"`
+		Country     Optional[string] `json:"country,omitempty" maxLength:"64"`
 	}
 }
 
@@ -167,6 +184,32 @@ func (s *Server) myTeam(ctx context.Context, _ *struct{}) (*teamOutput, error) {
 	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "own team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load your team")
+	}
+	return &teamOutput{Body: teamBodyOf(t)}, nil
+}
+
+func (s *Server) updateMyTeam(ctx context.Context, in *updateMyTeamInput) (*teamOutput, error) {
+	pr := AuthOf(ctx).Principal
+	email, clearEmail := in.Body.Email.split()
+	website, clearWebsite := in.Body.Website.split()
+	affiliation, clearAffiliation := in.Body.Affiliation.split()
+	country, clearCountry := in.Body.Country.split()
+
+	t, err := s.opts.Accounts.UpdateOwnTeam(ctx, pr.UserID, accounts.TeamPatch{
+		Email: email, Website: website, Affiliation: affiliation, Country: country,
+		ClearEmail: clearEmail, ClearWebsite: clearWebsite,
+		ClearAffiliation: clearAffiliation, ClearCountry: clearCountry,
+	})
+	switch {
+	case errors.Is(err, accounts.ErrNotOnTeam):
+		return nil, huma.Error404NotFound("you are not on a team")
+	case errors.Is(err, accounts.ErrNotCaptain):
+		return nil, huma.Error403Forbidden("only the captain can edit the team")
+	case errors.Is(err, accounts.ErrTeamEmailTaken):
+		return nil, huma.Error409Conflict("that team email is already in use")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "update team failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not update the team")
 	}
 	return &teamOutput{Body: teamBodyOf(t)}, nil
 }

@@ -623,6 +623,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        affiliation:
+          type: string
+        country:
+          type: string
         csrf_token:
           type: string
         email:
@@ -641,6 +645,8 @@ components:
           type: integer
         verified:
           type: boolean
+        website:
+          type: string
       required:
         - user_id
         - name
@@ -848,6 +854,8 @@ components:
         created_at:
           format: date-time
           type: string
+        email:
+          type: string
         id:
           format: int64
           type: integer
@@ -941,6 +949,64 @@ components:
         - content
         - charged
         - score
+      type: object
+    UpdateMeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/UpdateMeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          maxLength: 255
+          type:
+            - string
+            - "null"
+        country:
+          maxLength: 64
+          type:
+            - string
+            - "null"
+        website:
+          maxLength: 255
+          type:
+            - string
+            - "null"
+      type: object
+    UpdateMyTeamInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/UpdateMyTeamInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        affiliation:
+          maxLength: 255
+          type:
+            - string
+            - "null"
+        country:
+          maxLength: 64
+          type:
+            - string
+            - "null"
+        email:
+          format: email
+          maxLength: 255
+          type:
+            - string
+            - "null"
+        website:
+          maxLength: 255
+          type:
+            - string
+            - "null"
       type: object
 info:
   title: flagfish
@@ -1218,6 +1284,30 @@ paths:
       summary: Get the current account
       tags:
         - auth
+    patch:
+      operationId: update-me
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update the current account's profile
+      tags:
+        - auth
   /me/password:
     post:
       operationId: change-password
@@ -1264,6 +1354,30 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: The caller's team
+      tags:
+        - teams
+    patch:
+      operationId: update-my-team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMyTeamInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update the caller's team (captain only)
       tags:
         - teams
   /me/team/leave:
