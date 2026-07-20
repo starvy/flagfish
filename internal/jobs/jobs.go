@@ -30,10 +30,11 @@ import (
 // rather than a growing parameter list so a new worker's dependency is one field, added
 // in one place, not threaded through three constructors.
 type WorkerDeps struct {
-	Mailer mail.Mailer
-	Config *config.Manager
-	Poster WebhookPoster
-	Log    *slog.Logger
+	Mailer   mail.Mailer
+	Config   *config.Manager
+	Poster   WebhookPoster
+	Notifier AdminNotifier
+	Log      *slog.Logger
 }
 
 // ErrNoWorkers is returned when the worker role is started but nothing is
@@ -56,6 +57,12 @@ func Workers(deps WorkerDeps) (workers *river.Workers, registered int) {
 		Config: deps.Config,
 		Poster: deps.Poster,
 		Log:    deps.Log,
+	})
+	registered++
+
+	river.AddWorker(w, &PoolExhaustedAlertWorker{
+		Notifier: deps.Notifier,
+		Log:      deps.Log,
 	})
 	registered++
 

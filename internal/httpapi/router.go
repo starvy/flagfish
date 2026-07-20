@@ -55,6 +55,10 @@ type Options struct {
 	Notify      *notify.Service
 	Broadcaster *notify.Broadcaster
 
+	// Jobs enqueues background jobs. Today only the deduplicated pool-exhaustion alert uses it, off
+	// the 503 path; nil disables that alert (the 503 itself is unaffected).
+	Jobs JobEnqueuer
+
 	// TrustedProxies is the list of networks whose X-Forwarded-For we believe. Empty means
 	// trust nobody and record the socket peer: submission IPs are anti-cheat evidence, and a
 	// wrong-but-honest IP beats a forged one. Empty behind a proxy is a misconfiguration, and

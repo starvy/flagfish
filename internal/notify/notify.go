@@ -90,6 +90,32 @@ func (s *Service) Publish(ctx context.Context, actor audit.Actor, n New) (Notifi
 	return fromRow(row), nil
 }
 
+// PublishSystem publishes a notification with no acting admin — the platform itself is the author.
+// It deliberately does not stamp an actor, so the audit trigger records actor_id NULL, which the
+// audit_log schema defines as "system". It is how a background job (e.g. a pool-exhaustion alert)
+// raises an operator-facing notice that no human triggered.
+func (s *Service) PublishSystem(ctx context.Context, title, content string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("notify: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	row, err := s.q.WithTx(tx).InsertNotification(ctx, db.InsertNotificationParams{Title: title, Content: content})
+	if err != nil {
+		return fmt.Errorf("notify: insert: %w", err)
+	}
+	// The signal rides inside the transaction, so a listener never learns of a row a later rollback
+	// would erase.
+	if _, err = tx.Exec(ctx, `SELECT pg_notify($1, $2)`, channel, strconv.FormatInt(row.ID, 10)); err != nil {
+		return fmt.Errorf("notify: signal: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("notify: commit: %w", err)
+	}
+	return nil
+}
+
 // Get loads one notification by id. The pump calls it to turn a signalled id into the row it fans
 // out.
 func (s *Service) Get(ctx context.Context, id int64) (Notification, error) {

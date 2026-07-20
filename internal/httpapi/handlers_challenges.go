@@ -9,13 +9,23 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/starvy/flagfish/internal/catalog"
 	"github.com/starvy/flagfish/internal/domain/account"
 	"github.com/starvy/flagfish/internal/domain/flags"
 	"github.com/starvy/flagfish/internal/domain/policy"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/jobs"
 )
+
+// JobEnqueuer enqueues a job outside any transaction. *jobs.Inserter (a *river.Client[pgx.Tx])
+// satisfies it. The pool-exhaustion alert is enqueued this way: the issue transaction that hit the
+// dry pool has already rolled back, so there is nothing to bind the enqueue to.
+type JobEnqueuer interface {
+	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
 
 // errNoIssuer is a wiring bug, not a player-facing condition: the catalog is serving a unique-flag
 // challenge with no gameplay service to assign from. Serving the challenge without an instance
@@ -167,9 +177,11 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 	switch {
 	case errors.Is(err, flags.ErrPoolExhausted):
 		// Loud, and never a challenge body with no flag in it: a silent fallback would destroy
-		// uniqueness for exactly the late registrants the detector exists to catch.
+		// uniqueness for exactly the late registrants the detector exists to catch. The alert is
+		// deduplicated per challenge downstream, so a stampede of late registrants is one notice.
 		s.opts.Log.ErrorContext(ctx, "challenge instance pool exhausted",
 			"challenge_id", c.ID, "challenge", c.Name)
+		s.enqueuePoolAlert(ctx, c.ID, c.Name)
 		return nil, huma.Error503ServiceUnavailable("this challenge has no instances left — tell an organiser")
 	case errors.Is(err, account.ErrTeamless):
 		return nil, huma.Error403Forbidden("join a team to play")
@@ -241,6 +253,20 @@ func (s *Server) issueForView(ctx context.Context, ch *catalog.Challenge) (*chal
 		return nil, fmt.Errorf("httpapi: issue for view: challenge %d: %w", ch.ID, err)
 	}
 	return instanceBody(issued)
+}
+
+// enqueuePoolAlert raises the deduplicated admin alert for a dry pool. It is best-effort: a failed
+// enqueue must never turn the player's 503 into a 500, so it is logged and swallowed. The nil-guard
+// covers the wiring (tests, doc generation) that runs without a job client.
+func (s *Server) enqueuePoolAlert(ctx context.Context, challengeID int64, name string) {
+	if s.opts.Jobs == nil {
+		return
+	}
+	if _, err := s.opts.Jobs.Insert(ctx, jobs.PoolExhaustedAlert{
+		ChallengeID: challengeID, ChallengeName: name,
+	}, nil); err != nil {
+		s.opts.Log.ErrorContext(ctx, "enqueue pool-exhausted alert failed", "challenge_id", challengeID, "error", err)
+	}
 }
 
 func instanceBody(i gameplay.IssuedInstance) (*challengeInstance, error) {

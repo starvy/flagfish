@@ -13,7 +13,11 @@ import (
 
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/mail"
+	"github.com/starvy/flagfish/internal/notify"
 )
+
+// bindNotifier exposes notify.Service as the narrow AdminNotifier the pool-exhaustion worker needs.
+func bindNotifier(s *notify.Service) AdminNotifier { return s }
 
 // Inserter and Worker are the two River roles as distinct Go types, so a process running
 // both (serve --with-worker) can hold both in one graph without the container having to
@@ -47,12 +51,16 @@ func newInserter(pool *pgxpool.Pool) (*Inserter, error) {
 var WorkerModule = fx.Module(
 	"jobs.worker",
 	fx.Provide(NewHTTPPoster),
+	// The standalone worker has no HTTP layer and so no notify.Module; it provides the
+	// publish-only notify service itself, without the broadcaster's LISTEN pump it has no use for.
+	fx.Provide(notify.NewService),
+	fx.Provide(bindNotifier),
 	fx.Provide(newWorker),
 	fx.Invoke(func(*Worker) {}),
 )
 
-func newWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster) (*Worker, error) {
-	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Log: log})
+func newWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier) (*Worker, error) {
+	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log})
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +75,13 @@ func newWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mai
 var InProcessWorkerModule = fx.Module(
 	"jobs.worker-inprocess",
 	fx.Provide(NewHTTPPoster),
+	// notify.Service comes from notify.Module in the serve graph; bind it to the narrow seam.
+	fx.Provide(bindNotifier),
 	fx.Invoke(startInProcessWorker),
 )
 
-func startInProcessWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster) error {
-	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Log: log})
+func startInProcessWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier) error {
+	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log})
 	if errors.Is(err, ErrNoWorkers) {
 		log.Warn("no workers are registered yet; serving without an in-process worker")
 		return nil

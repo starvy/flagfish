@@ -19,6 +19,7 @@ import (
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/files"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/jobs"
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 )
@@ -55,12 +56,13 @@ type serverParams struct {
 	Anticheat      *anticheat.Service
 	Files          *files.Service
 	Metrics        *metrics.Metrics
-	TrustedProxies []*net.IPNet `optional:"true"`
+	Jobs           *jobs.Inserter `optional:"true"`
+	TrustedProxies []*net.IPNet   `optional:"true"`
 }
 
 //nolint:gocritic // hugeParam: fx constructs this once at wiring time; the params struct is built to be passed by value.
 func newServer(p serverParams) *Server {
-	return New(Options{
+	opts := Options{
 		Config:         p.Config,
 		Auth:           p.Auth,
 		Limiter:        p.Limiter,
@@ -81,7 +83,13 @@ func newServer(p serverParams) *Server {
 		// value — a caller that never thought about it — is the secure one.
 		InsecureCookies: !p.Env.SecureCookies,
 		MaxUploadBytes:  p.Env.MaxUploadBytes,
-	})
+	}
+	// Assigned only when wired: a nil *jobs.Inserter placed in the interface field would read as a
+	// non-nil interface and defeat the nil-guard on the enqueue path.
+	if p.Jobs != nil {
+		opts.Jobs = p.Jobs
+	}
+	return New(opts)
 }
 
 func runServer(lc fx.Lifecycle, s *Server, addr ListenAddr, log *slog.Logger) {
