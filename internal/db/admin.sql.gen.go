@@ -326,6 +326,26 @@ func (q *Queries) AdminFilterHintIDs(ctx context.Context, arg AdminFilterHintIDs
 	return items, nil
 }
 
+const adminForcePasswordChange = `-- name: AdminForcePasswordChange :one
+UPDATE users SET must_change_password = true WHERE id = $1
+RETURNING id, name, must_change_password
+`
+
+type AdminForcePasswordChangeRow struct {
+	ID                 int64
+	Name               string
+	MustChangePassword bool
+}
+
+// Set-only: the clear belongs to the password change itself, in the same statement as the new
+// hash, so the order can never discharge without the password that satisfies it.
+func (q *Queries) AdminForcePasswordChange(ctx context.Context, userID int64) (AdminForcePasswordChangeRow, error) {
+	row := q.db.QueryRow(ctx, adminForcePasswordChange, userID)
+	var i AdminForcePasswordChangeRow
+	err := row.Scan(&i.ID, &i.Name, &i.MustChangePassword)
+	return i, err
+}
+
 const adminGetChallenge = `-- name: AdminGetChallenge :one
 SELECT id, name, category, description, attribution, connection_info, type, state, value, function, initial, minimum, decay, max_attempts, logic, position, next_id, requirements, flag_mode, first_blood, first_blood_bonus, created_at, updated_at FROM challenges WHERE id = $1
 `

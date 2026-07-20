@@ -96,6 +96,28 @@ func (s *Service) SetUserHidden(ctx context.Context, actor audit.Actor, userID i
 	return out, err
 }
 
+// ForcePasswordChange sets the flag and kills the user's live sessions in the same transaction:
+// the reason to force a change is that the credential is suspect, and a suspect credential must
+// not keep riding an already-minted cookie. The user logs back in (the login route is exempt)
+// and is walled everywhere but the password-change endpoint until they comply.
+func (s *Service) ForcePasswordChange(ctx context.Context, actor audit.Actor, userID int64) (db.AdminForcePasswordChangeRow, error) {
+	var out db.AdminForcePasswordChangeRow
+	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		var err error
+		out, err = q.AdminForcePasswordChange(ctx, userID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: id=%d", ErrUserNotFound, userID)
+		} else if err != nil {
+			return fmt.Errorf("adminops: force password change for user %d: %w", userID, err)
+		}
+		if err := q.DeleteUserSessions(ctx, userID); err != nil {
+			return fmt.Errorf("adminops: force password change for user %d: kill sessions: %w", userID, err)
+		}
+		return nil
+	})
+	return out, err
+}
+
 // SetBanned bans or unbans, and a ban kills the user's live sessions in the same transaction —
 // a banned user must not ride out an already-minted cookie. Self-ban is refused; since every
 // caller is an unbanned admin, that alone guarantees a ban can never leave the instance without

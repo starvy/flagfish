@@ -71,6 +71,14 @@ type adminUserHiddenOutput struct {
 	}
 }
 
+type adminForcePasswordChangeOutput struct {
+	Body struct {
+		ID                 int64  `json:"id"`
+		Name               string `json:"name"`
+		MustChangePassword bool   `json:"must_change_password"`
+	}
+}
+
 type adminListUsersOutput struct {
 	Body struct {
 		Users   []adminUserBody `json:"users"`
@@ -137,6 +145,11 @@ func (s *Server) registerAdminUsers() {
 		OperationID: "admin-set-user-banned", Method: http.MethodPut, Path: "/users/{id}/ban",
 		Summary: "Ban or unban a user", Tags: []string{"admin/users"},
 	}, s.adminSetUserBanned)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-force-password-change", Method: http.MethodPut, Path: "/users/{id}/force-password-change",
+		Summary: "Force a user to choose a new password (kills their sessions)", Tags: []string{"admin/users"},
+	}, s.adminForcePasswordChange)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-set-user-role", Method: http.MethodPut, Path: "/users/{id}/role",
@@ -209,6 +222,16 @@ func (s *Server) adminSetUserHidden(ctx context.Context, in *adminUserHiddenInpu
 	}
 	out := &adminUserHiddenOutput{}
 	out.Body.ID, out.Body.Name, out.Body.Hidden = row.ID, row.Name, row.Hidden
+	return out, nil
+}
+
+func (s *Server) adminForcePasswordChange(ctx context.Context, in *adminUserIDInput) (*adminForcePasswordChangeOutput, error) {
+	row, err := s.opts.AdminOps.ForcePasswordChange(ctx, s.adminActor(ctx), in.ID)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "force password change")
+	}
+	out := &adminForcePasswordChangeOutput{}
+	out.Body.ID, out.Body.Name, out.Body.MustChangePassword = row.ID, row.Name, row.MustChangePassword
 	return out, nil
 }
 

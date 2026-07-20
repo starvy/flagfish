@@ -182,6 +182,12 @@ RETURNING id, name, email, role, verified, banned, hidden, team_id, bracket_id,
 UPDATE users SET hidden = @hidden WHERE id = @user_id
 RETURNING id, name, hidden;
 
+-- name: AdminForcePasswordChange :one
+-- Set-only: the clear belongs to the password change itself, in the same statement as the new
+-- hash, so the order can never discharge without the password that satisfies it.
+UPDATE users SET must_change_password = true WHERE id = @user_id
+RETURNING id, name, must_change_password;
+
 -- name: AdminSetUserBanned :one
 UPDATE users SET banned = @banned WHERE id = @user_id
 RETURNING id, name, banned;

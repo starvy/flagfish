@@ -95,3 +95,56 @@ func TestAdminUserDetailPatchAndHide(t *testing.T) {
 		t.Error("no UPDATE audit rows for the user writes")
 	}
 }
+
+// The forced-change lifecycle over the real HTTP surface: force kills the sessions and raises the
+// wall; the exempt password-change endpoint is the exit; the change lowers the wall for good.
+func TestAdminForcePasswordChangeLifecycle(t *testing.T) {
+	f := newAdminAPI(t, account.ModeUsers)
+	adminCookie, adminCSRF, adminID := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(adminCookie), withCSRF(adminCSRF)}
+
+	victimCookie, _ := f.register("victim", "victim@example.com", "correct-horse-battery")
+	uid := f.userID("victim@example.com")
+
+	res, body := f.do(http.MethodPut, "/api/v1/admin/users/"+itoa(uid)+"/force-password-change", nil, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("force: %d (%s)", res.StatusCode, body)
+	}
+
+	// The credential is suspect, so the sessions died with the flag — in one transaction.
+	if n := f.sessionCount(uid); n != 0 {
+		t.Errorf("victim still holds %d sessions after the force", n)
+	}
+	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(victimCookie))
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("old cookie after force: %d, want 401", res.StatusCode)
+	}
+
+	// Login works (exempt), but everything else is walled…
+	cookie, csrf := f.login("victim@example.com", "correct-horse-battery")
+	res, body = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(cookie))
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("/me while forced: %d, want 403 (%s)", res.StatusCode, body)
+	}
+
+	// …except the exit.
+	res, body = f.do(http.MethodPost, "/api/v1/me/password", map[string]any{
+		"current_password": "correct-horse-battery", "new_password": "a whole new passphrase",
+	}, withCookie(cookie), withCSRF(csrf))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("password change while forced: %d, want 200 (%s)", res.StatusCode, body)
+	}
+	fresh := sessionCookie(res)
+	if fresh == "" {
+		t.Fatal("no session minted by the change")
+	}
+	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(fresh))
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("/me after the change: %d, want 200 — the wall did not come down", res.StatusCode)
+	}
+
+	// The force itself was audited against the acting admin.
+	if n := f.auditCount("users", "UPDATE", adminID); n == 0 {
+		t.Error("no UPDATE audit row for the force")
+	}
+}

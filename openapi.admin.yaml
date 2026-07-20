@@ -1042,6 +1042,28 @@ components:
         - content
         - case_insensitive
       type: object
+    AdminForcePasswordChangeOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminForcePasswordChangeOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int64
+          type: integer
+        must_change_password:
+          type: boolean
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - must_change_password
+      type: object
     AdminHintBody:
       additionalProperties: false
       properties:
@@ -3226,6 +3248,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Ban or unban a user
+      tags:
+        - admin/users
+  /users/{id}/force-password-change:
+    put:
+      operationId: admin-force-password-change
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminForcePasswordChangeOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Force a user to choose a new password (kills their sessions)
       tags:
         - admin/users
   /users/{id}/hidden:

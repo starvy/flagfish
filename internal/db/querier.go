@@ -50,6 +50,9 @@ type Querier interface {
 	// Existence probe for hint-prerequisite validation, scoped to the challenge: a cross-challenge id
 	// filters out here and is reported by the caller the same as one that does not exist at all.
 	AdminFilterHintIDs(ctx context.Context, arg AdminFilterHintIDsParams) ([]int64, error)
+	// Set-only: the clear belongs to the password change itself, in the same statement as the new
+	// hash, so the order can never discharge without the password that satisfies it.
+	AdminForcePasswordChange(ctx context.Context, userID int64) (AdminForcePasswordChangeRow, error)
 	AdminGetChallenge(ctx context.Context, challengeID int64) (Challenge, error)
 	AdminGetFlag(ctx context.Context, arg AdminGetFlagParams) (Flag, error)
 	AdminGetTeam(ctx context.Context, teamID int64) (AdminGetTeamRow, error)
