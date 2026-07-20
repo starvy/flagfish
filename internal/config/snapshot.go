@@ -22,8 +22,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	stdmail "net/mail"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -128,6 +130,13 @@ type WebhookEventSet map[WebhookEvent]bool
 
 // Enabled reports whether the feed is configured to deliver this event.
 func (s WebhookEventSet) Enabled(e WebhookEvent) bool { return s[e] }
+
+// Keys returns every registered key name, sorted. It is how a sweep outside this
+// package walks the registry; whether a key is typed or disclosable is still
+// Modelled's and Secret's to answer.
+func Keys() []string {
+	return slices.Sorted(maps.Keys(registry))
+}
 
 // Modelled reports whether a key has a typed setter. A key that is not modelled is
 // still valid: it is preserved verbatim in raw. The importer uses this only to name
