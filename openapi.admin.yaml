@@ -586,8 +586,33 @@ components:
           type:
             - string
             - "null"
+        mail_password:
+          type: string
+        mail_port:
+          format: int64
+          maximum: 65535
+          minimum: 0
+          type: integer
+        mail_server:
+          type: string
+        mail_tls:
+          type: boolean
+        mail_username:
+          type: string
+        mailfrom_addr:
+          type: string
         name:
           type: string
+        num_teams:
+          format: int64
+          minimum: 0
+          type: integer
+        num_users:
+          format: int64
+          minimum: 0
+          type: integer
+        paused:
+          type: boolean
         registration_visibility:
           enum:
             - public
@@ -605,9 +630,31 @@ components:
           type:
             - string
             - "null"
+        team_creation:
+          type: boolean
+        team_size:
+          format: int64
+          minimum: 0
+          type: integer
         theme:
           type: string
         theme_tokens:
+          type: string
+        verify_emails:
+          type: boolean
+        view_after_ctf:
+          type: boolean
+        webhook_enabled:
+          type: boolean
+        webhook_events:
+          items:
+            enum:
+              - first_blood
+              - solve
+            type: string
+          minItems: 1
+          type: array
+        webhook_url:
           type: string
       type: object
     AdminConfigOutputBody:
@@ -632,8 +679,35 @@ components:
         freeze:
           format: date-time
           type: string
+        mail_password_set:
+          type: boolean
+        mail_port:
+          format: int64
+          type: integer
+        mail_server_set:
+          type: boolean
+        mail_tls:
+          type: boolean
+        mail_username_set:
+          type: boolean
+        mailfrom_addr:
+          type: string
         name:
           type: string
+        num_teams:
+          format: int64
+          type: integer
+        num_users:
+          format: int64
+          type: integer
+        paused:
+          type: boolean
+        problems:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         registration_visibility:
           type: string
         score_visibility:
@@ -641,10 +715,29 @@ components:
         start:
           format: date-time
           type: string
+        team_creation:
+          type: boolean
+        team_size:
+          format: int64
+          type: integer
         theme:
           type: string
         theme_tokens:
           type: string
+        verify_emails:
+          type: boolean
+        view_after_ctf:
+          type: boolean
+        webhook_enabled:
+          type: boolean
+        webhook_events:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        webhook_url_set:
+          type: boolean
       required:
         - name
         - description
@@ -653,6 +746,22 @@ components:
         - score_visibility
         - account_visibility
         - registration_visibility
+        - paused
+        - verify_emails
+        - view_after_ctf
+        - team_creation
+        - num_users
+        - num_teams
+        - team_size
+        - mail_port
+        - mail_tls
+        - mailfrom_addr
+        - mail_server_set
+        - mail_username_set
+        - mail_password_set
+        - webhook_enabled
+        - webhook_events
+        - webhook_url_set
       type: object
     AdminCreateBracketInputBody:
       additionalProperties: false

@@ -387,3 +387,46 @@
     flex-wrap: wrap;
   }
 }
+
+/* The shell's pause strip: small when the game runs, unmissable when it does not. */
+.admin__pausebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.admin__pausebar--paused {
+  border-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  color: var(--color-text);
+}
+
+/* Config form: toggle stacks and the write-only secret rows. */
+.config-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.config-secret {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.config-secret .ff-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.config-danger {
+  color: var(--color-danger);
+}

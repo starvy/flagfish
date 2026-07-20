@@ -1,6 +1,9 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createFileRoute, notFound } from "@tanstack/react-router";
-import { meQuery } from "../../queries";
-import { ToastProvider } from "../../ui";
+import { formErrorOf } from "../../admin";
+import { instanceQuery, meQuery, useUpdateConfig } from "../../queries";
+import { Button, Dialog, ToastProvider, useToast } from "../../ui";
 import "../../admin/admin.css";
 
 export const Route = createFileRoute("/_auth/admin")({
@@ -62,9 +65,99 @@ function AdminConsole() {
         </aside>
 
         <main className="admin__main">
+          <PauseControl />
           <Outlet />
         </main>
       </div>
     </ToastProvider>
+  );
+}
+
+/**
+ * The one-click incident switch. Pausing refuses every flag submission fleet-wide — admins
+ * included — so it lives in the shell, not three screens deep in the config form, and it never
+ * fires without a confirmation. The paused state is read from the public instance snapshot,
+ * which the config mutation invalidates: every admin tab shows the banner, not just the one
+ * that clicked.
+ */
+function PauseControl() {
+  const instance = useQuery(instanceQuery);
+  const update = useUpdateConfig();
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+
+  // The committed public schema does not describe `paused` yet; read it off the raw body the
+  // same way the player shell does.
+  const paused = Boolean((instance.data as { paused?: boolean } | undefined)?.paused);
+
+  if (!instance.data) return null;
+
+  const flip = (next: boolean) => {
+    update.mutate(
+      { paused: next },
+      {
+        onSuccess: () => {
+          setConfirming(false);
+          toast.success(
+            next ? "Event paused" : "Event resumed",
+            next
+              ? "Every flag submission is refused until you resume."
+              : "Submissions count again.",
+          );
+        },
+        onError: (error) => {
+          setConfirming(false);
+          toast.error(next ? "Could not pause" : "Could not resume", formErrorOf(error));
+        },
+      },
+    );
+  };
+
+  return (
+    <>
+      {paused ? (
+        <div className="admin__pausebar admin__pausebar--paused" role="status">
+          <span>
+            <strong>The event is paused.</strong> Every flag submission is refused — for admins
+            too.
+          </span>
+          <Button size="sm" variant="primary" onClick={() => setConfirming(true)}>
+            Resume
+          </Button>
+        </div>
+      ) : (
+        <div className="admin__pausebar">
+          <span>Incident? Pausing refuses every flag submission, fleet-wide, until resumed.</span>
+          <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
+            Pause event
+          </Button>
+        </div>
+      )}
+      <Dialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        size="sm"
+        title={paused ? "Resume the event?" : "Pause the event?"}
+        description={
+          paused
+            ? "Submissions are accepted again the moment you confirm."
+            : "Every flag submission — every player, every admin — is refused until you resume. Browsing and hint unlocks keep working. The pause is public: every client shows it."
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirming(false)} disabled={update.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant={paused ? "primary" : "danger"}
+              loading={update.isPending}
+              onClick={() => flip(!paused)}
+            >
+              {paused ? "Resume the event" : "Pause the event"}
+            </Button>
+          </>
+        }
+      />
+    </>
   );
 }

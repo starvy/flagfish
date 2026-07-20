@@ -739,15 +739,35 @@ export interface components {
             end?: string | null;
             /** Format: date-time */
             freeze?: string | null;
+            mail_password?: string;
+            /** Format: int64 */
+            mail_port?: number;
+            mail_server?: string;
+            mail_tls?: boolean;
+            mail_username?: string;
+            mailfrom_addr?: string;
             name?: string;
+            /** Format: int64 */
+            num_teams?: number;
+            /** Format: int64 */
+            num_users?: number;
+            paused?: boolean;
             /** @enum {string} */
             registration_visibility?: "public" | "private" | "mlc";
             /** @enum {string} */
             score_visibility?: "public" | "private" | "hidden";
             /** Format: date-time */
             start?: string | null;
+            team_creation?: boolean;
+            /** Format: int64 */
+            team_size?: number;
             theme?: string;
             theme_tokens?: string;
+            verify_emails?: boolean;
+            view_after_ctf?: boolean;
+            webhook_enabled?: boolean;
+            webhook_events?: ("first_blood" | "solve")[];
+            webhook_url?: string;
         };
         AdminConfigOutputBody: {
             /**
@@ -763,13 +783,34 @@ export interface components {
             end?: string;
             /** Format: date-time */
             freeze?: string;
+            mail_password_set: boolean;
+            /** Format: int64 */
+            mail_port: number;
+            mail_server_set: boolean;
+            mail_tls: boolean;
+            mail_username_set: boolean;
+            mailfrom_addr: string;
             name: string;
+            /** Format: int64 */
+            num_teams: number;
+            /** Format: int64 */
+            num_users: number;
+            paused: boolean;
+            problems?: string[] | null;
             registration_visibility: string;
             score_visibility: string;
             /** Format: date-time */
             start?: string;
+            team_creation: boolean;
+            /** Format: int64 */
+            team_size: number;
             theme: string;
             theme_tokens?: string;
+            verify_emails: boolean;
+            view_after_ctf: boolean;
+            webhook_enabled: boolean;
+            webhook_events: string[] | null;
+            webhook_url_set: boolean;
         };
         AdminCreateBracketInputBody: {
             /**

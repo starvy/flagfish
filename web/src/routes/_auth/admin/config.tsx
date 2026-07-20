@@ -28,6 +28,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Field,
   Form,
   Input,
@@ -70,8 +71,23 @@ function ConfigPage() {
     );
   }
 
+  const problems = config.data.problems ?? [];
+
   return (
     <Page>
+      {problems.length > 0 && (
+        <Alert tone="danger" title="The stored config is incoherent">
+          <p>
+            These settings reached the database outside this form. The server is tolerating them so
+            the rest of the config stays editable — repair them here.
+          </p>
+          <ul>
+            {problems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
       <ConfigForm
         key={savedAt}
         config={config.data}
@@ -86,7 +102,7 @@ function Page({ children }: { children: ReactNode }) {
   return (
     <AdminPage
       title="Config"
-      description="Event identity, the clock, the theme and who may see what. Every write is the whole form: the server merges it, validates it as one, and refuses it whole if the result is incoherent."
+      description="Event identity, the clock, the theme, the game rules and who may see what. A write is refused whole if it would leave the settings it touches incoherent."
     >
       {children}
     </AdminPage>
@@ -105,6 +121,44 @@ interface Draft {
   score_visibility: string;
   account_visibility: string;
   registration_visibility: string;
+  paused: boolean;
+  verify_emails: boolean;
+  view_after_ctf: boolean;
+  team_creation: boolean;
+  num_users: string;
+  num_teams: string;
+  team_size: string;
+  mail_server: SecretDraft;
+  mail_username: SecretDraft;
+  mail_password: SecretDraft;
+  mail_port: string;
+  mail_tls: boolean;
+  mailfrom_addr: string;
+  webhook_url: SecretDraft;
+  webhook_enabled: boolean;
+  webhook_first_blood: boolean;
+  webhook_solve: boolean;
+}
+
+/**
+ * A secret's draft never mirrors the stored value, because the server never sends one. A
+ * filled box overwrites, `clear` sends the explicit "" that unsets, and an untouched box
+ * sends nothing at all — the stored secret stands.
+ */
+interface SecretDraft {
+  value: string;
+  clear: boolean;
+}
+
+const secretKeep: SecretDraft = { value: "", clear: false };
+
+function secretDirty(s: SecretDraft): boolean {
+  return s.clear || s.value !== "";
+}
+
+function secretPatch(s: SecretDraft): string | undefined {
+  if (s.clear) return "";
+  return s.value !== "" ? s.value : undefined;
 }
 
 /**
@@ -154,6 +208,10 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
   const toast = useToast();
   const update = useUpdateConfig();
   const stored = useMemo(() => readOverrides(config.theme_tokens), [config.theme_tokens]);
+  const teamsMode = mode === "teams";
+  const storedEvents = config.webhook_events ?? [];
+  const storedFirstBlood = storedEvents.includes("first_blood");
+  const storedSolve = storedEvents.includes("solve");
 
   const [draft, setDraft] = useState<Draft>({
     name: config.name,
@@ -167,6 +225,23 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     score_visibility: config.score_visibility,
     account_visibility: config.account_visibility,
     registration_visibility: config.registration_visibility,
+    paused: config.paused,
+    verify_emails: config.verify_emails,
+    view_after_ctf: config.view_after_ctf,
+    team_creation: config.team_creation,
+    num_users: String(config.num_users),
+    num_teams: String(config.num_teams),
+    team_size: String(config.team_size),
+    mail_server: secretKeep,
+    mail_username: secretKeep,
+    mail_password: secretKeep,
+    mail_port: String(config.mail_port),
+    mail_tls: config.mail_tls,
+    mailfrom_addr: config.mailfrom_addr,
+    webhook_url: secretKeep,
+    webhook_enabled: config.webhook_enabled,
+    webhook_first_blood: storedFirstBlood,
+    webhook_solve: storedSolve,
   });
   const [clockErrors, setClockErrors] = useState<FieldErrors>({});
 
@@ -178,6 +253,8 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
   const themeLabel = themeByName(draft.theme)?.label ?? draft.theme;
 
   const overridesChanged = !sameOverrides(draft.overrides, stored.overrides);
+  const eventsChanged =
+    draft.webhook_first_blood !== storedFirstBlood || draft.webhook_solve !== storedSolve;
   const dirty =
     draft.name !== config.name ||
     draft.description !== config.description ||
@@ -189,7 +266,23 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     draft.registration_visibility !== config.registration_visibility ||
     draft.start.mode !== "keep" ||
     draft.end.mode !== "keep" ||
-    draft.freeze.mode !== "keep";
+    draft.freeze.mode !== "keep" ||
+    draft.paused !== config.paused ||
+    draft.verify_emails !== config.verify_emails ||
+    draft.view_after_ctf !== config.view_after_ctf ||
+    draft.team_creation !== config.team_creation ||
+    draft.num_users !== String(config.num_users) ||
+    draft.num_teams !== String(config.num_teams) ||
+    draft.team_size !== String(config.team_size) ||
+    draft.mail_port !== String(config.mail_port) ||
+    draft.mail_tls !== config.mail_tls ||
+    draft.mailfrom_addr !== config.mailfrom_addr ||
+    draft.webhook_enabled !== config.webhook_enabled ||
+    eventsChanged ||
+    secretDirty(draft.mail_server) ||
+    secretDirty(draft.mail_username) ||
+    secretDirty(draft.mail_password) ||
+    secretDirty(draft.webhook_url);
 
   const serverErrors = fieldErrorsOf(update.error);
   const errors: FieldErrors = { ...serverErrors, ...clockErrors };
@@ -204,6 +297,21 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
       if (triInvalid(draft[key], localInputToIso)) {
         bad[key] = "give a date and time, or choose keep or clear";
       }
+    }
+
+    const numbers: Partial<Record<"num_users" | "num_teams" | "team_size" | "mail_port", number>> =
+      {};
+    for (const key of ["num_users", "num_teams", "team_size", "mail_port"] as const) {
+      if (draft[key] === String(config[key])) continue;
+      const raw = draft[key].trim();
+      if (!/^\d+$/.test(raw)) {
+        bad[key] = "a whole number, 0 or more";
+        continue;
+      }
+      numbers[key] = Number(raw);
+    }
+    if (eventsChanged && !draft.webhook_first_blood && !draft.webhook_solve) {
+      bad.webhook_events = "keep at least one event — to stop deliveries, disable the feed";
     }
     setClockErrors(bad);
     if (Object.keys(bad).length > 0) return;
@@ -229,6 +337,30 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     if (draft.registration_visibility !== config.registration_visibility) {
       patch.registration_visibility =
         draft.registration_visibility as AdminConfigPatch["registration_visibility"];
+    }
+    if (draft.paused !== config.paused) patch.paused = draft.paused;
+    if (draft.verify_emails !== config.verify_emails) patch.verify_emails = draft.verify_emails;
+    if (draft.view_after_ctf !== config.view_after_ctf) patch.view_after_ctf = draft.view_after_ctf;
+    if (draft.team_creation !== config.team_creation) patch.team_creation = draft.team_creation;
+    Object.assign(patch, numbers);
+    if (draft.mail_tls !== config.mail_tls) patch.mail_tls = draft.mail_tls;
+    if (draft.mailfrom_addr !== config.mailfrom_addr) patch.mailfrom_addr = draft.mailfrom_addr;
+    const mailServer = secretPatch(draft.mail_server);
+    if (mailServer !== undefined) patch.mail_server = mailServer;
+    const mailUsername = secretPatch(draft.mail_username);
+    if (mailUsername !== undefined) patch.mail_username = mailUsername;
+    const mailPassword = secretPatch(draft.mail_password);
+    if (mailPassword !== undefined) patch.mail_password = mailPassword;
+    const webhookURL = secretPatch(draft.webhook_url);
+    if (webhookURL !== undefined) patch.webhook_url = webhookURL;
+    if (draft.webhook_enabled !== config.webhook_enabled) {
+      patch.webhook_enabled = draft.webhook_enabled;
+    }
+    if (eventsChanged) {
+      const events: NonNullable<AdminConfigPatch["webhook_events"]> = [];
+      if (draft.webhook_first_blood) events.push("first_blood");
+      if (draft.webhook_solve) events.push("solve");
+      patch.webhook_events = events;
     }
 
     update.mutate(patch, {
@@ -397,6 +529,164 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
         </Field>
       </Card>
 
+      <Card
+        title="Game"
+        footer={
+          <span className="ff-muted">
+            Pausing stops flag submissions for everyone — admins included. Browsing and hint
+            unlocks keep working. The pause is also one click away in the console header.
+          </span>
+        }
+      >
+        <div className="config-toggles">
+          <Checkbox
+            checked={draft.paused}
+            onChange={(e) => set("paused", e.currentTarget.checked)}
+            label={
+              <span className={draft.paused ? "config-danger" : undefined}>
+                <strong>Pause the event</strong> — refuse every flag submission until resumed
+              </span>
+            }
+          />
+          <Checkbox
+            checked={draft.verify_emails}
+            onChange={(e) => set("verify_emails", e.currentTarget.checked)}
+            label="Require email verification before playing"
+          />
+          <Checkbox
+            checked={draft.view_after_ctf}
+            onChange={(e) => set("view_after_ctf", e.currentTarget.checked)}
+            label="Keep challenges open for viewing after the CTF ends"
+          />
+          <Checkbox
+            checked={draft.team_creation}
+            onChange={(e) => set("team_creation", e.currentTarget.checked)}
+            label="Players may create teams"
+          />
+        </div>
+      </Card>
+
+      <Card title="Limits" footer={<span className="ff-muted">Zero means unlimited.</span>}>
+        <Field name="num_users" label="Max users" hint="0 = unlimited.">
+          <Input
+            inputMode="numeric"
+            value={draft.num_users}
+            onChange={(e) => set("num_users", e.currentTarget.value)}
+          />
+        </Field>
+        <Field name="num_teams" label="Max teams" hint="0 = unlimited.">
+          <Input
+            inputMode="numeric"
+            value={draft.num_teams}
+            onChange={(e) => set("num_teams", e.currentTarget.value)}
+          />
+        </Field>
+        {teamsMode && (
+          <Field name="team_size" label="Max team size" hint="0 = unlimited.">
+            <Input
+              inputMode="numeric"
+              value={draft.team_size}
+              onChange={(e) => set("team_size", e.currentTarget.value)}
+            />
+          </Field>
+        )}
+      </Card>
+
+      <Card
+        title="Mail"
+        footer={
+          <span className="ff-muted">
+            The server, username and password are write-only: the form shows whether one is set,
+            never its value. A filled box overwrites; “clear” unsets. The server refuses a mail
+            group left half-configured.
+          </span>
+        }
+      >
+        <SecretField
+          name="mail_server"
+          label="SMTP server"
+          isSet={config.mail_server_set}
+          state={draft.mail_server}
+          onChange={(v) => set("mail_server", v)}
+          hint="Host name only — the port has its own field."
+        />
+        <Field name="mail_port" label="SMTP port">
+          <Input
+            inputMode="numeric"
+            value={draft.mail_port}
+            onChange={(e) => set("mail_port", e.currentTarget.value)}
+          />
+        </Field>
+        <Checkbox
+          checked={draft.mail_tls}
+          onChange={(e) => set("mail_tls", e.currentTarget.checked)}
+          label="STARTTLS"
+        />
+        <SecretField
+          name="mail_username"
+          label="SMTP username"
+          isSet={config.mail_username_set}
+          state={draft.mail_username}
+          onChange={(v) => set("mail_username", v)}
+        />
+        <SecretField
+          name="mail_password"
+          label="SMTP password"
+          isSet={config.mail_password_set}
+          state={draft.mail_password}
+          onChange={(v) => set("mail_password", v)}
+        />
+        <Field
+          name="mailfrom_addr"
+          label="From address"
+          hint={'e.g. "CTF <noreply@ctf.example>". Required once a server is set.'}
+        >
+          <Input
+            value={draft.mailfrom_addr}
+            onChange={(e) => set("mailfrom_addr", e.currentTarget.value)}
+          />
+        </Field>
+      </Card>
+
+      <Card
+        title="Webhook"
+        footer={
+          <span className="ff-muted">
+            Discord-compatible announcement feed. The URL embeds its token, so it is a credential —
+            write-only, like the mail secrets.
+          </span>
+        }
+      >
+        <SecretField
+          name="webhook_url"
+          label="Webhook URL"
+          isSet={config.webhook_url_set}
+          state={draft.webhook_url}
+          onChange={(v) => set("webhook_url", v)}
+        />
+        <Checkbox
+          checked={draft.webhook_enabled}
+          onChange={(e) => set("webhook_enabled", e.currentTarget.checked)}
+          label="Deliver announcements"
+        />
+        <Field name="webhook_events" label="Events">
+          {() => (
+            <div className="config-toggles">
+              <Checkbox
+                checked={draft.webhook_first_blood}
+                onChange={(e) => set("webhook_first_blood", e.currentTarget.checked)}
+                label="First blood"
+              />
+              <Checkbox
+                checked={draft.webhook_solve}
+                onChange={(e) => set("webhook_solve", e.currentTarget.checked)}
+                label="Every solve"
+              />
+            </div>
+          )}
+        </Field>
+      </Card>
+
       <Card title="Account mode">
         <p>
           This instance runs in <Badge tone="accent">{mode ?? "unknown"}</Badge> mode.
@@ -409,6 +699,44 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
         </p>
       </Card>
     </Form>
+  );
+}
+
+interface SecretFieldProps {
+  name: string;
+  label: string;
+  /** The presence boolean the server sends instead of the value. */
+  isSet: boolean;
+  state: SecretDraft;
+  onChange: (next: SecretDraft) => void;
+  hint?: string;
+}
+
+function SecretField({ name, label, isSet, state, onChange, hint }: SecretFieldProps) {
+  return (
+    <Field name={name} label={label} hint={hint}>
+      {(control) => (
+        <div className="config-secret">
+          <Input
+            {...control}
+            type="password"
+            autoComplete="new-password"
+            value={state.value}
+            placeholder={isSet ? "unchanged" : "not set"}
+            disabled={state.clear}
+            onChange={(e) => onChange({ value: e.currentTarget.value, clear: false })}
+          />
+          <Badge tone={isSet ? "success" : "neutral"}>{isSet ? "currently set" : "not set"}</Badge>
+          {isSet && (
+            <Checkbox
+              checked={state.clear}
+              onChange={(e) => onChange({ value: "", clear: e.currentTarget.checked })}
+              label="clear"
+            />
+          )}
+        </div>
+      )}
+    </Field>
   );
 }
 
