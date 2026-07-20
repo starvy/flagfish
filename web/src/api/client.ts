@@ -25,6 +25,8 @@ export type Notification = Schemas["NotificationBody"];
 export type NotificationPage = Schemas["ListNotificationsOutputBody"];
 export type TokenListItem = Schemas["TokenListItem"];
 export type CreatedToken = Schemas["CreateTokenOutputBody"];
+export type PageLink = Schemas["PageLink"];
+export type PageContent = Schemas["PageOutputBody"];
 
 /** The server's verdict on a flag. A wrong flag is a 200 with `status: "incorrect"`, never an error. */
 export type AttemptStatus = "correct" | "incorrect" | "already_solved";
@@ -316,4 +318,12 @@ export const api = {
     request<CreatedToken>("POST", "/tokens", body),
 
   deleteToken: (id: number) => request<Schemas["OkOutputBody"]>("DELETE", `/tokens/${id}`),
+
+  // Content pages. `pages` is the published list behind the nav; `page` is one page by its slug,
+  // and its 403/404 are the ClassPages gate — an auth-gated page to an anonymous caller, a draft
+  // or missing slug to anyone.
+  pages: () => request<Schemas["ListPagesOutputBody"]>("GET", "/pages"),
+
+  page: (route: string) =>
+    request<PageContent>("GET", `/pages/${encodeURIComponent(route)}`),
 };

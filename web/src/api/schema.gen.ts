@@ -313,6 +313,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List published content pages */
+        get: operations["list-pages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pages/{route}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one published content page by its route */
+        get: operations["get-page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/register": {
         parameters: {
             query?: never;
@@ -825,6 +859,15 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        ListPagesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ListPagesOutputBody.json
+             */
+            readonly $schema?: string;
+            pages: components["schemas"]["PageLink"][] | null;
+        };
         ListTokensOutputBody: {
             /**
              * Format: uri
@@ -897,6 +940,23 @@ export interface components {
              */
             readonly $schema?: string;
             ok: boolean;
+        };
+        PageLink: {
+            auth_required: boolean;
+            route: string;
+            title: string;
+        };
+        PageOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PageOutputBody.json
+             */
+            readonly $schema?: string;
+            content: string;
+            format: string;
+            route: string;
+            title: string;
         };
         RegisterInputBody: {
             /**
@@ -1722,6 +1782,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListNotificationsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListPagesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOutputBody"];
                 };
             };
             /** @description Error */

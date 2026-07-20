@@ -31,6 +31,9 @@ export const qk = {
 
   tokens: () => ["tokens"] as const,
 
+  pages: () => ["pages"] as const,
+  page: (route: string) => ["pages", route] as const,
+
   admin: {
     all: () => ["admin"] as const,
     config: () => ["admin", "config"] as const,
@@ -55,6 +58,8 @@ export const qk = {
         : ["admin", "challenges", challengeId, "instances", params]) as
         | readonly ["admin", "challenges", number, "instances"]
         | readonly ["admin", "challenges", number, "instances", PageParams],
+    pages: () => ["admin", "pages"] as const,
+    page: (id: number) => ["admin", "pages", "detail", id] as const,
     audit: (params?: AuditParams) =>
       (params === undefined ? ["admin", "audit"] : ["admin", "audit", params]) as
         | readonly ["admin", "audit"]

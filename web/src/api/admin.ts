@@ -25,6 +25,7 @@ export type AdminTeam = Schemas["AdminTeamBody"];
 export type AdminBracket = Schemas["AdminBracketBody"];
 export type AdminField = Schemas["AdminFieldBody"];
 export type AdminAward = Schemas["AdminAwardBody"];
+export type AdminPage = Schemas["AdminPageBody"];
 export type AdminAuditEntry = Schemas["AdminAuditEntry"];
 export type AdminNotification = Schemas["NotificationBody"];
 export type AcSharingPair = Schemas["AcSharingPairBody"];
@@ -236,6 +237,20 @@ export const adminApi = {
     request<AdminAward>("POST", `${P}/awards`, body),
 
   revokeAward: (id: number) => request<void>("DELETE", `${P}/awards/${id}`),
+
+  // Pages (the CMS behind rules/FAQ/sponsors). The admin surface sees drafts; the public one never
+  // does. A duplicate route is a 409 straight from the table's unique index.
+  listPages: () => request<Schemas["AdminListPagesOutputBody"]>("GET", `${P}/pages`),
+
+  getPage: (id: number) => request<AdminPage>("GET", `${P}/pages/${id}`),
+
+  createPage: (body: Body<Schemas["AdminCreatePageInputBody"]>) =>
+    request<AdminPage>("POST", `${P}/pages`, body),
+
+  updatePage: (id: number, body: Body<Schemas["AdminUpdatePageInputBody"]>) =>
+    request<AdminPage>("PATCH", `${P}/pages/${id}`, body),
+
+  deletePage: (id: number) => request<void>("DELETE", `${P}/pages/${id}`),
 
   // Notifications
   createNotification: (body: Body<Schemas["AdminCreateNotificationInputBody"]>) =>

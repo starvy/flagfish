@@ -1,7 +1,8 @@
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { NotificationBell, NotificationsDrawer } from "../notifications";
-import { instanceQuery, meQuery } from "../queries";
+import { instanceQuery, meQuery, pagesQuery } from "../queries";
 import { ClockBanners, UserMenu, useInstanceState } from "../shell";
 import { applyLocalePreference } from "../ui";
 
@@ -22,6 +23,10 @@ export const Route = createFileRoute("/_auth")({
 function AuthLayout() {
   const { me } = Route.useRouteContext();
   const { ctfName, teamsMode } = useInstanceState();
+
+  // Published content pages become nav links. Drafts never reach this list — the server filters
+  // them — so a page appears here the moment it is published and disappears when unpublished.
+  const pages = useQuery(pagesQuery);
 
   // The preference becomes real here: every locale-sensitive formatter downstream resolves
   // against it, and the document lang follows the account rather than the browser.
@@ -53,6 +58,11 @@ function AuthLayout() {
             <Link to="/settings" search={{ tab: "profile" }}>
               settings
             </Link>
+            {(pages.data?.pages ?? []).map((p) => (
+              <Link key={p.route} to="/pages/$route" params={{ route: p.route }}>
+                {p.title}
+              </Link>
+            ))}
             {me.is_admin && (
               <Link to="/admin" className="sh-nav__admin">
                 admin

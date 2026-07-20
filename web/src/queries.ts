@@ -115,6 +115,16 @@ export {
 
 export { adminAwardsQuery, useGrantAward, useRevokeAward } from "./queries/admin/awards";
 
+export { pagesQuery, pageQuery } from "./queries/pages";
+
+export {
+  adminPagesQuery,
+  adminPageQuery,
+  useCreatePage,
+  useUpdatePage,
+  useDeletePage,
+} from "./queries/admin/pages";
+
 export {
   adminAuditQuery,
   flagSharingQuery,

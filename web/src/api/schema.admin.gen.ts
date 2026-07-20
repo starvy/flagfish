@@ -558,6 +558,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every page, drafts included */
+        get: operations["admin-list-pages"];
+        put?: never;
+        /** Create a page */
+        post: operations["admin-create-page"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one page with its full body */
+        get: operations["admin-get-page"];
+        put?: never;
+        post?: never;
+        /** Delete a page */
+        delete: operations["admin-delete-page"];
+        options?: never;
+        head?: never;
+        /** Update a page */
+        patch: operations["admin-update-page"];
+        trace?: never;
+    };
     "/pool/stats": {
         parameters: {
             query?: never;
@@ -1310,6 +1347,21 @@ export interface components {
             content: string;
             title: string;
         };
+        AdminCreatePageInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminCreatePageInputBody.json
+             */
+            readonly $schema?: string;
+            auth_required?: boolean;
+            content: string;
+            draft?: boolean;
+            /** @enum {string} */
+            format?: "markdown";
+            route: string;
+            title: string;
+        };
         AdminCreateTeamInputBody: {
             /**
              * Format: uri
@@ -1490,6 +1542,15 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        AdminListPagesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminListPagesOutputBody.json
+             */
+            readonly $schema?: string;
+            pages: components["schemas"]["AdminPageListItem"][] | null;
+        };
         AdminListTagsOutputBody: {
             /**
              * Format: uri
@@ -1537,6 +1598,39 @@ export interface components {
              */
             readonly $schema?: string;
             into: string;
+        };
+        AdminPageBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminPageBody.json
+             */
+            readonly $schema?: string;
+            auth_required: boolean;
+            content: string;
+            /** Format: date-time */
+            created_at: string;
+            draft: boolean;
+            format: string;
+            /** Format: int64 */
+            id: number;
+            route: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AdminPageListItem: {
+            auth_required: boolean;
+            /** Format: date-time */
+            created_at: string;
+            draft: boolean;
+            format: string;
+            /** Format: int64 */
+            id: number;
+            route: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         AdminPoolInstanceInput: {
             /** Format: int64 */
@@ -1807,6 +1901,21 @@ export interface components {
             /** Format: int32 */
             position?: number;
             prerequisites?: number[] | null;
+            title?: string;
+        };
+        AdminUpdatePageInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminUpdatePageInputBody.json
+             */
+            readonly $schema?: string;
+            auth_required?: boolean;
+            content?: string;
+            draft?: boolean;
+            /** @enum {string} */
+            format?: "markdown";
+            route?: string;
             title?: string;
         };
         AdminUpdateTeamInputBody: {
@@ -3317,6 +3426,163 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-list-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListPagesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-create-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreatePageInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPageBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-get-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPageBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-delete-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-update-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdatePageInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPageBody"];
                 };
             };
             /** @description Error */
