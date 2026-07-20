@@ -156,6 +156,60 @@ func TestMatchAny(t *testing.T) {
 	}
 }
 
+func TestMatchAll(t *testing.T) {
+	// A mix of a static, a case-insensitive static, and a regex flag. Under 'all'
+	// semantics one submission must satisfy every one of them at once — which is
+	// only possible when they all describe the same string.
+	agree := []flags.Flag{
+		{Content: "CTF{same}"},
+		{Content: "ctf{same}", CaseInsensitive: true},
+		{Type: flags.TypeRegex, Content: `CTF\{sam(e|3)\}`},
+	}
+	if ok, err := flags.MatchAll(agree, "CTF{same}"); err != nil || !ok {
+		t.Errorf("MatchAll(all-agree) = %v, %v; want true", ok, err)
+	}
+
+	// One flag disagrees with the rest, so 'all' can never be satisfied by any
+	// single submission.
+	disjoint := []flags.Flag{{Content: "CTF{one}"}, {Content: "CTF{two}"}}
+	for _, provided := range []string{"CTF{one}", "CTF{two}", "CTF{three}"} {
+		if ok, err := flags.MatchAll(disjoint, provided); err != nil || ok {
+			t.Errorf("MatchAll(disjoint, %q) = %v, %v; want false", provided, ok, err)
+		}
+	}
+
+	// A single flag under 'all' behaves exactly like matching that flag.
+	if ok, err := flags.MatchAll([]flags.Flag{{Content: "CTF{solo}"}}, "CTF{solo}"); err != nil || !ok {
+		t.Errorf("MatchAll(single, match) = %v, %v; want true", ok, err)
+	}
+
+	// A corrupt pattern is surfaced, never laundered into a silent "incorrect".
+	if _, err := flags.MatchAll([]flags.Flag{{Type: flags.TypeRegex, Content: "("}}, "x"); !errors.Is(err, flags.ErrBadPattern) {
+		t.Error("MatchAll must surface a corrupt pattern, not swallow it as 'incorrect'")
+	}
+
+	// MatchAll(nil) is false, symmetric with MatchAny(nil): "all of no flags" must
+	// not be a free solve.
+	if ok, err := flags.MatchAll(nil, "x"); err != nil || ok {
+		t.Error("MatchAll(nil) must be false — an empty flag set is unsatisfiable, not vacuously true")
+	}
+}
+
+func TestParseLogic(t *testing.T) {
+	if l, err := flags.ParseLogic("any"); err != nil || l != flags.LogicAny {
+		t.Errorf("ParseLogic(any) = %v, %v", l, err)
+	}
+	if l, err := flags.ParseLogic("all"); err != nil || l != flags.LogicAll {
+		t.Errorf("ParseLogic(all) = %v, %v", l, err)
+	}
+	if _, err := flags.ParseLogic("both"); err == nil {
+		t.Error("an unknown logic must not parse — a corrupt row is a hard error, not a default")
+	}
+	if flags.LogicAny.String() != "any" || flags.LogicAll.String() != "all" {
+		t.Error("Logic.String must round-trip the stored spelling")
+	}
+}
+
 // The unique path: hash the submission, probe an index. Same flag -> same hash,
 // normalization included; different flag -> different hash. That is the entire
 // contract the caller depends on.

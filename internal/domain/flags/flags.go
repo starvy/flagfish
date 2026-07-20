@@ -91,6 +91,39 @@ func ParseType(s string) (Type, error) {
 // queryable rather than folklore.
 func (t Type) TimingSafe() bool { return t == TypeStatic }
 
+// Logic is how a challenge's several flags combine (challenges.logic). It is only
+// meaningful for ModeStatic: a unique-flag challenge is one flag per account, so
+// there is nothing to combine and the column is refused a non-default value there.
+type Logic uint8
+
+const (
+	// LogicAny: any one flag satisfies the challenge. This is the default.
+	LogicAny Logic = iota
+	// LogicAll: every flag must be satisfied by the same submission.
+	LogicAll
+)
+
+var logicNames = map[Logic]string{LogicAny: "any", LogicAll: "all"}
+
+func (l Logic) String() string {
+	if s, ok := logicNames[l]; ok {
+		return s
+	}
+	return fmt.Sprintf("Logic(%d)", uint8(l))
+}
+
+// ParseLogic maps challenges.logic onto a Logic over the closed set the column
+// allows; an unknown value is a corrupt row, and the caller treats it as a hard
+// error rather than defaulting silently.
+func ParseLogic(s string) (Logic, error) {
+	for l, name := range logicNames {
+		if name == s {
+			return l, nil
+		}
+	}
+	return 0, fmt.Errorf("flags: unknown logic %q", s)
+}
+
 // A Flag is one stored flag on a challenge.
 type Flag struct {
 	Type Type
@@ -215,6 +248,37 @@ func MatchAny(fs []Flag, provided string) (bool, error) {
 			return false, err
 		}
 		matched = matched || ok
+	}
+	return matched, nil
+}
+
+// MatchAll reports whether `provided` satisfies every one of the challenge's
+// flags, which is the challenges.logic='all' path.
+//
+// Like MatchAny it evaluates every flag and never short-circuits: bailing on the
+// first flag that fails would leak, through response latency, which flag the
+// submission fell short on — the same timing channel crypto/subtle closes on a
+// single flag, reopened by the loop above it.
+//
+// MatchAll(nil) is false, symmetric with MatchAny(nil): "all of no flags" is a
+// vacuous truth the submit path must never treat as a solve, so an empty set is
+// unsatisfiable here rather than trivially satisfied. checkStatic already refuses
+// a flagless challenge before this is reached; this keeps the domain honest on its
+// own.
+//
+// A regex flag that fails to compile is a hard error, never a silent "incorrect":
+// the flag row is corrupt, which is an operator problem, not a player one.
+func MatchAll(fs []Flag, provided string) (bool, error) {
+	if len(fs) == 0 {
+		return false, nil
+	}
+	matched := true
+	for _, f := range fs {
+		ok, err := f.Match(provided)
+		if err != nil {
+			return false, err
+		}
+		matched = matched && ok
 	}
 	return matched, nil
 }
