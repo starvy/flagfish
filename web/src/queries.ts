@@ -76,5 +76,6 @@ export {
   flagSharingQuery,
   ipOverlapQuery,
   accountReportQuery,
+  unissuedSolvesQuery,
   useCreateNotification,
 } from "./queries/admin/moderation";

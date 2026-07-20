@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { accountReportQuery, flagSharingQuery, ipOverlapQuery } from "../../../queries";
+import {
+  accountReportQuery,
+  flagSharingQuery,
+  ipOverlapQuery,
+  unissuedSolvesQuery,
+} from "../../../queries";
 import { ApiError } from "../../../api/errors";
 import { denialOf, PolicyGate } from "../../../policy";
 import {
@@ -88,6 +93,7 @@ function AnticheatPage() {
         items={[
           { id: "sharing", label: "Flag sharing", content: <SharingTab onInspect={inspect} /> },
           { id: "overlap", label: "IP overlap", content: <OverlapTab onInspect={inspect} /> },
+          { id: "unissued", label: "Unissued solves", content: <UnissuedTab onInspect={inspect} /> },
           {
             id: "account",
             label: "Account",
@@ -176,6 +182,86 @@ function SharingTab({ onInspect }: { onInspect: (id: number) => void }) {
             <EmptyState
               title="No shared flags"
               description="A pair appears when a unique flag issued to one account is submitted by another. On static-flag challenges this detector has nothing to say."
+            />
+          }
+          pagination={{
+            page,
+            perPage,
+            total: q.data?.total ?? 0,
+            onPageChange: setPage,
+            onPerPageChange: setPerPage,
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+interface UnissuedSolve {
+  account_id: number;
+  user_id: number;
+  challenge_id: number;
+  challenge_name: string;
+  date: string;
+}
+
+function UnissuedTab({ onInspect }: { onInspect: (id: number) => void }) {
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
+
+  const q = useQuery(unissuedSolvesQuery({ page, per_page: perPage }));
+  const denial = q.error === null ? null : denialOf(q.error);
+  if (denial !== null) return <PolicyGate error={q.error} />;
+
+  const columns: Column<UnissuedSolve>[] = [
+    {
+      key: "account",
+      header: "account",
+      width: "8rem",
+      cell: (s) => <AccountRef id={s.account_id} onInspect={onInspect} />,
+    },
+    {
+      key: "challenge",
+      header: "challenge",
+      cell: (s) => (
+        <span className="ff-row">
+          <span className="ff-mono muted">#{s.challenge_id}</span>
+          <span className="ff-truncate">{s.challenge_name}</span>
+        </span>
+      ),
+    },
+    {
+      key: "when",
+      header: "solved",
+      width: "9rem",
+      cell: (s) => <RelativeTime value={s.date} />,
+    },
+    {
+      key: "act",
+      header: "Review",
+      headerHidden: true,
+      align: "right",
+      width: "6rem",
+      cell: () => <Link to="/admin/users">review</Link>,
+    },
+  ];
+
+  return (
+    <Card title="A unique-flag challenge solved by an account never issued an instance" flush>
+      {q.isError ? (
+        <ErrorPanel error={q.error} onRetry={() => void q.refetch()} />
+      ) : (
+        <DataTable
+          caption="Solves with no issued instance"
+          columns={columns}
+          rows={(q.data?.solves ?? []) as unknown as UnissuedSolve[]}
+          rowKey={(s) => `${s.account_id}:${s.challenge_id}`}
+          loading={q.isPending}
+          dense
+          empty={
+            <EmptyState
+              title="Nothing unaccounted for"
+              description="Every solve on a unique-flag challenge maps to an instance issued to that account. A row here would mean a flag was accepted that this account was never handed — worth a very close look."
             />
           }
           pagination={{

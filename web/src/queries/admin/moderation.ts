@@ -30,6 +30,13 @@ export const accountReportQuery = (id: number) =>
     staleTime: ADMIN_STALE_TIME,
   });
 
+export const unissuedSolvesQuery = (params: PageParams = {}) =>
+  queryOptions({
+    queryKey: qk.admin.unissuedSolves(params),
+    queryFn: () => adminApi.unissuedSolves(params),
+    staleTime: ADMIN_STALE_TIME,
+  });
+
 // Publishing a notification pushes it down the SSE stream on its own; the paged history is
 // what needs dropping.
 export function useCreateNotification() {

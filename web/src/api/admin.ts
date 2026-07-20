@@ -160,4 +160,10 @@ export const adminApi = {
 
   accountReport: (id: number) =>
     request<AcAccountReport>("GET", `${P}/anticheat/accounts/${id}`),
+
+  unissuedSolves: (params: PageParams = {}) =>
+    request<Schemas["AcUnissuedSolvesOutputBody"]>(
+      "GET",
+      `${P}/anticheat/unissued-solves${query({ ...params })}`,
+    ),
 };

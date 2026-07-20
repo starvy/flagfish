@@ -57,6 +57,12 @@ export const qk = {
         | readonly ["admin", "anticheat", "ip-overlap"]
         | readonly ["admin", "anticheat", "ip-overlap", IPOverlapParams],
     accountReport: (id: number) => ["admin", "anticheat", "accounts", id] as const,
+    unissuedSolves: (params?: PageParams) =>
+      (params === undefined
+        ? ["admin", "anticheat", "unissued-solves"]
+        : ["admin", "anticheat", "unissued-solves", params]) as
+        | readonly ["admin", "anticheat", "unissued-solves"]
+        | readonly ["admin", "anticheat", "unissued-solves", PageParams],
   },
 } as const;
 
