@@ -224,6 +224,9 @@ interface FormState {
   logic: "any" | "all" | "";
   first_blood: "none" | "announce" | "bonus" | "";
   first_blood_bonus: string;
+  // The suggested-next challenge id, or "" for none. PATCH-only, so it is only offered while
+  // editing an existing challenge.
+  next_id: string;
   value: string;
   initial: string;
   minimum: string;
@@ -243,6 +246,7 @@ const BLANK: FormState = {
   logic: "any",
   first_blood: "none",
   first_blood_bonus: "",
+  next_id: "",
   value: "0",
   initial: "",
   minimum: "",
@@ -267,6 +271,7 @@ function seedOf(ch: AdminChallenge | null, read: ChallengeDetail | null): FormSt
       logic: ch.logic as FormState["logic"],
       first_blood: ch.first_blood as FormState["first_blood"],
       first_blood_bonus: optNum(ch.first_blood_bonus),
+      next_id: ch.next_id != null ? String(ch.next_id) : "",
       value: String(ch.value),
       initial: optNum(ch.initial),
       minimum: optNum(ch.minimum),
@@ -310,6 +315,9 @@ function DetailsTab({
   const create = useCreateChallenge();
   const update = useUpdateChallenge();
   const setState = useSetChallengeState();
+  // Other challenges to suggest as the next one. Self is filtered out client-side; the CHECK is the
+  // real arbiter. Only needed once the challenge exists, since next_id is PATCH-only.
+  const board = useQuery({ ...editorBoardQuery, enabled: id !== null });
 
   const [base, setBase] = useState<FormState>(() => seedOf(saved, read));
   const [form, setForm] = useState<FormState>(base);
@@ -535,6 +543,25 @@ function DetailsTab({
           </Field>
         )}
 
+        {id !== null && (
+          <Field
+            name="next_id"
+            label="Next challenge"
+            hint="Suggested to a player right after they solve this one. Optional."
+          >
+            <Select
+              value={form.next_id}
+              onChange={(e) => set("next_id", e.target.value)}
+              options={[
+                { value: "", label: "none" },
+                ...(board.data?.challenges ?? [])
+                  .filter((c) => c.id !== id)
+                  .map((c) => ({ value: String(c.id), label: `${c.name} (${c.category})` })),
+              ]}
+            />
+          </Field>
+        )}
+
         <Field name="max_attempts" label="Max attempts" hint="0 is unlimited.">
           <Input
             type="number"
@@ -609,6 +636,7 @@ function patchOf(form: FormState, base: FormState): ChallengePatch {
   } else if (form.first_blood === "bonus" && form.first_blood_bonus !== base.first_blood_bonus) {
     patch.first_blood_bonus = Number(form.first_blood_bonus);
   }
+  if (form.next_id !== base.next_id) patch.next_id = form.next_id === "" ? null : Number(form.next_id);
   if (form.position !== base.position && form.position !== "") patch.position = Number(form.position);
   if (form.attribution !== base.attribution) patch.attribution = orNull(form.attribution);
   if (form.connection_info !== base.connection_info) {

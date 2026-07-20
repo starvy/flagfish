@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { isApiError, type AttemptResult, type AttemptStatus } from "../api/client";
 import { useAttempt } from "../queries";
 import { Alert, Button, Input } from "../ui";
@@ -119,6 +120,15 @@ function Verdict({ verdict }: { verdict: AttemptResult }) {
         >
           {verdict.first_blood && <p className="first-blood flag-form__blood">first blood</p>}
           <p>+{verdict.value} points.</p>
+          {verdict.next_id != null && (
+            <Link
+              to="/challenges/$challengeId"
+              params={{ challengeId: verdict.next_id }}
+              className="flag-form__next"
+            >
+              next challenge →
+            </Link>
+          )}
         </Alert>
       );
     case "already_solved":

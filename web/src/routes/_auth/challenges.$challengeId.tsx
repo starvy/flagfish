@@ -56,6 +56,15 @@ function ChallengePage() {
             {solveCountLabel(challenge.solve_count)}
           </span>
           {challenge.solved && <Badge tone="success">solved</Badge>}
+          {challenge.solved && challenge.next_id != null && (
+            <Link
+              to="/challenges/$challengeId"
+              params={{ challengeId: challenge.next_id }}
+              className="chal-detail__next"
+            >
+              next challenge →
+            </Link>
+          )}
           {challenge.locked && <Badge tone="warn">locked</Badge>}
           {challenge.flag_mode === "unique" && <Badge tone="info">unique flag</Badge>}
           {(challenge.tags ?? []).map((tag) => (

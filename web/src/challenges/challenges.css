@@ -263,6 +263,18 @@
   margin: 0 0 var(--space-1);
 }
 
+/* The suggested next challenge: shown on the correct verdict and, once solved, in the detail
+   header. A quiet link, not a shout — the solve is the loud part. */
+.flag-form__next {
+  display: inline-block;
+  margin-top: var(--space-2);
+  font-weight: 600;
+}
+
+.chal-detail__next {
+  font-weight: 600;
+}
+
 /* --------------------------------------------------------------- solves -- */
 
 .solve-list__blood td {
