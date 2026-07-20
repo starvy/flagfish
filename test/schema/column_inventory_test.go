@@ -123,6 +123,8 @@ var colinvExempt = map[string]string{
 	"challenges.updated_at":  "DB-stamped alongside every write (SET updated_at = now())",
 	"teams.created_at":       "DB-stamped on insert (DEFAULT now())",
 	"users.created_at":       "DB-stamped on insert (DEFAULT now())",
+	"users.secret":           "reserved: CTFd-parity import fidelity — carried by import/export; vestigial even upstream (no reader in CTFd master, invite codes use password); never surfaced by the app",
+	"teams.secret":           "reserved: CTFd-parity import fidelity — see users.secret",
 }
 
 // colinvSchemaColumns enumerates the live columns of the six tables in ordinal order, and

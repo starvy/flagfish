@@ -230,9 +230,10 @@ func translateTeams(a *Archive, plan *Plan, rep *Report) error {
 	}
 	rep.read("teams", len(rows))
 	for _, t := range rows {
-		// secret is vestigial upstream and is dropped, not carried.
+		// secret has no reader anywhere here, but it is carried verbatim so a round-tripped
+		// instance loses nothing: import fidelity is the property, not a feature.
 		plan.Teams = append(plan.Teams, db.ImportTeamsParams{
-			ID: t.ID, Name: t.Name, Email: t.Email, PasswordHash: t.Password,
+			ID: t.ID, Name: t.Name, Email: t.Email, PasswordHash: t.Password, Secret: t.Secret,
 			Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,
 			BracketID: t.BracketID, CaptainID: t.CaptainID, Hidden: t.Hidden, Banned: t.Banned,
 			CreatedAt: nowTS(),
@@ -258,7 +259,7 @@ func translateUsers(a *Archive, plan *Plan, rep *Report) error {
 			role = "admin"
 		}
 		plan.Users = append(plan.Users, db.ImportUsersParams{
-			ID: u.ID, Name: u.Name, Email: u.Email, PasswordHash: u.Password, Role: role,
+			ID: u.ID, Name: u.Name, Email: u.Email, PasswordHash: u.Password, Role: role, Secret: u.Secret,
 			Website: u.Website, Affiliation: u.Affiliation, Country: u.Country, Language: u.Language,
 			BracketID: u.BracketID, TeamID: u.TeamID, Hidden: u.Hidden, Banned: u.Banned,
 			Verified: u.Verified, MustChangePassword: false, CreatedAt: nowTS(),

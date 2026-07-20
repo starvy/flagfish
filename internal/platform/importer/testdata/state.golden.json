@@ -272,7 +272,7 @@
       "email": "team1@x.ctf",
       "banned": false,
       "hidden": false,
-      "secret": null,
+      "secret": "team-secret-carried",
       "bracket_id": 1,
       "captain_id": 2,
       "password_hash": "$2b$12$0123456789012345678901uReTUYbXNq9m0Zx1c2v3B4n5M6k7J8i"
@@ -300,7 +300,7 @@
       "email": "alice@x.ctf",
       "banned": false,
       "hidden": false,
-      "secret": null,
+      "secret": "alice-secret-carried",
       "team_id": 1,
       "verified": true,
       "bracket_id": 1,

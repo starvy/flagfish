@@ -106,7 +106,7 @@ func referenceArchive(t *testing.T) archiveTables {
 
 		"users": {
 			ctfdUserRow(1, "admin", "admin@x.ctf", "admin"),
-			mergeMap(ctfdUserRow(2, "alice", "alice@x.ctf", "user"), map[string]any{"team_id": 1, "bracket_id": 1}),
+			mergeMap(ctfdUserRow(2, "alice", "alice@x.ctf", "user"), map[string]any{"team_id": 1, "bracket_id": 1, "secret": "alice-secret-carried"}),
 			mergeMap(ctfdUserRow(3, "bob", "bob@x.ctf", "user"), map[string]any{"team_id": 1}),
 		},
 
@@ -114,7 +114,7 @@ func referenceArchive(t *testing.T) archiveTables {
 			map[string]any{
 				"id": 1, "name": "Team One", "email": "team1@x.ctf", "password": bcryptHash,
 				"captain_id": 2, "bracket_id": 1, "hidden": false, "banned": false,
-				"secret": "should-be-dropped",
+				"secret": "team-secret-carried",
 			},
 		},
 
