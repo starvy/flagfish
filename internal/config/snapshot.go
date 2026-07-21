@@ -551,8 +551,9 @@ func (s *Snapshot) violations() []violation {
 // validate checks the things that are only wrong in combination — the ones no
 // single key's parser can see.
 func (s *Snapshot) validate() error {
-	var problems []error
-	for _, v := range s.violations() {
+	violations := s.violations()
+	problems := make([]error, 0, len(violations))
+	for _, v := range violations {
 		problems = append(problems, v.err)
 	}
 	if len(problems) > 0 {

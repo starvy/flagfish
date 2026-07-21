@@ -192,7 +192,7 @@ func (s *Service) AnswerUserFields(ctx context.Context, userID int64, answers []
 			return nil, &FieldAnswerError{FieldID: a.FieldID, Reason: "no such field"}
 		}
 		alreadyAnswered := field.IsAnswered(r.Value)
-		if !r.Editable && !(r.Required && !alreadyAnswered) {
+		if !r.Editable && (!r.Required || alreadyAnswered) {
 			return nil, &FieldAnswerError{FieldID: r.ID, Name: r.Name, Reason: "this field cannot be edited"}
 		}
 		value, present, normErr := field.Normalize(r.FieldType, a.Value)

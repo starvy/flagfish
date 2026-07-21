@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -128,7 +129,7 @@ func Normalize(fieldType string, raw json.RawMessage) (value json.RawMessage, pr
 		}
 		encoded, err := json.Marshal(s)
 		if err != nil {
-			return nil, false, err
+			return nil, false, fmt.Errorf("field: marshal text answer: %w", err)
 		}
 		return encoded, true, nil
 	case TypeBoolean:

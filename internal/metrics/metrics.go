@@ -6,6 +6,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -75,7 +76,10 @@ func (m *Metrics) Handler() http.Handler {
 // Ready reports whether the database is reachable. It backs /readyz: liveness stays green on a dead
 // pool, but readiness must not, or a replica with a broken pool keeps being handed traffic.
 func (m *Metrics) Ready(ctx context.Context) error {
-	return m.pool.Ping(ctx)
+	if err := m.pool.Ping(ctx); err != nil {
+		return fmt.Errorf("metrics: readiness ping: %w", err)
+	}
+	return nil
 }
 
 // ObserveSubmit records one submission's latency under its outcome. Nil-safe, so a server wired

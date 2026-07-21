@@ -217,7 +217,7 @@ func Decide(p Policy) Outcome {
 	// 13. Pause. Only the attempt class is gated — see PolicyPauseDoesNotBlockUnlocks.
 	//     Preview lifts the gate only for an admin: it arrives straight off the query
 	//     string, so honouring it for anyone would make `?preview=1` a pause bypass.
-	if r.Class == ClassChallengeAttempt && e.Paused && !(r.Preview && pr.IsAdmin) {
+	if r.Class == ClassChallengeAttempt && e.Paused && (!r.Preview || !pr.IsAdmin) {
 		return Outcome{Status: 403, Reason: ReasonPaused}
 	}
 

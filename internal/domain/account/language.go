@@ -40,7 +40,7 @@ func WellFormedLanguageTag(s string) bool {
 // subtag class being unambiguous by shape given the ones before it.
 func isLangtag(parts []string) bool {
 	n := len(parts)
-	i := 0
+	var i int
 
 	switch p := parts[0]; {
 	case isAlphaLen(p, 2, 3):
@@ -68,7 +68,7 @@ func isLangtag(parts []string) bool {
 	for i < n && isSingleton(parts[i]) { // extension: singleton then 1+ subtags
 		i++
 		got := 0
-		for i < n && isAlphaNumLen(parts[i], 2, 8) {
+		for i < n && isAlphaNumLen(parts[i], 2) {
 			i++
 			got++
 		}
@@ -79,7 +79,7 @@ func isLangtag(parts []string) bool {
 	if i < n && isX(parts[i]) { // trailing private use
 		i++
 		got := 0
-		for i < n && isAlphaNumLen(parts[i], 1, 8) {
+		for i < n && isAlphaNumLen(parts[i], 1) {
 			i++
 			got++
 		}
@@ -96,7 +96,7 @@ func isPrivateUseOnly(parts []string) bool {
 		return false
 	}
 	for _, p := range parts[1:] {
-		if !isAlphaNumLen(p, 1, 8) {
+		if !isAlphaNumLen(p, 1) {
 			return false
 		}
 	}
@@ -118,7 +118,7 @@ func isGrandfathered(s string) bool {
 }
 
 func isVariant(s string) bool {
-	if isAlphaNumLen(s, 5, 8) {
+	if isAlphaNumLen(s, 5) {
 		return true
 	}
 	return len(s) == 4 && isDigit(s[0]) && isAlphaNum(s)
@@ -134,7 +134,7 @@ func isAlphaLen(s string, lo, hi int) bool {
 	if len(s) < lo || len(s) > hi {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if !isAlpha(s[i]) {
 			return false
 		}
@@ -146,7 +146,7 @@ func isDigitLen(s string, lo, hi int) bool {
 	if len(s) < lo || len(s) > hi {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if !isDigit(s[i]) {
 			return false
 		}
@@ -154,15 +154,18 @@ func isDigitLen(s string, lo, hi int) bool {
 	return true
 }
 
-func isAlphaNumLen(s string, lo, hi int) bool {
-	if len(s) < lo || len(s) > hi {
+// maxSubtag is the RFC 5646 ceiling on a single alphanumeric subtag; every caller bounds by it.
+const maxSubtag = 8
+
+func isAlphaNumLen(s string, lo int) bool {
+	if len(s) < lo || len(s) > maxSubtag {
 		return false
 	}
 	return isAlphaNum(s)
 }
 
 func isAlphaNum(s string) bool {
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if !isAlphaNumByte(s[i]) {
 			return false
 		}

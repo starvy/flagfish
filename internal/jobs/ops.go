@@ -92,7 +92,11 @@ func (o *opsWorker) start(ctx context.Context, q *db.Queries, taskID int64, deta
 func (o *opsWorker) progress(q *db.Queries, taskID int64) exporter.Progress {
 	return func(ctx context.Context, detail string, percent int) {
 		d := detail
-		if err := q.SetTaskProgress(ctx, db.SetTaskProgressParams{ID: taskID, Progress: int32(percent), Detail: &d}); err != nil {
+		// A progress reading is a 0-100 percentage; clamp it so a stray value can never wrap the
+		// int32 column into a negative or nonsensical progress.
+		//nolint:gosec // clamped to 0-100 on the line above; the int32 conversion cannot overflow.
+		pct := int32(min(max(percent, 0), 100))
+		if err := q.SetTaskProgress(ctx, db.SetTaskProgressParams{ID: taskID, Progress: pct, Detail: &d}); err != nil {
 			o.Log.WarnContext(ctx, "task progress write failed", "task", taskID, "error", err)
 		}
 	}

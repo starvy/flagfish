@@ -68,7 +68,10 @@ func WriteStandings(w io.Writer, rows []StandingRow) error {
 		}
 	}
 	cw.Flush()
-	return cw.Error()
+	if err := cw.Error(); err != nil {
+		return fmt.Errorf("csv standings flush: %w", err)
+	}
+	return nil
 }
 
 var usersHeader = []string{
@@ -124,7 +127,10 @@ func WriteUsers(ctx context.Context, q querier, w io.Writer) error {
 		return fmt.Errorf("csv users iterate: %w", err)
 	}
 	cw.Flush()
-	return cw.Error()
+	if err := cw.Error(); err != nil {
+		return fmt.Errorf("csv users flush: %w", err)
+	}
+	return nil
 }
 
 var teamsHeader = []string{
@@ -181,7 +187,10 @@ func WriteTeams(ctx context.Context, q querier, w io.Writer) error {
 		return fmt.Errorf("csv teams iterate: %w", err)
 	}
 	cw.Flush()
-	return cw.Error()
+	if err := cw.Error(); err != nil {
+		return fmt.Errorf("csv teams flush: %w", err)
+	}
+	return nil
 }
 
 // formatTime renders an instant as RFC3339 in UTC; a zero time (an account with no scoring event yet,
