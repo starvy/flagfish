@@ -48,7 +48,7 @@ func hostPort(t *testing.T, raw, host string) string {
 // The literal cases are the obvious half. The one that matters is "loopback by name": nothing in
 // the URL says 127.0.0.1, and the refusal still lands, because the decision is taken on the
 // address the socket is about to connect to and not on the hostname it came from.
-func TestS30_WebhookRefusesInternalDestinations(t *testing.T) {
+func TestS45_WebhookRefusesInternalDestinations(t *testing.T) {
 	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -90,7 +90,7 @@ func TestS30_WebhookRefusesInternalDestinations(t *testing.T) {
 // A validated destination that answers 302 is a destination that gets to choose the next one, so
 // the poster does not follow any of them. The receiver here is on loopback and explicitly
 // exempted, so the first hop is permitted and the refusal can only be about the redirect.
-func TestS31_WebhookRefusesRedirects(t *testing.T) {
+func TestS46_WebhookRefusesRedirects(t *testing.T) {
 	tests := []struct {
 		name string
 		to   string
@@ -125,7 +125,7 @@ func TestS31_WebhookRefusesRedirects(t *testing.T) {
 //
 // Without this the suite would pass just as well against a poster that refused everything, and
 // the escape hatch a self-hoster with an internal Mattermost needs would be untested.
-func TestS32_NamedExemptionStillDelivers(t *testing.T) {
+func TestS47_NamedExemptionStillDelivers(t *testing.T) {
 	delivered := make(chan []byte, 1)
 	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -150,7 +150,7 @@ func TestS32_NamedExemptionStillDelivers(t *testing.T) {
 //
 // Asserted on the policy directly so the boundary between "public" and "internal" is pinned
 // without a socket, including the ranges no deployment ever reaches on purpose.
-func TestS33_EgressPolicyClassification(t *testing.T) {
+func TestS48_EgressPolicyClassification(t *testing.T) {
 	tests := []struct {
 		name    string
 		addr    string
@@ -202,7 +202,7 @@ func policyFor(cidrs ...string) egress.Policy {
 }
 
 // S34 — an operator who mistypes the exemption is told, rather than quietly getting no exemption.
-func TestS34_MalformedExemptionIsLoud(t *testing.T) {
+func TestS49_MalformedExemptionIsLoud(t *testing.T) {
 	t.Setenv("FLAGFISH_DATABASE_URL", "postgres://u:p@localhost:5432/db")
 	t.Setenv("FLAGFISH_WEBHOOK_ALLOWED_NETWORKS", "10.0.5.0/24,not-a-network")
 
