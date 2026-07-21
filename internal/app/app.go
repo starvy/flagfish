@@ -29,8 +29,14 @@ import (
 	"github.com/starvy/flagfish/internal/mail"
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
+	"github.com/starvy/flagfish/internal/opsjob"
 	"github.com/starvy/flagfish/internal/storage"
 )
+
+// Version is the build's version string. main sets it from its own -ldflags-stamped var before the
+// graph is built; it is supplied into every role so the backup/import workers stamp the same value
+// the CLI does. "dev" for a plain build.
+var Version = "dev"
 
 // ServeConfig is the resolved serve-role configuration. The flags and environment are
 // parsed in main; this is the settled result handed to the graph.
@@ -66,6 +72,7 @@ func ServeOptions(ctx context.Context, env config.Env, log *slog.Logger, sc Serv
 		anticheat.Module,
 		files.Module,
 		metrics.Module,
+		opsjob.Module,
 
 		fx.Provide(provideStore),
 		fx.Supply(httpapi.ListenAddr(sc.Addr)),
@@ -101,8 +108,10 @@ func ServeOptions(ctx context.Context, env config.Env, log *slog.Logger, sc Serv
 // that serves HTTP.
 func WorkerOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Option {
 	// The worker sends mail, so it needs the mailer, which needs the config snapshot it
-	// is built from — both roles pull the same SMTP settings out of the same table.
-	return append(baseOptions(ctx, env, log), config.Module, mail.Module, jobs.WorkerModule)
+	// is built from — both roles pull the same SMTP settings out of the same table. It also needs
+	// the object store: the backup/restore/import workers read and write archives and file blobs
+	// through it, and without it those jobs are not registered at all.
+	return append(baseOptions(ctx, env, log), config.Module, mail.Module, fx.Provide(provideStore), jobs.WorkerModule)
 }
 
 func baseOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Option {
@@ -119,6 +128,7 @@ func baseOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Opt
 		fx.Provide(func() context.Context { return ctx }),
 		fx.Supply(env),
 		fx.Supply(log),
+		fx.Supply(jobs.ProductVersion(Version)),
 		fx.Provide(providePool),
 	}
 }

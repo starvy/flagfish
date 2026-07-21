@@ -17,6 +17,7 @@ import (
 	"github.com/starvy/flagfish/internal/gameplay"
 	"github.com/starvy/flagfish/internal/httpapi"
 	"github.com/starvy/flagfish/internal/notify"
+	"github.com/starvy/flagfish/internal/opsjob"
 )
 
 // OpenAPIYAML renders one of the two API contracts — the admin surface when admin is true, the
@@ -41,6 +42,7 @@ func OpenAPIYAML(ctx context.Context, log *slog.Logger, admin bool) ([]byte, err
 		Catalog:     catalog.New(nil),
 		Board:       board.New(nil, mode),
 		AdminOps:    adminops.New(nil),
+		Ops:         opsjob.New(nil, nil, nil),
 		Anticheat:   anticheat.New(nil),
 		Notify:      notifySvc,
 		Broadcaster: notify.NewBroadcaster(nil, notifySvc, log),

@@ -50,6 +50,10 @@ var version = "dev"
 
 func main() { os.Exit(main2()) }
 
+// The graph stamps backups and imports with the same version string this binary reports, so the
+// async workers and the CLI subcommands are indistinguishable in a manifest.
+func init() { app.Version = version }
+
 // main2 exists so that os.Exit is called in exactly one place, after every defer in
 // here has run. os.Exit skips defers, so a signal handler released by `defer stop()`
 // would otherwise leak on the error path.

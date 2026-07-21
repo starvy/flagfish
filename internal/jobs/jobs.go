@@ -24,6 +24,7 @@ import (
 
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/mail"
+	"github.com/starvy/flagfish/internal/storage"
 )
 
 // WorkerDeps is everything the registered workers need to do their jobs. It is a struct
@@ -35,6 +36,13 @@ type WorkerDeps struct {
 	Poster   WebhookPoster
 	Notifier AdminNotifier
 	Log      *slog.Logger
+
+	// Pool and Store are what the backup/restore/import workers run against: the export/restore
+	// code and the object store that holds file blobs and the archives themselves. Version is
+	// stamped into a backup manifest and into instance.version on import.
+	Pool    *pgxpool.Pool
+	Store   storage.Store
+	Version ProductVersion
 }
 
 // ErrNoWorkers is returned when the worker role is started but nothing is
@@ -66,7 +74,18 @@ func Workers(deps WorkerDeps) (workers *river.Workers, registered int) {
 	})
 	registered++
 
-	// river.AddWorker(w, &importer.RunWorker{…}); registered++
+	// The backup/restore/import workers need a pool and a store. Register them only when both are
+	// wired: a worker process with no object storage cannot honestly run a backup, and registering a
+	// worker that would fail every job is the silent-degradation this codebase refuses.
+	if deps.Pool != nil && deps.Store != nil {
+		shared := opsWorker{Pool: deps.Pool, Store: deps.Store, Version: deps.Version, Log: deps.Log}
+		river.AddWorker(w, &RunExportWorker{opsWorker: shared})
+		registered++
+		river.AddWorker(w, &RunRestoreWorker{opsWorker: shared})
+		registered++
+		river.AddWorker(w, &RunImportWorker{opsWorker: shared})
+		registered++
+	}
 
 	return w, registered
 }

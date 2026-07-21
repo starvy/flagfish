@@ -25,6 +25,7 @@ import (
 	"github.com/starvy/flagfish/internal/gameplay"
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
+	"github.com/starvy/flagfish/internal/opsjob"
 	"github.com/starvy/flagfish/internal/web"
 )
 
@@ -49,6 +50,10 @@ type Options struct {
 	AdminOps  *adminops.Service
 	Anticheat *anticheat.Service
 	Files     *files.Service
+
+	// Ops enqueues and reports async admin operations (backup, restore, import) over the tasks
+	// queue. Nil leaves those routes unregistered — they are only wired in the serve graph.
+	Ops *opsjob.Service
 
 	// Metrics is the Prometheus surface. Nil disables /metrics and /readyz and skips
 	// instrumentation — the server still serves, it is just blind.

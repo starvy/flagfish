@@ -327,6 +327,14 @@ type Querier interface {
 	// retired by hide/ban, never erased. Any remaining members fall to team_id NULL via the ON DELETE
 	// SET NULL on users, so a zero-history team created by mistake vanishes cleanly.
 	DisbandTeam(ctx context.Context, captainID int64) (int64, error)
+	// Async admin operations (backup, restore, import) tracked in the tasks table. River owns the
+	// execution; this table owns the state a poller reads. The progress writes below run on a
+	// connection SEPARATE from the restore transaction on purpose: a restore is one transaction so its
+	// own progress UPDATEs would be invisible until it commits.
+	// Inserts a queued task. The tasks_one_in_flight partial unique index raises 23505 when a task of
+	// the same kind is already queued or running — that unique violation IS the single-in-flight
+	// refusal, surfaced to the caller as 409, never a second job queued to collide.
+	EnqueueTask(ctx context.Context, arg EnqueueTaskParams) (Task, error)
 	// "Already on a team" is the WHERE clause, not a prior read: zero rows means the user was enrolled
 	// elsewhere by the time this ran. The caps trigger enforces team_size on the same statement.
 	EnrollUser(ctx context.Context, arg EnrollUserParams) (int64, error)
@@ -341,6 +349,9 @@ type Querier interface {
 	// the no-op SET exists only so RETURNING fires on the conflict path, and it re-asserts the same
 	// user_mode so the trigger stays satisfied.
 	EnsureInstance(ctx context.Context, arg EnsureInstanceParams) (string, error)
+	// A failure is loud and terminal: the error text is stamped for the operator and the row leaves the
+	// in-flight set, freeing the kind for another attempt.
+	FailTask(ctx context.Context, arg FailTaskParams) error
 	// The anti-cheat detectors. Reads only. These never mutate, never penalise, and never tell the
 	// player anything: auto-penalisation was considered and rejected (no appeal path, and a false
 	// positive becomes an instant ban during a live event). They feed an admin review queue; a human
@@ -386,6 +397,7 @@ type Querier interface {
 	//
 	// Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
 	FindUnissuedSolves(ctx context.Context, arg FindUnissuedSolvesParams) ([]FindUnissuedSolvesRow, error)
+	FinishTask(ctx context.Context, arg FinishTaskParams) error
 	// Looked up by sha256(token); the plaintext is shown once, at creation, and never stored —
 	// a table of plaintext secrets turns every dump or export into a bearer-credential leak.
 	// Expiry is enforced here, in the WHERE clause, for the same reason as sessions.
@@ -480,6 +492,7 @@ type Querier interface {
 	// The account column is resolved from `instance`, a singleton and immutable, so the
 	// time-travel board can never be computed against the wrong account model.
 	GetStandingsAsOf(ctx context.Context, arg GetStandingsAsOfParams) ([]GetStandingsAsOfRow, error)
+	GetTask(ctx context.Context, id int64) (Task, error)
 	GetTeamForJoin(ctx context.Context, name string) (GetTeamForJoinRow, error)
 	// Hidden and banned teams 404 publicly, matching the board and the solve lists. The score sums
 	// the stamped solves.team_id ledger — the same legs the scoreboard reads, and it takes the same
@@ -805,6 +818,12 @@ type Querier interface {
 	// confirmed (ConfirmEmailChange). users_pending_email_uniq rejects a duplicate queued address —
 	// surfaced as a conflict, not a lost check-then-insert race.
 	SetPendingEmail(ctx context.Context, arg SetPendingEmailParams) (int64, error)
+	// Advances a running task. Written on its own pooled connection, so a caller polling GetTask sees
+	// movement while a single-transaction restore is still open and uncommitted.
+	SetTaskProgress(ctx context.Context, arg SetTaskProgressParams) error
+	// Claims a queued task for a worker. Kept narrow to state='queued' so a redelivered job cannot
+	// reset a task that already advanced.
+	StartTask(ctx context.Context, arg StartTaskParams) error
 	// Read-side disambiguation for the roster mutations above: which of captaincy, membership, or the
 	// scored guard turned a zero-row write away. Off the hot path — it runs only to shape an error.
 	TeamCaptainScored(ctx context.Context, teamID int64) (TeamCaptainScoredRow, error)

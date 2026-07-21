@@ -69,6 +69,11 @@ func (s *Server) registerRoutes() {
 		s.registerAdminAudit()
 		s.registerAdminExport()
 	}
+	// Async backup/restore/import is its own service (tasks queue + object store), wired only in the
+	// serve graph. Registered on its own so a doc-only build without it still emits every other route.
+	if s.opts.Ops != nil {
+		s.registerAdminOps()
+	}
 	if s.opts.Anticheat != nil {
 		s.registerAdminAnticheat()
 	}

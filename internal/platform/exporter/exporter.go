@@ -165,10 +165,30 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Export writes the instance behind pool into w as an archive of the given profile. File blobs stream
-// out of store; an object the store cannot return is a hard error, because an archive missing a
-// challenge's attachment is worse than no archive at all.
+// Progress reports coarse advancement of an export or restore, 0..100, with a short human detail.
+// The reporter MUST write on a connection separate from the operation itself — a restore is one
+// transaction, so a progress write inside it is invisible until commit. A nil Progress disables
+// reporting. It is deliberately fallible-free: a progress-write hiccup must never fail a good
+// restore, so the caller logs and swallows on its own side.
+type Progress func(ctx context.Context, detail string, percent int)
+
+func (p Progress) report(ctx context.Context, detail string, percent int) {
+	if p != nil {
+		p(ctx, detail, percent)
+	}
+}
+
+// Export writes the instance behind pool into w as an archive of the given profile. See
+// ExportWithProgress; this is the no-progress form the CLI uses.
 func Export(ctx context.Context, pool *pgxpool.Pool, store storage.Store, profile Profile, productVer string, w io.Writer) (*Report, error) {
+	return ExportWithProgress(ctx, pool, store, profile, productVer, w, nil)
+}
+
+// ExportWithProgress writes the instance behind pool into w as an archive of the given profile. File
+// blobs stream out of store; an object the store cannot return is a hard error, because an archive
+// missing a challenge's attachment is worse than no archive at all. progress, when non-nil, is
+// called as each table and the blob tree are written.
+func ExportWithProgress(ctx context.Context, pool *pgxpool.Pool, store storage.Store, profile Profile, productVer string, w io.Writer, progress Progress) (*Report, error) {
 	if profile != ProfileSafe && profile != ProfileBackup {
 		return nil, fmt.Errorf("export: invalid profile %q", profile)
 	}
@@ -198,7 +218,8 @@ func Export(ctx context.Context, pool *pgxpool.Pool, store storage.Store, profil
 	var sums []string
 	var filesRows [][]byte
 
-	for _, t := range registry {
+	for i, t := range registry {
+		progress.report(ctx, "exporting "+t.name, 5+i*85/len(registry))
 		if profile == ProfileSafe && t.omitInSafe {
 			manifest.Omitted = append(manifest.Omitted, t.name)
 			continue
@@ -242,6 +263,7 @@ func Export(ctx context.Context, pool *pgxpool.Pool, store storage.Store, profil
 	sort.Strings(manifest.Omitted)
 	manifest.Omitted = dedupe(manifest.Omitted)
 
+	progress.report(ctx, "exporting file blobs", 90)
 	uploadBytes, uploadSums, err := writeUploads(ctx, zw, store, filesRows, rep)
 	if err != nil {
 		return nil, err

@@ -461,6 +461,23 @@ components:
         - reason
         - date
       type: object
+    AdminBackupInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminBackupInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        profile:
+          description: backup (restorable, default) or safe (shareable, masked)
+          enum:
+            - backup
+            - safe
+          type: string
+      type: object
     AdminBanInputBody:
       additionalProperties: false
       properties:
@@ -2493,6 +2510,46 @@ components:
         - issued
         - utilization
       type: object
+    TaskBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/TaskBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        detail:
+          type: string
+        download:
+          type: string
+        error:
+          type: string
+        id:
+          format: int64
+          type: integer
+        kind:
+          type: string
+        progress:
+          format: int32
+          type: integer
+        state:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - id
+        - kind
+        - state
+        - progress
+        - created_at
+        - updated_at
+      type: object
 info:
   title: flagfish (admin)
   version: 1.0.0
@@ -2818,6 +2875,31 @@ paths:
       summary: Revoke a manual point adjustment
       tags:
         - admin/awards
+  /backup:
+    post:
+      operationId: admin-backup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBackupInputBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Start a backup (async, over the tasks queue)
+      tags:
+        - admin/ops
   /brackets:
     get:
       operationId: admin-list-brackets
@@ -3688,6 +3770,40 @@ paths:
       summary: Delete a challenge file
       tags:
         - admin/files
+  /import:
+    post:
+      operationId: admin-import
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                filename:
+                  contentMediaType: application/octet-stream
+                  description: filename of the file being uploaded
+                  format: binary
+                  type: string
+                name:
+                  description: general purpose name for multipart form value
+                  type: string
+              type: object
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Import a foreign (CTFd) archive (async, one-way)
+      tags:
+        - admin/ops
   /notifications:
     post:
       operationId: admin-create-notification
@@ -3853,6 +3969,40 @@ paths:
       summary: Pool utilisation for every unique-flag challenge
       tags:
         - admin/instances
+  /restore:
+    post:
+      operationId: admin-restore
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                filename:
+                  contentMediaType: application/octet-stream
+                  description: filename of the file being uploaded
+                  format: binary
+                  type: string
+                name:
+                  description: general purpose name for multipart form value
+                  type: string
+              type: object
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Restore a --backup archive (async)
+      tags:
+        - admin/ops
   /tags:
     get:
       operationId: admin-list-tags
@@ -3925,6 +4075,54 @@ paths:
       summary: Rename a tag, merging it into the destination
       tags:
         - admin/tags
+  /tasks/{id}:
+    get:
+      operationId: admin-task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Report an async operation's progress
+      tags:
+        - admin/ops
+  /tasks/{id}/download:
+    get:
+      operationId: admin-task-download
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Download a finished backup's archive
+      tags:
+        - admin/ops
   /teams:
     get:
       operationId: admin-list-teams

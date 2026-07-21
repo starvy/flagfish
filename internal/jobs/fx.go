@@ -14,6 +14,7 @@ import (
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/mail"
 	"github.com/starvy/flagfish/internal/notify"
+	"github.com/starvy/flagfish/internal/storage"
 )
 
 // bindNotifier exposes notify.Service as the narrow AdminNotifier the pool-exhaustion worker needs.
@@ -59,8 +60,8 @@ var WorkerModule = fx.Module(
 	fx.Invoke(func(*Worker) {}),
 )
 
-func newWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier) (*Worker, error) {
-	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log})
+func newWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) (*Worker, error) {
+	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version})
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +81,8 @@ var InProcessWorkerModule = fx.Module(
 	fx.Invoke(startInProcessWorker),
 )
 
-func startInProcessWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier) error {
-	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log})
+func startInProcessWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) error {
+	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version})
 	if errors.Is(err, ErrNoWorkers) {
 		log.Warn("no workers are registered yet; serving without an in-process worker")
 		return nil

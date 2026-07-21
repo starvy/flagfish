@@ -77,11 +77,21 @@ var foreignKeys = []fk{
 	{"hint_unlocks", "award_id", "awards", "id"},
 }
 
-// Restore rehydrates a backup archive into the instance behind pool, in one transaction. A safe
-// archive is rejected: it lacks the secrets a live instance needs. Any error rolls the whole restore
-// back, so a failed restore leaves the instance exactly as it was. The user mode is taken from the
-// archive's instance row, the authoritative source.
+// Restore rehydrates a backup archive into the instance behind pool. See RestoreWithProgress; this
+// is the no-progress form the CLI uses.
 func Restore(ctx context.Context, pool *pgxpool.Pool, store storage.Store, r io.ReaderAt, size int64) (*RestoreReport, error) {
+	return RestoreWithProgress(ctx, pool, store, r, size, nil)
+}
+
+// RestoreWithProgress rehydrates a backup archive into the instance behind pool, in one transaction.
+// A safe archive is rejected: it lacks the secrets a live instance needs. Any error rolls the whole
+// restore back, so a failed restore leaves the instance exactly as it was. The user mode is taken
+// from the archive's instance row, the authoritative source.
+//
+// progress, when non-nil, is called between table loads while the single transaction is still open.
+// It MUST write on a connection of its own — the load's own UPDATEs to a progress row would be
+// invisible until this transaction commits, which is the whole reason progress lives outside it.
+func RestoreWithProgress(ctx context.Context, pool *pgxpool.Pool, store storage.Store, r io.ReaderAt, size int64, progress Progress) (*RestoreReport, error) {
 	arc, err := openArchive(r, size)
 	if err != nil {
 		return nil, fmt.Errorf("restore: %w", err)
@@ -112,6 +122,7 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, store storage.Store, r io.
 
 	// Blobs are written before the transaction: object storage is not transactional, so a rolled-back
 	// restore leaves unreferenced (garbage-collectable) blobs rather than DB rows pointing at nothing.
+	progress.report(ctx, "restoring file blobs", 5)
 	uploadBytes, err := restoreUploads(ctx, store, arc, rep)
 	if err != nil {
 		return nil, err
@@ -137,7 +148,10 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, store storage.Store, r io.
 		return nil, fmt.Errorf("restore: truncate: %w", err)
 	}
 
-	for _, t := range registry {
+	for i, t := range registry {
+		// Reported on progress's own connection: this transaction has not committed, so the row it
+		// makes visible to a poller is the one that write puts there, not anything written here.
+		progress.report(ctx, "restoring "+t.name, 10+i*80/len(registry))
 		meta, ok := m.Tables[t.name]
 		if !ok {
 			return nil, fmt.Errorf("restore: archive manifest is missing table %q", t.name)
@@ -177,6 +191,7 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, store storage.Store, r io.
 		return nil, err
 	}
 
+	progress.report(ctx, "committing", 95)
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("restore: commit: %w", err)
 	}
@@ -185,13 +200,22 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, store storage.Store, r io.
 
 // allTables is every table a restore wipes: the exported registry plus the operational tables an
 // archive never carries, so the instance is genuinely empty afterwards. Compile-time, never from the
-// archive. River's own tables are left untouched.
+// archive. River's own tables are left untouched — and so is `tasks`: it holds the row tracking THIS
+// restore. Truncating it would delete the restore's own progress record on commit, and its
+// ACCESS EXCLUSIVE lock would block the progress writes that run — by design — on a second
+// connection while this transaction is still open. The restore replaces game data, not the
+// operational task log.
 func allTables() []string {
 	out := make([]string, 0, len(registry)+len(excludedTables))
 	for _, t := range registry {
 		out = append(out, t.name)
 	}
-	out = append(out, excludedTables...)
+	for _, t := range excludedTables {
+		if t == "tasks" {
+			continue
+		}
+		out = append(out, t)
+	}
 	return out
 }
 

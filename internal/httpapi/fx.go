@@ -22,6 +22,7 @@ import (
 	"github.com/starvy/flagfish/internal/jobs"
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
+	"github.com/starvy/flagfish/internal/opsjob"
 )
 
 // ListenAddr is the TCP address the server binds. It is a named type so the graph can
@@ -57,8 +58,9 @@ type serverParams struct {
 	Anticheat      *anticheat.Service
 	Files          *files.Service
 	Metrics        *metrics.Metrics
-	Jobs           *jobs.Inserter `optional:"true"`
-	TrustedProxies []*net.IPNet   `optional:"true"`
+	Ops            *opsjob.Service `optional:"true"`
+	Jobs           *jobs.Inserter  `optional:"true"`
+	TrustedProxies []*net.IPNet    `optional:"true"`
 }
 
 //nolint:gocritic // hugeParam: fx constructs this once at wiring time; the params struct is built to be passed by value.
@@ -79,6 +81,7 @@ func newServer(p serverParams) *Server {
 		Anticheat:      p.Anticheat,
 		Files:          p.Files,
 		Metrics:        p.Metrics,
+		Ops:            p.Ops,
 		TrustedProxies: p.TrustedProxies,
 
 		// The env says "secure cookies"; the router takes the inverted flag so that its zero
