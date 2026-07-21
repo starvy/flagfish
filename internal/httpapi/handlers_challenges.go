@@ -65,6 +65,9 @@ type challengeHint struct {
 	Cost     int32   `json:"cost"`
 	Unlocked bool    `json:"unlocked"`
 	Locked   bool    `json:"locked"`
+	// Content is the hint body, sent only for a hint this account has unlocked; omitted otherwise so a
+	// locked or unpurchased hint never carries its text over the wire.
+	Content *string `json:"content,omitempty"`
 }
 
 // challengeInstance is the caller's own bundle for a unique-flag challenge: the per-account
@@ -233,7 +236,7 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 	}
 	out.Body.Hints = make([]challengeHint, len(d.Hints))
 	for i, h := range d.Hints {
-		out.Body.Hints[i] = challengeHint{ID: h.ID, Title: h.Title, Cost: h.Cost, Unlocked: h.Unlocked, Locked: h.Locked}
+		out.Body.Hints[i] = challengeHint{ID: h.ID, Title: h.Title, Cost: h.Cost, Unlocked: h.Unlocked, Locked: h.Locked, Content: h.Content}
 	}
 	return out, nil
 }

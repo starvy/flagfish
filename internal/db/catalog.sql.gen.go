@@ -175,18 +175,21 @@ func (q *Queries) ListChallengeFiles(ctx context.Context, challengeID *int64) ([
 const listChallengeHints = `-- name: ListChallengeHints :many
 WITH mode AS (
     SELECT user_mode FROM instance
+),
+mine AS (
+    SELECT hu.hint_id, h.content
+      FROM hint_unlocks hu
+      JOIN hints h ON h.id = hu.hint_id
+      CROSS JOIN mode m
+     WHERE h.challenge_id = $3
+       AND CASE WHEN m.user_mode = 'teams'
+                THEN hu.team_id = $1::bigint
+                ELSE hu.user_id = $2::bigint
+           END
 )
 SELECT
     h.id, h.title, h.cost, h.position,
-    EXISTS (
-        SELECT 1 FROM hint_unlocks hu
-        CROSS JOIN mode m
-        WHERE hu.hint_id = h.id
-          AND CASE WHEN m.user_mode = 'teams'
-                   THEN hu.team_id = $1::bigint
-                   ELSE hu.user_id = $2::bigint
-              END
-    ) AS unlocked,
+    (mine.hint_id IS NOT NULL)::boolean AS unlocked,
     -- Locked: a prerequisite hint has not been unlocked by this account, so UnlockHint will reject
     -- the purchase. A hint with no prerequisites has zero elements to check and is never locked.
     EXISTS (
@@ -201,8 +204,10 @@ SELECT
                        ELSE phu.user_id = $2::bigint
                   END
          )
-    ) AS locked
+    ) AS locked,
+    mine.content AS content
   FROM hints h
+  LEFT JOIN mine ON mine.hint_id = h.id
  WHERE h.challenge_id = $3
  ORDER BY h.position, h.id
 `
@@ -220,10 +225,14 @@ type ListChallengeHintsRow struct {
 	Position int32
 	Unlocked bool
 	Locked   bool
+	Content  *string
 }
 
-// Hint content is a purchase, never listed: the row carries the price and whether this account already
-// paid it, and the content itself is delivered only by UnlockHint.
+// The row carries the price and whether this account already paid it. Content rides along only for a
+// hint this account has already unlocked — so a reload still shows what was bought. It comes from the
+// LEFT JOIN to this account's own unlock rows, so a locked or unpurchased hint has no matching row and
+// its body is NULL: a body only ever crosses to the account that paid for it, never to a viewer who
+// merely knows the hint exists.
 func (q *Queries) ListChallengeHints(ctx context.Context, arg ListChallengeHintsParams) ([]ListChallengeHintsRow, error) {
 	rows, err := q.db.Query(ctx, listChallengeHints, arg.TeamID, arg.UserID, arg.ChallengeID)
 	if err != nil {
@@ -240,6 +249,7 @@ func (q *Queries) ListChallengeHints(ctx context.Context, arg ListChallengeHints
 			&i.Position,
 			&i.Unlocked,
 			&i.Locked,
+			&i.Content,
 		); err != nil {
 			return nil, err
 		}

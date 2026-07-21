@@ -731,8 +731,11 @@ type Querier interface {
 	// The board shows the name and size; the download link is built from the id. location is the storage
 	// key and never leaves the server.
 	ListChallengeFiles(ctx context.Context, challengeID *int64) ([]ListChallengeFilesRow, error)
-	// Hint content is a purchase, never listed: the row carries the price and whether this account already
-	// paid it, and the content itself is delivered only by UnlockHint.
+	// The row carries the price and whether this account already paid it. Content rides along only for a
+	// hint this account has already unlocked — so a reload still shows what was bought. It comes from the
+	// LEFT JOIN to this account's own unlock rows, so a locked or unpurchased hint has no matching row and
+	// its body is NULL: a body only ever crosses to the account that paid for it, never to a viewer who
+	// merely knows the hint exists.
 	ListChallengeHints(ctx context.Context, arg ListChallengeHintsParams) ([]ListChallengeHintsRow, error)
 	// Who solved a challenge, oldest first, with cutoff (strict <, NULL = live) as the freeze horizon.
 	// The challenge is the driving table and EVERY solve/account predicate lives in an ON clause, so the

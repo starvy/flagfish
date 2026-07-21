@@ -17,8 +17,9 @@ export function HintList({ challenge }: { challenge: Challenge }) {
   const toast = useToast();
   const [asking, setAsking] = useState<ChallengeHint | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  // The unlock response is the only place a hint's text is ever returned; the challenge body does
-  // not carry it, so what is bought in this session is held here.
+  // The unlock response reveals a body before the detail query refetches; the detail carries the body
+  // of every hint this account has already unlocked, so a reload still shows it. This session's fresh
+  // unlock wins until that refetch lands and starts carrying it too.
   const [revealed, setRevealed] = useState<Record<number, string>>({});
 
   if (hints.length === 0) {
@@ -58,7 +59,7 @@ export function HintList({ challenge }: { challenge: Challenge }) {
             key={hint.id}
             hint={hint}
             index={i}
-            content={revealed[hint.id]}
+            content={revealed[hint.id] ?? hint.content}
             onAsk={() => setAsking(hint)}
           />
         ))}
@@ -132,10 +133,7 @@ function HintRow({
 
       {hint.unlocked &&
         (content === undefined ? (
-          <p className="hint-row__note muted">
-            bought already. the server returns a hint&apos;s text only in the unlock response, so it
-            cannot be shown again after a reload.
-          </p>
+          <p className="hint-row__note muted">bought already — reload to read it.</p>
         ) : (
           <Markdown className="hint-row__body" source={content} />
         ))}

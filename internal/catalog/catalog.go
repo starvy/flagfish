@@ -79,8 +79,9 @@ type File struct {
 	SizeBytes int64
 }
 
-// Hint carries the price and whether this account already paid it; the content is bought through
-// gameplay.UnlockHint and never read here.
+// Hint carries the price and whether this account already paid it. Content is non-nil only for a hint
+// this account has already unlocked — it lets a reload show what was bought — and stays nil for every
+// locked or unpurchased one, so a body never reaches a viewer who has not paid for it.
 type Hint struct {
 	ID       int64
 	Title    *string
@@ -88,6 +89,8 @@ type Hint struct {
 	Unlocked bool
 	// Locked is set when a prerequisite hint has not been unlocked, so UnlockHint would reject it.
 	Locked bool
+	// Content is the hint body, present only when Unlocked; nil otherwise.
+	Content *string
 }
 
 // Detail is one challenge plus the metadata a detail view renders.
@@ -233,7 +236,7 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 		d.Files[i] = File{ID: f.ID, Name: f.Name, SizeBytes: f.SizeBytes}
 	}
 	for i, h := range hints {
-		d.Hints[i] = Hint{ID: h.ID, Title: h.Title, Cost: h.Cost, Unlocked: h.Unlocked, Locked: h.Locked}
+		d.Hints[i] = Hint{ID: h.ID, Title: h.Title, Cost: h.Cost, Unlocked: h.Unlocked, Locked: h.Locked, Content: h.Content}
 	}
 	return d, nil
 }

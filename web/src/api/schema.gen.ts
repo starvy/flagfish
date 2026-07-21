@@ -739,6 +739,7 @@ export interface components {
             size_bytes: number;
         };
         ChallengeHint: {
+            content?: string;
             /** Format: int32 */
             cost: number;
             /** Format: int64 */
