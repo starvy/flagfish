@@ -30,7 +30,7 @@ func (f *apiFix) addFlag(auth []func(*http.Request), challengeID int64, typ, con
 	}
 }
 
-func (f *apiFix) setFlagMode(auth []func(*http.Request), challengeID int64, mode string) (int, []byte) {
+func (f *apiFix) setFlagMode(auth []func(*http.Request), challengeID int64, mode string) (status int, body []byte) {
 	f.t.Helper()
 	res, rb := f.do(http.MethodPut, "/api/v1/admin/challenges/"+itoa(challengeID)+"/flag-mode",
 		map[string]any{"flag_mode": mode}, auth...)
@@ -152,10 +152,10 @@ func TestFlagMode_LogicAllSubmit(t *testing.T) {
 	}
 
 	// The same flags under logic='any' accept the partial match, proving the branch is what decided.
-	any := f.createChallenge(auth, map[string]any{"name": "any", "category": "c", "value": 100, "logic": "any"})
-	f.addFlag(auth, any, "static", "flagfish{both}")
-	f.addFlag(auth, any, "regex", `flagfish\{(both|nope)\}`)
-	if s := submit(any, "flagfish{nope}"); s != "correct" {
+	anyChal := f.createChallenge(auth, map[string]any{"name": "any", "category": "c", "value": 100, "logic": "any"})
+	f.addFlag(auth, anyChal, "static", "flagfish{both}")
+	f.addFlag(auth, anyChal, "regex", `flagfish\{(both|nope)\}`)
+	if s := submit(anyChal, "flagfish{nope}"); s != "correct" {
 		t.Fatalf("logic=any, partial match {nope}: status %q, want correct", s)
 	}
 }

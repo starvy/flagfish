@@ -15,7 +15,7 @@ import (
 
 // getRaw issues a GET and returns the status, headers, and undrained-into-JSON body. The CSV exports
 // are not JSON, so the shared do() helper's decode path is the wrong tool.
-func (f *apiFix) getRaw(path string, mut ...func(*http.Request)) (int, http.Header, string) {
+func (f *apiFix) getRaw(path string, mut ...func(*http.Request)) (status int, header http.Header, body string) {
 	f.t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, f.server.URL+path, http.NoBody)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestAdminExportStandingsAndUsers(t *testing.T) {
 	if r, ok := byEmail["carol@example.com"]; !ok || r[6] != "true" || r[1] != newlineName {
 		t.Errorf("carol row = %v, want hidden=true and the multiline name intact", r)
 	}
-	if r := byEmail["root@example.com"]; r == nil || r[3] != "admin" {
+	if r, ok := byEmail["root@example.com"]; !ok || r[3] != "admin" {
 		t.Errorf("root row = %v, want role=admin", r)
 	}
 	_ = aliceID

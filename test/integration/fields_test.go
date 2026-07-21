@@ -22,7 +22,7 @@ func (f *apiFix) createField(auth []func(*http.Request), body map[string]any) in
 }
 
 // registerWith posts a registration with custom-field answers and returns the raw result.
-func (f *apiFix) registerWith(name, email, password string, fields []map[string]any) (apiResp, []byte) {
+func (f *apiFix) registerWith(name, email, password string, fields []map[string]any) (resp apiResp, body []byte) {
 	f.t.Helper()
 	return f.do(http.MethodPost, "/api/v1/register", map[string]any{
 		"name": name, "email": email, "password": password, "fields": fields,

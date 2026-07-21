@@ -268,7 +268,7 @@ func TestS17_AdminGETsNeverEchoASetSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	auth := []func(*http.Request){withCookie(sess.ID)}
+	adminAuth := []func(*http.Request){withCookie(sess.ID)}
 
 	secrets := []string{
 		"smtp.s17-secret-host.example",
@@ -291,7 +291,7 @@ func TestS17_AdminGETsNeverEchoASetSecret(t *testing.T) {
 		t.Fatalf("seed secrets via PATCH: %d (%s)", r.StatusCode, r.Body)
 	}
 
-	spec := f.do(http.MethodGet, "/api/v1/admin/openapi.json", auth...)
+	spec := f.do(http.MethodGet, "/api/v1/admin/openapi.json", adminAuth...)
 	if spec.StatusCode != http.StatusOK {
 		t.Fatalf("admin openapi: %d", spec.StatusCode)
 	}
@@ -310,7 +310,7 @@ func TestS17_AdminGETsNeverEchoASetSecret(t *testing.T) {
 		}
 		swept++
 		url := "/api/v1/admin" + pathParam.ReplaceAllString(p, "1")
-		body := f.do(http.MethodGet, url, auth...).Body
+		body := f.do(http.MethodGet, url, adminAuth...).Body
 		for _, secret := range secrets {
 			if strings.Contains(body, secret) {
 				t.Errorf("GET %s echoes the stored secret %q:\n%s", url, secret, snippet(body))
@@ -564,9 +564,9 @@ func multipartBody(t *testing.T, n int) []byte {
 }
 
 func snippet(s string) string {
-	const max = 300
-	if len(s) > max {
-		return s[:max] + "…"
+	const maxLen = 300
+	if len(s) > maxLen {
+		return s[:maxLen] + "…"
 	}
 	return s
 }

@@ -75,7 +75,7 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 	truncate(t, ctx, pool)
 	seedInstance(t, ctx, pool, mode)
 
-	var logDst io.Writer = io.Discard
+	logDst := io.Discard
 	if o.logTo != nil {
 		logDst = o.logTo
 	}

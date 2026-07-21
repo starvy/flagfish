@@ -20,14 +20,14 @@ type awardView struct {
 	Reason    string `json:"reason"`
 }
 
-func (f *apiFix) grantAward(cookie, csrf string, accountID int64, value int, reason string) (apiResp, []byte) {
+func (f *apiFix) grantAward(cookie, csrf string, accountID int64, value int, reason string) (resp apiResp, body []byte) {
 	f.t.Helper()
 	return f.do(http.MethodPost, "/api/v1/admin/awards",
 		map[string]any{"account_id": accountID, "value": value, "reason": reason},
 		withCookie(cookie), withCSRF(csrf))
 }
 
-func (f *apiFix) revokeAward(cookie, csrf string, id int64) (apiResp, []byte) {
+func (f *apiFix) revokeAward(cookie, csrf string, id int64) (resp apiResp, body []byte) {
 	f.t.Helper()
 	return f.do(http.MethodDelete, fmt.Sprintf("/api/v1/admin/awards/%d", id), nil,
 		withCookie(cookie), withCSRF(csrf))

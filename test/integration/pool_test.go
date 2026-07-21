@@ -73,7 +73,9 @@ func TestPool_Upload_Duplicate_Idempotent_List_Stats(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("re-upload: status %d: %s", res.StatusCode, body)
 	}
-	_ = json.Unmarshal(body, &up)
+	if err := json.Unmarshal(body, &up); err != nil {
+		t.Fatalf("decode re-upload response: %v", err)
+	}
 	if up.Generation != 1 || up.Inserted != 0 || !up.Idempotent {
 		t.Fatalf("re-upload = %+v, want generation 1, inserted 0, idempotent true", up)
 	}
@@ -101,7 +103,9 @@ func TestPool_Upload_Duplicate_Idempotent_List_Stats(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("second upload: status %d: %s", res.StatusCode, body)
 	}
-	_ = json.Unmarshal(body, &up)
+	if err := json.Unmarshal(body, &up); err != nil {
+		t.Fatalf("decode second upload response: %v", err)
+	}
 	if up.Generation != 2 || up.Inserted != 2 {
 		t.Fatalf("second upload = %+v, want generation 2, inserted 2", up)
 	}

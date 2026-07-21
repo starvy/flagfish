@@ -74,7 +74,7 @@ func TestPublicUserProfile(t *testing.T) {
 	if pub["website"] != "https://alice.example" || pub["affiliation"] != "Acme U" || pub["country"] != "CZ" {
 		t.Errorf("public fields missing: %+v", pub)
 	}
-	if score, _ := pub["score"].(float64); int(score) != 350 {
+	if score, ok := pub["score"].(float64); !ok || int(score) != 350 {
 		t.Errorf("score = %v, want 350 (100 visible + 250 hidden)", pub["score"])
 	}
 	for _, leaked := range []string{"email", "pending_email", "hidden", "banned", "role", "password_hash"} {
@@ -84,16 +84,25 @@ func TestPublicUserProfile(t *testing.T) {
 	}
 
 	// The solve history names only the visible challenge — never the hidden one.
-	solves, _ := pub["solves"].([]any)
+	solves, ok := pub["solves"].([]any)
+	if !ok {
+		t.Fatalf("solves is %T, want []any", pub["solves"])
+	}
 	if len(solves) != 1 {
 		t.Fatalf("solves = %d, want exactly 1 (the visible challenge)", len(solves))
 	}
-	first, _ := solves[0].(map[string]any)
+	first, ok := solves[0].(map[string]any)
+	if !ok {
+		t.Fatalf("solves[0] is %T, want map[string]any", solves[0])
+	}
 	if first["challenge_name"] != "Sanity" {
 		t.Errorf("solve name = %v, want Sanity", first["challenge_name"])
 	}
 	for _, s := range solves {
-		m, _ := s.(map[string]any)
+		m, ok := s.(map[string]any)
+		if !ok {
+			t.Fatalf("solve is %T, want map[string]any", s)
+		}
 		if m["challenge_name"] == "SECRET-CHAL" {
 			t.Fatal("public solve history leaked a hidden challenge")
 		}

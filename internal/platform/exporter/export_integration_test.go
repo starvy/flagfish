@@ -531,7 +531,6 @@ func jsonlRows(t *testing.T, zipBytes []byte, member string) []map[string]json.R
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer rc.Close()
 		var out []map[string]json.RawMessage
 		dec := json.NewDecoder(rc)
 		for {
@@ -543,6 +542,7 @@ func jsonlRows(t *testing.T, zipBytes []byte, member string) []map[string]json.R
 			}
 			out = append(out, row)
 		}
+		rc.Close()
 		return out
 	}
 	t.Fatalf("no %s in archive", member)

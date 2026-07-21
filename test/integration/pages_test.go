@@ -31,7 +31,7 @@ type publicPage struct {
 	Format  string `json:"format"`
 }
 
-func (f *apiFix) createPage(cookie, csrf string, body map[string]any) (apiResp, []byte) {
+func (f *apiFix) createPage(cookie, csrf string, body map[string]any) (resp apiResp, respBody []byte) {
 	f.t.Helper()
 	return f.do(http.MethodPost, "/api/v1/admin/pages", body, withCookie(cookie), withCSRF(csrf))
 }

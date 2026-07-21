@@ -44,7 +44,7 @@ func TestSendReadsTheCurrentSnapshot(t *testing.T) {
 	}
 	m := newMailer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	if err := m.Send(ctx, "p@ctf.test", "s", "b"); !errors.Is(err, ErrNotConfigured) {
+	if err = m.Send(ctx, "p@ctf.test", "s", "b"); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("Send before configuration: got %v, want ErrNotConfigured", err)
 	}
 
@@ -54,10 +54,14 @@ func TestSendReadsTheCurrentSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := l.Addr().(*net.TCPAddr).Port
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("listener addr is %T, want *net.TCPAddr", l.Addr())
+	}
+	port := addr.Port
 	_ = l.Close()
 
-	if err := cfg.Set(ctx, map[string]string{
+	if err = cfg.Set(ctx, map[string]string{
 		"mail_server":   "127.0.0.1",
 		"mail_port":     strconv.Itoa(port),
 		"mailfrom_addr": "noreply@ctf.test",

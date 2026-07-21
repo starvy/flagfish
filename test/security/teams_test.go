@@ -51,7 +51,7 @@ func (f *fixture) score(teamID, userID int64, value int) {
 }
 
 // putJSON is a cookie-authenticated JSON PUT with the CSRF token attached.
-func (f *fixture) putJSON(path, csrf, sid string, body string) resp {
+func (f *fixture) putJSON(path, csrf, sid, body string) resp {
 	f.t.Helper()
 	return f.do(http.MethodPut, path,
 		withCookie(sid), withCSRF(csrf), withBody("application/json", []byte(body)))
@@ -77,8 +77,9 @@ func TestS17_TeamBanWallsEveryMemberCredential(t *testing.T) {
 		id         int64
 		sid, token string
 	}
-	var members []member
-	for _, name := range []string{"m1", "m2"} {
+	names := []string{"m1", "m2"}
+	members := make([]member, 0, len(names))
+	for _, name := range names {
 		uid := f.user(name, pw)
 		f.assign(uid, teamID)
 		sess, err := f.acct.Login(ctx, name+"@ctf.test", pw)
@@ -355,7 +356,9 @@ func sameProblemType(a, b string) bool {
 		var v struct {
 			Type string `json:"type"`
 		}
-		_ = json.Unmarshal([]byte(s), &v)
+		if err := json.Unmarshal([]byte(s), &v); err != nil {
+			return ""
+		}
 		return v.Type
 	}
 	return strings.EqualFold(typeOf(a), typeOf(b))

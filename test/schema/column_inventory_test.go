@@ -447,7 +447,7 @@ func colinvModelFields(t *testing.T, path string) map[string][]string {
 func colinvFieldFor(fields []string, col string) string {
 	want := strings.ReplaceAll(col, "_", "")
 	for _, f := range fields {
-		if strings.ToLower(f) == want {
+		if strings.EqualFold(f, want) {
 			return f
 		}
 	}

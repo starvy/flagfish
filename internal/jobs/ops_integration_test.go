@@ -164,7 +164,9 @@ func TestRunExportWorker_ProducesArchive(t *testing.T) {
 	// The bucket is shared across the integration suites while task-id sequences reset per database,
 	// so a stale object at this key from another suite would be served back by the store's dedupe.
 	// Production task ids are globally unique per instance; this Delete only isolates the test.
-	_ = store.Delete(ctx, BackupObjectKey(taskID))
+	if err := store.Delete(ctx, BackupObjectKey(taskID)); err != nil {
+		t.Fatalf("pre-test cleanup: %v", err)
+	}
 
 	w := &RunExportWorker{opsWorker: newOps(p, store)}
 	if err := w.Work(ctx, &river.Job[RunExport]{Args: RunExport{TaskID: taskID, Profile: "backup"}}); err != nil {
@@ -184,11 +186,16 @@ func TestRunExportWorker_ProducesArchive(t *testing.T) {
 		t.Fatalf("backup artifact missing: %v", err)
 	}
 	defer rc.Close()
-	body, _ := io.ReadAll(rc)
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read backup artifact: %v", err)
+	}
 	if _, err := zip.NewReader(bytes.NewReader(body), int64(len(body))); err != nil {
 		t.Fatalf("backup artifact is not a valid zip: %v", err)
 	}
-	_ = store.Delete(ctx, BackupObjectKey(taskID))
+	if err := store.Delete(ctx, BackupObjectKey(taskID)); err != nil {
+		t.Fatalf("cleanup backup artifact: %v", err)
+	}
 }
 
 // The restore worker downloads the stashed archive, restores it in one transaction, marks the task
@@ -233,7 +240,11 @@ func TestRunRestoreWorker_RoundTrip(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("config rows after restore = %d, want 1", n)
 	}
-	if present, _ := store.Stat(ctx, uploadKey); present {
+	present, serr := store.Stat(ctx, uploadKey)
+	if serr != nil {
+		t.Fatalf("stat upload: %v", serr)
+	}
+	if present {
 		t.Fatal("restore worker must delete the one-shot upload")
 	}
 }

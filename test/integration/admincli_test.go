@@ -338,8 +338,8 @@ func TestAdminCLIBootstrapIsIdempotent(t *testing.T) {
 	if !errors.Is(err, accounts.ErrModeConflict) {
 		t.Fatalf("explicit mode conflict error = %v, want ErrModeConflict", err)
 	}
-	if _, err := db.New(pool).GetUserByEmail(ctx, "third@example.com"); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("the refused bootstrap committed its admin anyway (err = %v)", err)
+	if _, gerr := db.New(pool).GetUserByEmail(ctx, "third@example.com"); !errors.Is(gerr, pgx.ErrNoRows) {
+		t.Fatalf("the refused bootstrap committed its admin anyway (err = %v)", gerr)
 	}
 
 	promoted, err := svc.PromoteToAdmin(ctx, "second@example.com", defaultInstanceSpec())

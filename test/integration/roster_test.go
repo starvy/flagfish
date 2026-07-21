@@ -46,7 +46,7 @@ func (f *apiFix) countRows(query string, args ...any) int64 {
 func (f *apiFix) enrolledTeam(name string, members ...string) (capCookie, capCSRF string, team teamView) {
 	f.t.Helper()
 	capCookie, capCSRF = f.register("cap", "cap@ctf.test", "correct horse battery")
-	team = f.createTeam(capCookie, capCSRF, name, "hunter22")
+	f.createTeam(capCookie, capCSRF, name, "hunter22")
 	for _, m := range members {
 		c, s := f.register(m, m+"@ctf.test", "correct horse battery")
 		f.joinTeamByName(c, s, name, "hunter22")
