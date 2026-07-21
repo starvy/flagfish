@@ -60,12 +60,12 @@ var WorkerModule = fx.Module(
 	fx.Invoke(func(*Worker) {}),
 )
 
-func newWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) (*Worker, error) {
+func newWorker(root context.Context, lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) (*Worker, error) {
 	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version})
 	if err != nil {
 		return nil, err
 	}
-	appendWorkerLifecycle(lc, c, log)
+	appendWorkerLifecycle(root, lc, c, log)
 	return &Worker{Client: c}, nil
 }
 
@@ -81,7 +81,7 @@ var InProcessWorkerModule = fx.Module(
 	fx.Invoke(startInProcessWorker),
 )
 
-func startInProcessWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) error {
+func startInProcessWorker(root context.Context, lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) error {
 	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version})
 	if errors.Is(err, ErrNoWorkers) {
 		log.Warn("no workers are registered yet; serving without an in-process worker")
@@ -90,20 +90,27 @@ func startInProcessWorker(lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger,
 	if err != nil {
 		return err
 	}
-	appendWorkerLifecycle(lc, c, log)
+	appendWorkerLifecycle(root, lc, c, log)
 	return nil
 }
 
-func appendWorkerLifecycle(lc fx.Lifecycle, c *river.Client[pgx.Tx], log *slog.Logger) {
+func appendWorkerLifecycle(root context.Context, lc fx.Lifecycle, c *river.Client[pgx.Tx], log *slog.Logger) {
+	// River keeps this context for the client's whole life — its fetch loops and LISTEN
+	// notifier run under it, and cancelling it is River's abrupt-shutdown path. So it
+	// outlives every OnStart context (those are cancelled once Start returns), and we
+	// cancel it ourselves only after OnStop has drained the in-flight jobs.
+	clientCtx, cancel := context.WithCancel(context.WithoutCancel(root))
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			if err := c.Start(ctx); err != nil {
+		OnStart: func(context.Context) error {
+			if err := c.Start(clientCtx); err != nil {
+				cancel()
 				return fmt.Errorf("jobs: worker start: %w", err)
 			}
 			log.Info("worker started")
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			defer cancel()
 			// Stop waits for in-flight jobs; an import cut mid-flight is a restore from
 			// backup, so the wait is worth it.
 			if err := c.Stop(ctx); err != nil {
