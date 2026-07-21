@@ -30,7 +30,9 @@ Run it **before** a deploy, not after. It fails loudly and lists every problem a
 | `FLAGFISH_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
 | `FLAGFISH_LOG_FORMAT` | `json` | `text` \| `json`. Use `json` in production. |
 | `FLAGFISH_RATE_LIMIT` | `60` | Requests per window, per caller, before the limiter denies. Positive integer. |
-| `FLAGFISH_AUTH_RATE_LIMIT` | `10` | The same, for the auth routes, which are the ones worth guessing against. Positive integer. |
+| `FLAGFISH_AUTH_RATE_LIMIT` | `10` | Failed credential attempts per window against ONE target — the account named by the submitted email, or the submitted token. Positive integer. |
+| `FLAGFISH_AUTH_IP_FAILURE_LIMIT` | `60` | Failed credential attempts per window from one source address. A successful attempt is refunded. Positive integer, and must not exceed `FLAGFISH_AUTH_IP_RATE_LIMIT`. |
+| `FLAGFISH_AUTH_IP_RATE_LIMIT` | `300` | All credential attempts per window from one source address, successful or not. Positive integer. |
 | `FLAGFISH_RATE_WINDOW` | `1m` | Window over which both rate limits are counted. Go duration, must be positive. |
 | `FLAGFISH_TRUSTED_PROXIES` | empty | Comma-separated CIDRs (or bare IPs) whose `X-Forwarded-For` is believed. Empty = trust nobody, use the socket peer address. |
 | `FLAGFISH_SECURE_COOKIES` | `true` | Mark session cookies `Secure`. Defaults on; `false` only when you serve plain HTTP on purpose. |
@@ -38,12 +40,14 @@ Run it **before** a deploy, not after. It fails loudly and lists every problem a
 | `FLAGFISH_DB_MAX_CONNS` | `25` | pgx pool ceiling. At least 1. |
 | `FLAGFISH_DB_MIN_CONNS` | `2` | pgx pool floor. A minimum above the maximum is a boot error. |
 
-**`FLAGFISH_AUTH_RATE_LIMIT` is the shared-NAT knob.** A whole university behind one outbound
-address shares one bucket, and 10 credential requests per minute is a low ceiling for a team that
-all logs in at the start of an event. Raise it if that is your audience — but keep it well under
-`FLAGFISH_RATE_LIMIT`, because these are the routes worth guessing against. The shipped
-`deploy/compose.yaml` does not pass this variable through, so under compose you must add it to the
-`flagfish` service's `environment:` block; putting it in `deploy/.env` alone has no effect.
+**Shared addresses are not penalised.** A whole university or a venue's wifi behind one outbound
+address is one source, so the strict budget is keyed on the account being guessed at rather than on
+where the guess came from: distinct players never contend, however many share an address. The source
+address keeps a strict budget on failures — refunded on success, so players logging in normally
+never spend it — and a generous one on everything, which bounds the password verifications a
+stranger can ask for. Raise `FLAGFISH_AUTH_IP_RATE_LIMIT` only if a single address legitimately
+carries hundreds of sign-ins a minute; lowering `FLAGFISH_AUTH_RATE_LIMIT` tightens brute-force
+protection without affecting shared addresses at all.
 
 **`FLAGFISH_TRUSTED_PROXIES` deserves a second look.** A wrong value here breaks nothing visibly —
 it just attributes every request to the proxy's own address, which quietly poisons the anti-cheat
