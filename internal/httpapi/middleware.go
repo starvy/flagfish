@@ -397,6 +397,18 @@ func authenticate(a Authenticator, log *slog.Logger) func(http.Handler) http.Han
 				problem(w, http.StatusServiceUnavailable, "unavailable", "could not verify credentials")
 				return
 			}
+
+			// A caller who resolved to anonymous while still carrying a session cookie is holding a
+			// dead one — invalid cookies degrade to anonymous, a valid one resolves to MethodCookie.
+			// Expire it so the browser stops re-presenting a cookie every request that can never
+			// authenticate. It is written before the handler runs, so a successful re-login on this
+			// same request still overwrites it with the fresh session cookie it sets afterwards.
+			if auth.Method == MethodAnonymous {
+				if c, cerr := r.Cookie(accounts.SessionCookie); cerr == nil && c.Value != "" {
+					http.SetCookie(w, accounts.ClearSessionCookie(secureOf(r.Context())))
+				}
+			}
+
 			ctx := context.WithValue(r.Context(), ctxAuth, auth)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

@@ -129,10 +129,12 @@ func TestChangePassword(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("new session after password change: want 200, got %d", res.StatusCode)
 	}
-	// The old cookie's pw_fingerprint no longer matches, so it reads as an invalid credential (401).
+	// The old cookie's pw_fingerprint no longer matches, so it degrades to anonymous and is
+	// walled like a logged-out browser (403) — a stale browser cookie is not a 401, or the
+	// owner could never re-login from the same browser.
 	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(old))
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("old cookie after password change must be dead: want 401, got %d", res.StatusCode)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("old cookie after password change reached a protected route: want 403, got %d", res.StatusCode)
 	}
 }
 
@@ -144,11 +146,12 @@ func TestLogoutClearsSession(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("logout: status %d: %s", res.StatusCode, body)
 	}
-	// The old cookie is dead: the session row is gone, so presenting it is an invalid credential (401),
-	// distinct from presenting none at all (403).
+	// The old cookie is dead: the session row is gone, so presenting it degrades to anonymous —
+	// a logged-out browser, walled at 403, indistinguishable from presenting none at all. That is
+	// what lets the browser still reach /login instead of 401ing on the leftover cookie.
 	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(cookie))
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("me after logout: want 401, got %d", res.StatusCode)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("me after logout reached a protected route: want 403, got %d", res.StatusCode)
 	}
 }
 

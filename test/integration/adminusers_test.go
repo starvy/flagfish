@@ -128,9 +128,12 @@ func TestAdminForcePasswordChangeLifecycle(t *testing.T) {
 	if n := f.sessionCount(uid); n != 0 {
 		t.Errorf("victim still holds %d sessions after the force", n)
 	}
+	// The old cookie is dead: the session row is gone, so it degrades to anonymous and is
+	// stopped at the auth wall like a logged-out browser (403) — not 401, which would also
+	// have blocked the victim from logging back in from the same browser.
 	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(victimCookie))
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Errorf("old cookie after force: %d, want 401", res.StatusCode)
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("old cookie after force reached a protected route: %d, want 403", res.StatusCode)
 	}
 
 	// …and so did the API tokens. The forced-change wall gates routes by principal, which stops a

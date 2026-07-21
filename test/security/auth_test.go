@@ -142,9 +142,12 @@ func TestS4_PasswordChangeInvalidatesOtherSessions(t *testing.T) {
 		t.Fatalf("change password: %v", err)
 	}
 
-	// The thief's cookie is dead…
-	if got := f.do(http.MethodGet, "/api/v1/probe", withCookie(stolen.ID)).StatusCode; got != http.StatusUnauthorized {
-		t.Errorf("the OLD session still works after a password change: %d, want 401", got)
+	// The thief's cookie is dead: the fingerprint no longer matches, so it degrades to
+	// anonymous and reaches nothing behind the auth wall. That is a policy denial (403), the
+	// same one a logged-out browser gets — not the old blanket 401 on the cookie, which used to
+	// wall the *owner* out of re-logging in from the same browser too.
+	if got := f.do(http.MethodGet, "/api/v1/probe", withCookie(stolen.ID)).StatusCode; got != http.StatusForbidden {
+		t.Errorf("the OLD session reached a protected route after a password change: %d, want 403", got)
 	}
 	// …and the owner's new one is not.
 	if got := f.do(http.MethodGet, "/api/v1/probe", withCookie(fresh.ID)).StatusCode; got != http.StatusOK {

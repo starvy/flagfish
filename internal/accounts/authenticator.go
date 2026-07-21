@@ -61,11 +61,15 @@ func NewService(pool *pgxpool.Pool, mode account.Mode, log *slog.Logger, opts ..
 // interface would fail somewhere in main instead of here.
 var _ auth.Authenticator = (*Service)(nil)
 
-// ErrUnauthorized means a credential was presented and was bad. It is not the same as
-// presenting none: a request with no credential is anonymous and may still be allowed,
-// whereas a request bearing a dead token is a 401 and must not silently downgrade to
-// anonymous. Downgrading is how an expired token quietly becomes "public access" and
+// ErrUnauthorized means a credential was presented and was bad. It is the answer for a
+// dead API token: a request bearing one is a 401 and must not silently downgrade to
+// anonymous, because that is how an expired token quietly becomes "public access" and
 // nobody notices until the audit.
+//
+// A stale session cookie is deliberately NOT treated this way — see Authenticate. A token
+// is presented by a program that can react to a 401; a cookie is re-sent by a browser on
+// its own, is HttpOnly so the SPA cannot drop it, and outlives every logout, expiry and
+// password change. 401ing it would wall the browser out of POST /login itself.
 var ErrUnauthorized = errors.New("accounts: invalid or expired credential")
 
 // Authenticate resolves a request to a Principal, from either credential.
@@ -84,10 +88,21 @@ var ErrUnauthorized = errors.New("accounts: invalid or expired credential")
 // Token is checked first, and both paths end in the same loadPrincipal call.
 func (s *Service) Authenticate(ctx context.Context, r *http.Request) (auth.Auth, error) {
 	if tok, ok := bearerToken(r.Header.Get("Authorization")); ok {
+		// A bad token is a failed auth attempt and stays a 401 — see ErrUnauthorized.
 		return s.authenticateToken(ctx, tok)
 	}
 	if c, err := r.Cookie(SessionCookie); err == nil && c.Value != "" {
-		return s.authenticateSession(ctx, c.Value)
+		a, err := s.authenticateSession(ctx, c.Value)
+		if errors.Is(err, ErrUnauthorized) {
+			// A present-but-invalid session cookie is a logged-out browser, not an attacker:
+			// expired, deleted, or fingerprint-killed by a password change. It degrades to
+			// anonymous rather than 401 so the browser can still reach POST /login — the policy
+			// layer denies anonymous callers everything a fresh anonymous caller cannot reach,
+			// so nothing protected is exposed by the downgrade. A DB failure underneath is not
+			// ErrUnauthorized and still propagates as an error, becoming a 503, not a silent pass.
+			return auth.Auth{Method: auth.MethodAnonymous}, nil
+		}
+		return a, err
 	}
 	return auth.Auth{Method: auth.MethodAnonymous}, nil
 }
