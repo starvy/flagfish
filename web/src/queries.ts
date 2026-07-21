@@ -46,6 +46,7 @@ export {
   useJoinTeam,
   useLeaveTeam,
   useUpdateMyTeam,
+  useSetTeamJoinPassword,
   useKickMember,
   useTransferCaptaincy,
   useDisbandTeam,

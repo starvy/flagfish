@@ -426,9 +426,11 @@ components:
           type: string
         password:
           maxLength: 128
+          minLength: 8
           type: string
       required:
         - name
+        - password
       type: object
     CreateTokenInputBody:
       additionalProperties: false
@@ -1096,6 +1098,23 @@ components:
         - user_id
         - csrf_token
         - expires_at
+      type: object
+    SetJoinSecretInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/SetJoinSecretInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        password:
+          maxLength: 128
+          minLength: 8
+          type: string
+      required:
+        - password
       type: object
     SolvesOutputBody:
       additionalProperties: false
@@ -1926,6 +1945,31 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Remove a member from the caller's team (captain only)
+      tags:
+        - teams
+  /me/team/password:
+    put:
+      operationId: set-team-join-password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetJoinSecretInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeftTeamOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Rotate the team's join password (captain only)
       tags:
         - teams
   /notifications:

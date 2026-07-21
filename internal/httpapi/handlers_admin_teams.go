@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -56,13 +57,28 @@ type adminTeamIDInput struct {
 type adminCreateTeamInput struct {
 	Body struct {
 		Name string `json:"name" minLength:"1" maxLength:"128"`
-		// Password is the join password. Empty means the team has none and admits members on an
-		// empty password — the same contract as the self-serve create.
-		Password    string  `json:"password,omitempty" maxLength:"128" required:"false"`
+		// Password is the join password, required as it is on the self-serve create: an
+		// admin-provisioned team is captainless, so its first joiner needs a secret to adopt
+		// it, and a team open to anyone who reads its name off the board is no team.
+		Password    string  `json:"password" minLength:"8" maxLength:"128"`
 		Email       *string `json:"email,omitempty" format:"email" maxLength:"255"`
 		Website     *string `json:"website,omitempty" maxLength:"255"`
 		Affiliation *string `json:"affiliation,omitempty" maxLength:"255"`
 		Country     *string `json:"country,omitempty" maxLength:"64"`
+	}
+}
+
+type adminSetTeamJoinSecretInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Password string `json:"password" minLength:"8" maxLength:"128"`
+	}
+}
+
+type adminSetTeamJoinSecretOutput struct {
+	Body struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
 	}
 }
 
@@ -133,6 +149,11 @@ func (s *Server) registerAdminTeams() {
 	}, s.adminUpdateTeam)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-set-team-join-password", Method: http.MethodPut, Path: "/teams/{id}/password",
+		Summary: "Set or reset a team's join password", Tags: []string{"admin/teams"},
+	}, s.adminSetTeamJoinSecret)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-set-team-banned", Method: http.MethodPut, Path: "/teams/{id}/ban",
 		Summary: "Ban or unban a team (a ban walls every member)", Tags: []string{"admin/teams"},
 	}, s.adminSetTeamBanned)
@@ -145,14 +166,13 @@ func (s *Server) registerAdminTeams() {
 
 func (s *Server) adminCreateTeam(ctx context.Context, in *adminCreateTeamInput) (*adminTeamOutput, error) {
 	b := in.Body
-	var hash *string
-	if b.Password != "" {
-		h, err := accounts.Hash(b.Password)
-		if err != nil {
-			s.opts.Log.ErrorContext(ctx, "hashing a team password failed", "error", err)
-			return nil, huma.Error500InternalServerError("could not create team")
+	hash, err := accounts.HashJoinSecret(b.Password)
+	if err != nil {
+		if errors.Is(err, accounts.ErrJoinSecretTooShort) {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
 		}
-		hash = &h
+		s.opts.Log.ErrorContext(ctx, "hashing a team password failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not create team")
 	}
 	t, err := s.opts.AdminOps.CreateTeam(ctx, s.adminActor(ctx), adminops.NewTeam{
 		Name: b.Name, PasswordHash: hash, Email: b.Email,
@@ -186,6 +206,24 @@ func (s *Server) adminUpdateTeam(ctx context.Context, in *adminUpdateTeamInput) 
 		return nil, s.adminOpsError(ctx, err, "update team")
 	}
 	return s.adminGetTeam(ctx, &adminTeamIDInput{ID: t.ID})
+}
+
+func (s *Server) adminSetTeamJoinSecret(ctx context.Context, in *adminSetTeamJoinSecretInput) (*adminSetTeamJoinSecretOutput, error) {
+	hash, err := accounts.HashJoinSecret(in.Body.Password)
+	if err != nil {
+		if errors.Is(err, accounts.ErrJoinSecretTooShort) {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+		s.opts.Log.ErrorContext(ctx, "hashing a team password failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not set the join password")
+	}
+	row, err := s.opts.AdminOps.SetTeamJoinSecret(ctx, s.adminActor(ctx), in.ID, hash)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set team join password")
+	}
+	out := &adminSetTeamJoinSecretOutput{}
+	out.Body.ID, out.Body.Name = row.ID, row.Name
+	return out, nil
 }
 
 func (s *Server) adminSetTeamBanned(ctx context.Context, in *adminTeamBanInput) (*adminTeamBanOutput, error) {

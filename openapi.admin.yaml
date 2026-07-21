@@ -1130,12 +1130,14 @@ components:
           type: string
         password:
           maxLength: 128
+          minLength: 8
           type: string
         website:
           maxLength: 255
           type: string
       required:
         - name
+        - password
       type: object
     AdminFieldBody:
       additionalProperties: false
@@ -1933,6 +1935,42 @@ components:
             - "null"
       required:
         - challenge
+      type: object
+    AdminSetTeamJoinSecretInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminSetTeamJoinSecretInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        password:
+          maxLength: 128
+          minLength: 8
+          type: string
+      required:
+        - password
+      type: object
+    AdminSetTeamJoinSecretOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminSetTeamJoinSecretOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
       type: object
     AdminStatsOutputBody:
       additionalProperties: false
@@ -4797,6 +4835,38 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Move a member to another team (their past solves stay with the old team)
+      tags:
+        - admin/teams
+  /teams/{id}/password:
+    put:
+      operationId: admin-set-team-join-password
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminSetTeamJoinSecretInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSetTeamJoinSecretOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set or reset a team's join password
       tags:
         - admin/teams
   /users:

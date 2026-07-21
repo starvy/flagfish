@@ -43,7 +43,7 @@ func admin() policy.Principal {
 func anon() policy.Principal { return policy.Principal{} }
 
 // ---------------------------------------------------------------------------
-// The twelve. One test per NamedPolicy. If you are here because one of these
+// The thirteen. One test per NamedPolicy. If you are here because one of these
 // failed, read the NamedPolicy entry before you "fix" the code.
 // ---------------------------------------------------------------------------
 
@@ -117,6 +117,72 @@ func TestEndedCTFBlocksScoringEvenWhenViewAfterCTF(t *testing.T) {
 	out := policy.Decide(policy.Policy{E: e, P: player(), R: policy.Request{Class: policy.ClassChallengeList}})
 	if !out.Allow {
 		t.Errorf("view_after_ctf must keep the challenges readable after the end, got %+v", out)
+	}
+}
+
+// Enrollment is the one window that opens before the clock does and shuts when it stops. The
+// three phases are asserted separately because each one is a different product statement, and
+// the tempting "just set timeGated" fix gets two of the three wrong.
+func TestEnrollmentWindow(t *testing.T) {
+	freeze := time.Date(2026, 7, 14, 18, 0, 0, 0, time.UTC)
+	enrollment := []policy.RouteClass{policy.ClassTeamEnrollment, policy.ClassTeamCreate}
+
+	teamless := player()
+	teamless.Teamless = true
+
+	// Teamless, because the create gate refuses anyone already on a team — admins included,
+	// which is a separate rule and not the one under test here.
+	teamlessAdmin := admin()
+	teamlessAdmin.Teamless = true
+
+	// Before the start: registration time. A player must be able to form and join a team, and
+	// timeGated would 403 them here — the mistake this policy exists to name.
+	e := runningEvent()
+	e.Phase = policy.PhaseBeforeStart
+	for _, c := range enrollment {
+		out := policy.Decide(policy.Policy{E: e, P: teamless, R: policy.Request{Class: c}})
+		if !out.Allow {
+			t.Errorf("%s: enrollment must be OPEN before the CTF starts — that is when teams are formed. Got %+v", c, out)
+		}
+	}
+
+	// During a freeze: the board is hidden, the game is not stopped. A team that gains a member
+	// in the last hour is playing, not cheating.
+	e = runningEvent()
+	e.FreezeAt = &freeze
+	for _, c := range enrollment {
+		out := policy.Decide(policy.Policy{E: e, P: teamless, R: policy.Request{Class: c}})
+		if !out.Allow {
+			t.Errorf("%s: the freeze hides the scoreboard, it does not close enrollment. Got %+v", c, out)
+		}
+	}
+
+	// After the end: shut. Both with and without view_after_ctf — that setting reopens reading,
+	// never a roster.
+	for _, viewAfter := range []bool{false, true} {
+		e = runningEvent()
+		e.Phase = policy.PhaseEnded
+		e.ViewAfterCTF = viewAfter
+		for _, c := range enrollment {
+			out := policy.Decide(policy.Policy{E: e, P: teamless, R: policy.Request{Class: c}})
+			if out.Allow || out.Status != 403 || out.Reason != policy.ReasonCTFEnded {
+				t.Errorf("%s (view_after_ctf=%v): joining the winners after the clock stops must be refused. Got %+v",
+					c, viewAfter, out)
+			}
+		}
+
+		// The team page itself outlives the event, or a player cannot see the team they played on.
+		out := policy.Decide(policy.Policy{E: e, P: player(), R: policy.Request{Class: policy.ClassTeamSelf}})
+		if !out.Allow {
+			t.Errorf("view_after_ctf=%v: reading your own team must survive the end of the event. Got %+v", viewAfter, out)
+		}
+
+		// The organiser's override, same shape as the one on the clock gate above.
+		for _, c := range enrollment {
+			if out := policy.Decide(policy.Policy{E: e, P: teamlessAdmin, R: policy.Request{Class: c}}); !out.Allow {
+				t.Errorf("%s: an admin fixing a roster after the event is doing their job. Got %+v", c, out)
+			}
+		}
 	}
 }
 
@@ -380,8 +446,8 @@ func TestManualGradeLandsPreFreeze(t *testing.T) {
 
 // The register itself must stay complete and honest.
 func TestNamedPoliciesRegister(t *testing.T) {
-	if len(policy.NamedPolicies) != 12 {
-		t.Fatalf("the register holds %d policies, want 12. "+
+	if len(policy.NamedPolicies) != 13 {
+		t.Fatalf("the register holds %d policies, want 13. "+
 			"Adding or removing one is a product change.", len(policy.NamedPolicies))
 	}
 	seen := map[string]bool{}

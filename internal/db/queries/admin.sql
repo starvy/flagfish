@@ -323,10 +323,16 @@ SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country,
 -- on the INSERT itself, never in a prior check. captain_id stays NULL — an admin-provisioned team
 -- is captainless until its first member joins and adopts it.
 INSERT INTO teams (name, password_hash, email, website, affiliation, country)
-VALUES (@name, sqlc.narg(password_hash), sqlc.narg(email), sqlc.narg(website),
+VALUES (@name, @password_hash, sqlc.narg(email), sqlc.narg(website),
         sqlc.narg(affiliation), sqlc.narg(country))
 RETURNING id, name, email, website, affiliation, country, bracket_id, captain_id,
           hidden, banned, created_at;
+
+-- name: AdminSetTeamJoinSecret :one
+-- The only way to unlock a team whose join secret predates the requirement and whose captain seat
+-- is empty — nobody can join it to adopt it, so an admin has to hand the secret back.
+UPDATE teams SET password_hash = @password_hash WHERE id = @team_id
+RETURNING id, name;
 
 -- name: AdminUpdateTeam :one
 -- Deliberately narrow SET: banned, hidden, captain_id, password_hash and membership are not

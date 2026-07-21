@@ -162,7 +162,7 @@ func TestTeamDuplicateNameConflicts(t *testing.T) {
 	f.createTeam(aCookie, aCSRF, "Bit Flippers", "hunter22")
 
 	res, body := f.do(http.MethodPost, "/api/v1/teams", map[string]any{
-		"name": "Bit Flippers", "password": "other",
+		"name": "Bit Flippers", "password": "otherpass",
 	}, withCookie(bCookie), withCSRF(bCSRF))
 	if res.StatusCode != http.StatusConflict {
 		t.Fatalf("duplicate name: status %d, want 409: %s", res.StatusCode, body)
@@ -265,7 +265,7 @@ func TestTeamLeavePassesCaptaincyAndBlocksAfterSolves(t *testing.T) {
 func TestTeamHiddenProfileIs404(t *testing.T) {
 	f := newTeamAPI(t)
 	aCookie, aCSRF := f.register("Ada", "ada@ctf.test", "correct horse battery")
-	team := f.createTeam(aCookie, aCSRF, "Ghosts", "boo")
+	team := f.createTeam(aCookie, aCSRF, "Ghosts", "boo-hunter")
 
 	if _, err := f.pool.Exec(context.Background(),
 		`UPDATE teams SET hidden = true WHERE id = $1`, team.ID); err != nil {

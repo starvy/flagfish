@@ -259,6 +259,14 @@ func TestS20_TeamPatchMassAssignmentIsRefused(t *testing.T) {
 	}
 	teamID := f.team("target")
 
+	// The team holds a join secret — the column is NOT NULL — so the invariant is that a smuggled
+	// password_hash never overwrites it, not that it is absent. Capture the seeded value to prove it
+	// is unchanged after every refused PATCH.
+	var seededHash string
+	if err := f.pool.QueryRow(ctx, `SELECT password_hash FROM teams WHERE id = $1`, teamID).Scan(&seededHash); err != nil {
+		t.Fatalf("read seeded hash: %v", err)
+	}
+
 	// One smuggled key per request: a combined payload would let one refused key mask another
 	// that a future refactor quietly started accepting.
 	for _, payload := range []string{
@@ -280,14 +288,14 @@ func TestS20_TeamPatchMassAssignmentIsRefused(t *testing.T) {
 			Banned    bool
 			Hidden    bool
 			CaptainID *int64
-			PwHash    *string
+			PwHash    string
 		}
 		if err := f.pool.QueryRow(ctx,
 			`SELECT name, banned, hidden, captain_id, password_hash FROM teams WHERE id = $1`, teamID).
 			Scan(&row.Name, &row.Banned, &row.Hidden, &row.CaptainID, &row.PwHash); err != nil {
 			t.Fatalf("read team: %v", err)
 		}
-		if row.Banned || row.Hidden || row.CaptainID != nil || row.PwHash != nil {
+		if row.Banned || row.Hidden || row.CaptainID != nil || row.PwHash != seededHash {
 			t.Errorf("PATCH %s landed: %+v", payload, row)
 		}
 		if row.Name != "target" {

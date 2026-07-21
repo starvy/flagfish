@@ -217,6 +217,14 @@ func Decide(p Policy) Outcome {
 		}
 	}
 
+	// 12b. The enrollment window, which is the clock read the other way round: open before the
+	//      start rather than closed, and shut at the end regardless of view_after_ctf. Admins
+	//      are exempt here for the same reason they are exempt above — an organiser fixing a
+	//      roster after the fact is doing their job, and it lands in the audit trail.
+	if r.Class.ClosesAtEnd() && !pr.IsAdmin && e.Phase == PhaseEnded {
+		return Outcome{Status: 403, Reason: ReasonCTFEnded}
+	}
+
 	// 13. Pause. Only the attempt class is gated — see PolicyPauseDoesNotBlockUnlocks.
 	//     Preview lifts the gate only for an admin: it arrives straight off the query
 	//     string, so honouring it for anyone would make `?preview=1` a pause bypass.

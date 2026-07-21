@@ -31,6 +31,10 @@ var (
 	ErrNotCaptain     = errors.New("accounts: only the captain can edit the team")
 	ErrTeamEmailTaken = errors.New("accounts: team email is already in use")
 
+	// ErrJoinSecretTooShort refuses a team whose roster would be protected by its name alone.
+	// Team names are printed on the scoreboard, so a weak join secret is no secret at all.
+	ErrJoinSecretTooShort = fmt.Errorf("accounts: a team join password must be at least %d characters", MinJoinSecretLen)
+
 	// ErrTargetNotMember is a roster action aimed at someone who is not on the captain's team.
 	ErrTargetNotMember = errors.New("accounts: target is not a member of your team")
 	// ErrCannotKickSelf is the captain trying to kick themselves — leave or transfer instead.
@@ -39,6 +43,25 @@ var (
 	// submissions, solves, awards, or hint unlocks and can only be retired by hide/ban.
 	ErrTeamHasHistory = errors.New("accounts: cannot disband a team with a scoreboard history")
 )
+
+// MinJoinSecretLen is the shortest join password a team may be created with. It matches the
+// minimum on a user's own password: one number for a reader to remember, and a join secret
+// guards no less than a login does — it is the whole wall around a team's solves and hints.
+const MinJoinSecretLen = 8
+
+// HashJoinSecret validates and hashes a team's join password. Every path that puts a secret
+// on a team goes through here, so the length rule cannot be met on one route and skipped on
+// the next.
+func HashJoinSecret(secret string) (string, error) {
+	if len(secret) < MinJoinSecretLen {
+		return "", ErrJoinSecretTooShort
+	}
+	h, err := Hash(secret)
+	if err != nil {
+		return "", fmt.Errorf("accounts: join secret: %w", err)
+	}
+	return h, nil
+}
 
 // TeamMember is one roster row, with the member's contribution read from the stamped
 // solves ledger.
@@ -71,14 +94,9 @@ type Team struct {
 // The unique name index and the num_teams caps trigger arbitrate concurrent creates the
 // same way registration's constraints do: on the INSERT, never in a prior check.
 func (s *Service) CreateTeam(ctx context.Context, userID int64, name, password string) (Team, error) {
-	// An empty join password stays NULL; the hasher refuses empty strings on purpose.
-	var hash *string
-	if password != "" {
-		h, err := Hash(password)
-		if err != nil {
-			return Team{}, err
-		}
-		hash = &h
+	hash, err := HashJoinSecret(password)
+	if err != nil {
+		return Team{}, err
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -134,19 +152,17 @@ func (s *Service) JoinTeam(ctx context.Context, userID int64, name, password str
 		return Team{}, ErrTeamJoinDenied
 	}
 
-	if t.PasswordHash == nil {
-		// A team created without a join password admits only an empty one.
-		if password != "" {
-			return Team{}, ErrTeamJoinDenied
-		}
-	} else {
-		ok, rehash := Verify(*t.PasswordHash, password)
-		if !ok {
-			return Team{}, ErrTeamJoinDenied
-		}
-		if rehash {
-			s.rehashTeamPassword(ctx, t.ID, password)
-		}
+	// Every team holds a real secret — the column is NOT NULL — so there is no "this one has
+	// no password" arm to fall through. A team locked by the migration that introduced the
+	// requirement carries a hash nothing verifies against, and is refused here like any wrong
+	// guess: saying which teams are locked would be the same enumeration oracle as saying
+	// which names exist.
+	ok, rehash := Verify(t.PasswordHash, password)
+	if !ok {
+		return Team{}, ErrTeamJoinDenied
+	}
+	if rehash {
+		s.rehashTeamPassword(ctx, t.ID, password)
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -193,7 +209,7 @@ func (s *Service) rehashTeamPassword(ctx context.Context, teamID int64, password
 	upgraded, err := Hash(password)
 	if err == nil {
 		err = s.q.UpdateTeamPasswordHash(ctx, db.UpdateTeamPasswordHashParams{
-			TeamID: teamID, PasswordHash: &upgraded,
+			TeamID: teamID, PasswordHash: upgraded,
 		})
 	}
 	if err != nil {
@@ -387,6 +403,44 @@ func (s *Service) captainTx(ctx context.Context, actor audit.Actor, fn func(q *d
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("accounts: commit: %w", err)
+	}
+	return nil
+}
+
+// SetJoinSecret rotates the team's join password. Captaincy is the UPDATE's WHERE clause, so a
+// captain demoted mid-flight changes nothing rather than racing past a check.
+//
+// It is also the only exit for a team whose row predates the rule that every team holds a secret:
+// those carry a hash nothing verifies against and refuse every join until this runs.
+func (s *Service) SetJoinSecret(ctx context.Context, actor audit.Actor, secret string) error {
+	hash, err := HashJoinSecret(secret)
+	if err != nil {
+		return err
+	}
+
+	var rows int64
+	err = s.captainTx(ctx, actor, func(q *db.Queries) error {
+		var qerr error
+		rows, qerr = q.SetJoinSecretByCaptain(ctx, db.SetJoinSecretByCaptainParams{
+			PasswordHash: hash, CaptainID: &actor.ID,
+		})
+		if qerr != nil {
+			return fmt.Errorf("accounts: set join secret: %w", qerr)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		u, uerr := s.q.GetUserByID(ctx, actor.ID)
+		if uerr != nil {
+			return fmt.Errorf("accounts: set join secret: %w", uerr)
+		}
+		if u.TeamID == nil {
+			return ErrNotOnTeam
+		}
+		return ErrNotCaptain
 	}
 	return nil
 }

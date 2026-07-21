@@ -903,6 +903,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teams/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set or reset a team's join password */
+        put: operations["admin-set-team-join-password"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1592,7 +1609,7 @@ export interface components {
             /** Format: email */
             email?: string;
             name: string;
-            password?: string;
+            password: string;
             website?: string;
         };
         AdminFieldBody: {
@@ -1982,6 +1999,26 @@ export interface components {
             readonly $schema?: string;
             challenge: components["schemas"]["AdminChallengeBody"];
             warnings?: string[] | null;
+        };
+        AdminSetTeamJoinSecretInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminSetTeamJoinSecretInputBody.json
+             */
+            readonly $schema?: string;
+            password: string;
+        };
+        AdminSetTeamJoinSecretOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminSetTeamJoinSecretOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
         };
         AdminStatsOutputBody: {
             /**
@@ -4624,6 +4661,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-set-team-join-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSetTeamJoinSecretInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSetTeamJoinSecretOutputBody"];
+                };
             };
             /** @description Error */
             default: {

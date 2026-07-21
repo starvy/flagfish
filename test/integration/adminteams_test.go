@@ -110,7 +110,7 @@ func TestAdminTeamCreateAndPatch(t *testing.T) {
 	}
 
 	// duplicate name → 409 (teams_name_uniq arbitrates, not a prior SELECT)
-	res, body = f.do(http.MethodPost, "/api/v1/admin/teams", map[string]any{"name": "provisioned"}, auth...)
+	res, body = f.do(http.MethodPost, "/api/v1/admin/teams", map[string]any{"name": "provisioned", "password": "join-me-again"}, auth...)
 	if res.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate name: got %d, want 409 (%s)", res.StatusCode, body)
 	}
@@ -155,5 +155,43 @@ func TestAdminTeamCreateAndPatch(t *testing.T) {
 	}
 	if n := f.auditCount("teams", "UPDATE", adminID); n == 0 {
 		t.Error("no UPDATE audit row for the patched team")
+	}
+}
+
+// An admin can set or reset a team's join password — the only way to unlock a captainless team
+// whose secret predates the requirement, since nobody can join it to adopt it.
+func TestAdminSetsTeamJoinPassword(t *testing.T) {
+	f := newAdminAPI(t, account.ModeTeams)
+	cookie, csrf, _ := f.admin("root", "root@example.com")
+	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
+
+	// A locked team: inserted with no password_hash, so the column default makes it unjoinable.
+	teamID := f.seedTeam("locked") // locked@team.test
+
+	// Too short is refused.
+	res, body := f.do(http.MethodPut, "/api/v1/admin/teams/"+itoa(teamID)+"/password",
+		map[string]any{"password": "short7!"}, auth...)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("admin set too-short secret: got %d, want 422 (%s)", res.StatusCode, body)
+	}
+
+	// A real secret unlocks it.
+	res, body = f.do(http.MethodPut, "/api/v1/admin/teams/"+itoa(teamID)+"/password",
+		map[string]any{"password": "admin-set-secret"}, auth...)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("admin set secret: got %d, want 200 (%s)", res.StatusCode, body)
+	}
+
+	// A player can now join with it — and not with an empty one.
+	pCookie, pCSRF := f.register("Player", "player@ctf.test", "correct horse battery")
+	res, _ = f.do(http.MethodPost, "/api/v1/teams/join",
+		map[string]any{"name": "locked", "password": ""}, withCookie(pCookie), withCSRF(pCSRF))
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("join the unlocked team with an empty secret: got %d, want 403", res.StatusCode)
+	}
+	res, body = f.do(http.MethodPost, "/api/v1/teams/join",
+		map[string]any{"name": "locked", "password": "admin-set-secret"}, withCookie(pCookie), withCSRF(pCSRF))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("join the unlocked team with the admin-set secret: got %d, want 200 (%s)", res.StatusCode, body)
 	}
 }

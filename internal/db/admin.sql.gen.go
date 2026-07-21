@@ -221,7 +221,7 @@ RETURNING id, name, email, website, affiliation, country, bracket_id, captain_id
 
 type AdminCreateTeamParams struct {
 	Name         string
-	PasswordHash *string
+	PasswordHash string
 	Email        *string
 	Website      *string
 	Affiliation  *string
@@ -1368,6 +1368,30 @@ func (q *Queries) AdminSetTeamHidden(ctx context.Context, arg AdminSetTeamHidden
 	row := q.db.QueryRow(ctx, adminSetTeamHidden, arg.Hidden, arg.TeamID)
 	var i AdminSetTeamHiddenRow
 	err := row.Scan(&i.ID, &i.Name, &i.Hidden)
+	return i, err
+}
+
+const adminSetTeamJoinSecret = `-- name: AdminSetTeamJoinSecret :one
+UPDATE teams SET password_hash = $1 WHERE id = $2
+RETURNING id, name
+`
+
+type AdminSetTeamJoinSecretParams struct {
+	PasswordHash string
+	TeamID       int64
+}
+
+type AdminSetTeamJoinSecretRow struct {
+	ID   int64
+	Name string
+}
+
+// The only way to unlock a team whose join secret predates the requirement and whose captain seat
+// is empty — nobody can join it to adopt it, so an admin has to hand the secret back.
+func (q *Queries) AdminSetTeamJoinSecret(ctx context.Context, arg AdminSetTeamJoinSecretParams) (AdminSetTeamJoinSecretRow, error) {
+	row := q.db.QueryRow(ctx, adminSetTeamJoinSecret, arg.PasswordHash, arg.TeamID)
+	var i AdminSetTeamJoinSecretRow
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
 

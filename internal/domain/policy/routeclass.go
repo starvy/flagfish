@@ -45,7 +45,12 @@ const (
 	// an endpoint the redirect itself blocks.
 	ClassPasswordChange
 
+	// ClassTeamEnrollment is the routes that move a person on or off a roster.
+	// ClassTeamSelf is the rest of the caller's own team — reading it, editing its profile,
+	// passing the captain's seat. They are separate classes because they close at different
+	// times: enrollment shuts when the event does, the team page does not.
 	ClassTeamEnrollment
+	ClassTeamSelf
 	ClassTeamCreate
 	ClassTeamDetail
 
@@ -80,6 +85,14 @@ type attrs struct {
 	// it must never reopen scoring. Kept as a table attribute rather than a condition at the
 	// gate so a new scoring route cannot forget to be excluded.
 	mutatesScore bool
+
+	// closesAtEnd: the route is refused once the clock stops, but is open before the start.
+	// timeGated cannot say that — it denies before the start too, which is exactly wrong for
+	// registration, where the hours before the event are when the work happens.
+	//
+	// Unlike timeGated it does not consult view_after_ctf: that setting is a courtesy for
+	// READING a finished event, and these are writes.
+	closesAtEnd bool
 
 	adminOnly bool
 
@@ -137,8 +150,15 @@ var classAttrs = map[RouteClass]attrs{
 	// would otherwise trap its own exit is lifted.
 	ClassPasswordChange: {requiresAuth: true, exemptFromPasswordChange: true},
 
-	ClassTeamEnrollment: {requiresAuth: true, modes: []account.Mode{account.ModeTeams}},
-	ClassTeamCreate:     {requiresAuth: true, modes: []account.Mode{account.ModeTeams}},
+	// Enrollment is open before the start — that is registration — and stays open while the
+	// clock runs, freeze included: the freeze hides the board, it does not stop play. It shuts
+	// at the end, because after that a roster change rewrites who earned a standing that is
+	// already final: joining the winners, or shedding a team to break an anti-cheat association.
+	ClassTeamEnrollment: {requiresAuth: true, modes: []account.Mode{account.ModeTeams}, closesAtEnd: true},
+	ClassTeamCreate:     {requiresAuth: true, modes: []account.Mode{account.ModeTeams}, closesAtEnd: true},
+	// Reading your own team, editing its profile and passing the captain's seat outlive the
+	// event: none of them move a person between rosters.
+	ClassTeamSelf: {requiresAuth: true, modes: []account.Mode{account.ModeTeams}},
 	// The public team page: account visibility gates it like an account detail, and it
 	// simply does not exist in users mode.
 	ClassTeamDetail: {visGates: []VisKind{VisAccount}, modes: []account.Mode{account.ModeTeams}},
@@ -181,6 +201,7 @@ func (c RouteClass) RequiresCompleteProfile() bool  { return c.attrs().requiresP
 func (c RouteClass) RequiresTeam() bool             { return c.attrs().requiresTeam }
 func (c RouteClass) TimeGated() bool                { return c.attrs().timeGated }
 func (c RouteClass) MutatesScore() bool             { return c.attrs().mutatesScore }
+func (c RouteClass) ClosesAtEnd() bool              { return c.attrs().closesAtEnd }
 func (c RouteClass) AdminOnly() bool                { return c.attrs().adminOnly }
 func (c RouteClass) ExemptFromBan() bool            { return c.attrs().exemptFromBan }
 func (c RouteClass) ExemptFromPasswordChange() bool { return c.attrs().exemptFromPasswordChange }
@@ -195,7 +216,8 @@ var classNames = map[RouteClass]string{
 	ClassScoreboard: "scoreboard", ClassScoreboardDetail: "scoreboard-detail",
 	ClassAccountList: "account-list", ClassAccountDetail: "account-detail", ClassAccountSelf: "account-self",
 	ClassPasswordChange: "password-change",
-	ClassTeamEnrollment: "team-enrollment", ClassTeamCreate: "team-create", ClassTeamDetail: "team-detail",
+	ClassTeamEnrollment: "team-enrollment", ClassTeamSelf: "team-self",
+	ClassTeamCreate: "team-create", ClassTeamDetail: "team-detail",
 	ClassTokens: "tokens", ClassSSE: "sse", ClassNotifications: "notifications",
 	ClassAdmin: "admin", ClassAdminScoreboard: "admin-scoreboard",
 	ClassStatistics: "statistics", ClassExport: "export",

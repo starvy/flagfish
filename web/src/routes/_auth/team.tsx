@@ -10,6 +10,7 @@ import {
   useJoinTeam,
   useLeaveTeam,
   useUpdateMyTeam,
+  useSetTeamJoinPassword,
   useKickMember,
   useTransferCaptaincy,
   useDisbandTeam,
@@ -143,7 +144,7 @@ function CreateTeam({ mutation }: { mutation: ReturnType<typeof useCreateTeam> }
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     mutation.mutate(
-      { name, password: password === "" ? undefined : password },
+      { name, password },
       { onSuccess: (team) => toast.success("Team created", `You are the captain of ${team.name}.`) },
     );
   };
@@ -171,14 +172,16 @@ function CreateTeam({ mutation }: { mutation: ReturnType<typeof useCreateTeam> }
         <Field
           name="password"
           label="Join password"
-          hint="Teammates need it to join. Leave it blank to let anyone in."
+          hint="Teammates need it to join. Your team name is public, so this is the only thing keeping strangers off your roster — at least 8 characters, and required."
         >
           <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
             maxLength={128}
             autoComplete="new-password"
+            required
           />
         </Field>
       </Form>
@@ -536,8 +539,69 @@ function TeamProfile({ team }: { team: Team }) {
   );
 }
 
-/** Captain-only edit of the team's contact and profile data; an emptied box clears its field. */
+/** The captain's controls: the profile, and the join password that guards the roster. */
 function CaptainSettings({ team }: { team: Team }) {
+  return (
+    <>
+      <TeamProfileForm team={team} />
+      <JoinPasswordCard />
+    </>
+  );
+}
+
+/** Captain-only rotation of the join password. Also the way to unlock a team whose secret predates
+ * the requirement that every team hold one — until then it refuses every join. */
+function JoinPasswordCard() {
+  const toast = useToast();
+  const rotate = useSetTeamJoinPassword();
+  const [password, setPassword] = useState("");
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    rotate.mutate(
+      { password },
+      {
+        onSuccess: () => {
+          setPassword("");
+          toast.success("Join password changed", "Share the new one with anyone you want to invite.");
+        },
+      },
+    );
+  };
+
+  return (
+    <Card title="Join password">
+      <p className="muted">
+        Your team name is public, so this password is the whole wall around your roster. Anyone you
+        give it to can join; changing it does not remove the members you already have.
+      </p>
+      <Form
+        onSubmit={submit}
+        error={rotate.error ? messageOf(rotate.error) : undefined}
+        footer={
+          <Button type="submit" variant="primary" loading={rotate.isPending}>
+            Change join password
+          </Button>
+        }
+      >
+        <Field name="password" label="New join password" hint="At least 8 characters.">
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            maxLength={128}
+            autoComplete="new-password"
+            required
+          />
+        </Field>
+      </Form>
+    </Card>
+  );
+}
+
+/** Captain-only edit of the team's contact and profile data; an emptied box clears its field. */
+function TeamProfileForm({ team }: { team: Team }) {
   const toast = useToast();
   const update = useUpdateMyTeam();
   const [values, setValues] = useState({

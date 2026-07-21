@@ -183,6 +183,22 @@ func TestDecideTable(t *testing.T) {
 			p:     admin(), r: policy.Request{Class: policy.ClassChallengeAttempt}, allow: true,
 		},
 		{
+			name:  "after end, enrollment is 403 — you cannot join the winners",
+			event: func(e *policy.Event) { e.Phase = policy.PhaseEnded },
+			p:     teamless, r: policy.Request{Class: policy.ClassTeamEnrollment},
+			status: 403, reason: policy.ReasonCTFEnded,
+		},
+		{
+			name:  "before start, enrollment is OPEN — that is registration",
+			event: func(e *policy.Event) { e.Phase = policy.PhaseBeforeStart },
+			p:     teamless, r: policy.Request{Class: policy.ClassTeamEnrollment}, allow: true,
+		},
+		{
+			name:  "after end, the team page is still readable",
+			event: func(e *policy.Event) { e.Phase = policy.PhaseEnded },
+			p:     player(), r: policy.Request{Class: policy.ClassTeamSelf}, allow: true,
+		},
+		{
 			name:  "the scoreboard is NOT time-gated",
 			event: func(e *policy.Event) { e.Phase = policy.PhaseBeforeStart },
 			p:     player(), r: policy.Request{Class: policy.ClassScoreboard}, allow: true,

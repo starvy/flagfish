@@ -116,6 +116,18 @@ var NamedPolicies = []NamedPolicy{
 		Test:      "TestManualGradeLandsPreFreeze",
 	},
 	{
+		Name: "PolicyEnrollmentClosesAtTheEndOnly", Kind: Corrected,
+		Why: "Team enrollment was gated on nothing at all, so a player could join the winners after " +
+			"the clock stopped or shed a team to break an anti-cheat association. It is now open BEFORE " +
+			"the start (that is registration), open during the freeze (the freeze hides the board, it " +
+			"does not stop play) and closed once the event ends — and view_after_ctf does not reopen it.",
+		Preserved: "the closesAtEnd attribute and its own gate in Decide. Setting timeGated on these " +
+			"classes instead looks like the tidier fix and is wrong: it denies enrollment BEFORE the " +
+			"start, which is when a team is actually assembled, and it makes view_after_ctf reopen a " +
+			"roster. Reading /me/team is a separate class for the same reason — it must outlive the event.",
+		Test: "TestEnrollmentWindow",
+	},
+	{
 		Name: "PolicyRegistrationMLCTreatedAsPrivate", Kind: Corrected,
 		Why: "registration_visibility='mlc' means the registration form route is unavailable and accounts " +
 			"are created only via the MLC OAuth callback; a value with no explicit arm would otherwise " +

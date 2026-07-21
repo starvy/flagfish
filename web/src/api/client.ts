@@ -321,6 +321,10 @@ export const api = {
   updateMyTeam: (body: Body<Schemas["UpdateMyTeamInputBody"]>) =>
     request<Team>("PATCH", "/me/team", body),
 
+  // Captain only. Also the only way to unlock a team whose join secret predates the requirement.
+  setTeamJoinPassword: (body: Body<Schemas["SetJoinSecretInputBody"]>) =>
+    request<Schemas["LeftTeamOutputBody"]>("PUT", "/me/team/password", body),
+
   leaveTeam: () => request<Schemas["LeftTeamOutputBody"]>("POST", "/me/team/leave"),
 
   // Captain-only roster controls; the server enforces captaincy in each write itself.

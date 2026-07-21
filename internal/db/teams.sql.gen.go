@@ -37,7 +37,7 @@ RETURNING id, name, created_at
 
 type CreateTeamParams struct {
 	Name         string
-	PasswordHash *string
+	PasswordHash string
 	CaptainID    *int64
 }
 
@@ -143,7 +143,7 @@ SELECT id, password_hash, banned FROM teams WHERE name = $1
 
 type GetTeamForJoinRow struct {
 	ID           int64
-	PasswordHash *string
+	PasswordHash string
 	Banned       bool
 }
 
@@ -330,6 +330,25 @@ func (q *Queries) ReassignCaptainAfterLeave(ctx context.Context, arg ReassignCap
 	return err
 }
 
+const setJoinSecretByCaptain = `-- name: SetJoinSecretByCaptain :execrows
+UPDATE teams SET password_hash = $1 WHERE captain_id = $2
+`
+
+type SetJoinSecretByCaptainParams struct {
+	PasswordHash string
+	CaptainID    *int64
+}
+
+// Captaincy is the WHERE clause, so a demoted captain's in-flight rotate affects zero rows rather
+// than racing past a check. Zero rows also covers a caller who is on no team at all.
+func (q *Queries) SetJoinSecretByCaptain(ctx context.Context, arg SetJoinSecretByCaptainParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setJoinSecretByCaptain, arg.PasswordHash, arg.CaptainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const teamCaptainScored = `-- name: TeamCaptainScored :one
 SELECT t.captain_id,
        EXISTS (SELECT 1 FROM solves s WHERE s.team_id = t.id)::boolean AS scored
@@ -423,7 +442,7 @@ UPDATE teams SET password_hash = $1 WHERE id = $2
 `
 
 type UpdateTeamPasswordHashParams struct {
-	PasswordHash *string
+	PasswordHash string
 	TeamID       int64
 }
 

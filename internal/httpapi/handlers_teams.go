@@ -16,16 +16,26 @@ import (
 type createTeamInput struct {
 	Body struct {
 		Name string `json:"name" minLength:"1" maxLength:"128"`
-		// Password is the join password. Empty means the team has none and admits
-		// members on an empty password.
-		Password string `json:"password,omitempty" maxLength:"128" required:"false"`
+		// Password is the join password, and it is required: team names are printed on the
+		// scoreboard, so a team without one is open to anyone who reads the standings. The
+		// minimum matches a user's own password.
+		Password string `json:"password" minLength:"8" maxLength:"128"`
 	}
 }
 
+// joinTeamInput deliberately carries no minimum: a short password is simply a wrong one, and
+// answering it with a validation error rather than the usual denial would tell an attacker
+// something the denial is written not to.
 type joinTeamInput struct {
 	Body struct {
 		Name     string `json:"name" minLength:"1" maxLength:"128"`
 		Password string `json:"password,omitempty" maxLength:"128" required:"false"`
+	}
+}
+
+type setJoinSecretInput struct {
+	Body struct {
+		Password string `json:"password" minLength:"8" maxLength:"128"`
 	}
 }
 
@@ -84,15 +94,20 @@ func (s *Server) registerTeams() {
 		Summary: "A team's public profile", Tags: []string{"teams"},
 	}, s.teamDetail)
 
-	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+	Register(s.Public, policy.ClassTeamSelf, huma.Operation{
 		OperationID: "my-team", Method: http.MethodGet, Path: "/me/team",
 		Summary: "The caller's team", Tags: []string{"teams"},
 	}, s.myTeam)
 
-	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+	Register(s.Public, policy.ClassTeamSelf, huma.Operation{
 		OperationID: "update-my-team", Method: http.MethodPatch, Path: "/me/team",
 		Summary: "Update the caller's team (captain only)", Tags: []string{"teams"},
 	}, s.updateMyTeam)
+
+	Register(s.Public, policy.ClassTeamSelf, huma.Operation{
+		OperationID: "set-team-join-password", Method: http.MethodPut, Path: "/me/team/password",
+		Summary: "Rotate the team's join password (captain only)", Tags: []string{"teams"},
+	}, s.setTeamJoinSecret)
 
 	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
 		OperationID: "leave-team", Method: http.MethodPost, Path: "/me/team/leave",
@@ -104,7 +119,7 @@ func (s *Server) registerTeams() {
 		Summary: "Remove a member from the caller's team (captain only)", Tags: []string{"teams"},
 	}, s.kickTeamMember)
 
-	Register(s.Public, policy.ClassTeamEnrollment, huma.Operation{
+	Register(s.Public, policy.ClassTeamSelf, huma.Operation{
 		OperationID: "transfer-captaincy", Method: http.MethodPut, Path: "/me/team/captain",
 		Summary: "Hand captaincy to another member (captain only)", Tags: []string{"teams"},
 	}, s.transferCaptaincy)
@@ -158,11 +173,33 @@ func (s *Server) createTeam(ctx context.Context, in *createTeamInput) (*teamOutp
 		return nil, huma.Error403Forbidden("you are already on a team")
 	case errors.Is(err, accounts.ErrTeamFull):
 		return nil, huma.Error403Forbidden("the team is full")
+	case errors.Is(err, accounts.ErrJoinSecretTooShort):
+		return nil, huma.Error422UnprocessableEntity(err.Error())
 	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "create team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not create the team")
 	}
 	return &teamOutput{Body: teamBodyOf(t)}, nil
+}
+
+// setTeamJoinSecret rotates the join password. It is also how a team whose secret predates the
+// requirement gets one: those rows are locked until a captain runs this.
+func (s *Server) setTeamJoinSecret(ctx context.Context, in *setJoinSecretInput) (*leftTeamOutput, error) {
+	err := s.opts.Accounts.SetJoinSecret(ctx, s.callerActor(ctx), in.Body.Password)
+	switch {
+	case errors.Is(err, accounts.ErrNotOnTeam):
+		return nil, huma.Error404NotFound("you are not on a team")
+	case errors.Is(err, accounts.ErrNotCaptain):
+		return nil, huma.Error403Forbidden("only the captain can change the join password")
+	case errors.Is(err, accounts.ErrJoinSecretTooShort):
+		return nil, huma.Error422UnprocessableEntity(err.Error())
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "set team join password failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not change the join password")
+	}
+	out := &leftTeamOutput{}
+	out.Body.OK = true
+	return out, nil
 }
 
 func (s *Server) joinTeam(ctx context.Context, in *joinTeamInput) (*teamOutput, error) {

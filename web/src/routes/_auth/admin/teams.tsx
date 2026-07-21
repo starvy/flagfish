@@ -325,7 +325,7 @@ function CreateTeamDialog({ open, onClose }: { open: boolean; onClose: () => voi
     create.mutate(
       {
         name,
-        password: password === "" ? undefined : password,
+        password,
         email: email === "" ? undefined : email,
         country: country === "" ? undefined : country,
       },
@@ -365,14 +365,16 @@ function CreateTeamDialog({ open, onClose }: { open: boolean; onClose: () => voi
         <Field
           name="password"
           label="Join password"
-          hint="Players need it to join. Blank lets anyone in."
+          hint="Required — at least 8 characters. The team is captainless until its first member joins with this, and the name is public, so it is the only thing keeping strangers out."
         >
           <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
             maxLength={128}
             autoComplete="new-password"
+            required
           />
         </Field>
         <Field name="email" label="Contact email" hint="Visible to admins and the team only.">

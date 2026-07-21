@@ -67,6 +67,26 @@ func Hash(password string) (string, error) {
 	), nil
 }
 
+// LockedHash mints a hash that nothing can ever satisfy: it is a well-formed Argon2id
+// string over a secret generated here and never returned, so verification does the full
+// argon2 work and always fails.
+//
+// It is how a row that must hold a credential gets one when nobody has chosen it yet — an
+// imported team with no join password, say. A locked row is indistinguishable from a wrong
+// guess, which is the point: the alternative, a nullable credential that means "admits
+// anyone", is the hole this exists to close.
+func LockedHash() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("accounts: locked hash: %w", err)
+	}
+	h, err := Hash(base64.RawStdEncoding.EncodeToString(secret))
+	if err != nil {
+		return "", fmt.Errorf("accounts: locked hash: %w", err)
+	}
+	return h, nil
+}
+
 // Verify checks a password against a stored hash, in either format.
 //
 // Imported archives carry bcrypt hashes. Shipping Argon2id-only would lock out every

@@ -175,6 +175,9 @@ type Querier interface {
 	AdminSetChallengeState(ctx context.Context, arg AdminSetChallengeStateParams) (Challenge, error)
 	AdminSetTeamBanned(ctx context.Context, arg AdminSetTeamBannedParams) (AdminSetTeamBannedRow, error)
 	AdminSetTeamHidden(ctx context.Context, arg AdminSetTeamHiddenParams) (AdminSetTeamHiddenRow, error)
+	// The only way to unlock a team whose join secret predates the requirement and whose captain seat
+	// is empty — nobody can join it to adopt it, so an admin has to hand the secret back.
+	AdminSetTeamJoinSecret(ctx context.Context, arg AdminSetTeamJoinSecretParams) (AdminSetTeamJoinSecretRow, error)
 	AdminSetUserBanned(ctx context.Context, arg AdminSetUserBannedParams) (AdminSetUserBannedRow, error)
 	AdminSetUserHidden(ctx context.Context, arg AdminSetUserHiddenParams) (AdminSetUserHiddenRow, error)
 	AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error)
@@ -916,6 +919,9 @@ type Querier interface {
 	// found_type means "no such award" (type is never empty), a zero deleted_id means "not deleted"
 	// (ids start at 1). The caller reads the two together to pick the outcome.
 	RevokeManualAward(ctx context.Context, id int64) (RevokeManualAwardRow, error)
+	// Captaincy is the WHERE clause, so a demoted captain's in-flight rotate affects zero rows rather
+	// than racing past a check. Zero rows also covers a caller who is on no team at all.
+	SetJoinSecretByCaptain(ctx context.Context, arg SetJoinSecretByCaptainParams) (int64, error)
 	// Queue a new address for verification. It becomes live only when a token delivered to it is
 	// confirmed (ConfirmEmailChange). users_pending_email_uniq rejects a duplicate queued address —
 	// surfaced as a conflict, not a lost check-then-insert race.

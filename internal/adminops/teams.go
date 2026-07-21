@@ -47,11 +47,11 @@ func (s *Service) GetTeam(ctx context.Context, teamID int64) (db.AdminGetTeamRow
 	return row, nil
 }
 
-// NewTeam is the admin create input. PasswordHash is the already-hashed join password, or nil
-// for a team that admits members on an empty password — hashing stays out of this package.
+// NewTeam is the admin create input. PasswordHash is the already-hashed join password — every
+// team holds one, so this is never empty; hashing and its length rule stay out of this package.
 type NewTeam struct {
 	Name         string
-	PasswordHash *string
+	PasswordHash string
 	Email        *string
 	Website      *string
 	Affiliation  *string
@@ -106,6 +106,24 @@ func (s *Service) UpdateTeam(ctx context.Context, actor audit.Actor, teamID int6
 			return fmt.Errorf("%w: id=%d", ErrTeamNotFound, teamID)
 		} else if err != nil {
 			return fmt.Errorf("adminops: update team %d: %w", teamID, teamConstraint(err))
+		}
+		return nil
+	})
+	return out, err
+}
+
+// SetTeamJoinSecret writes a team's join password hash. It is the admin unlock for a captainless
+// team whose secret predates the requirement — nobody can join it to adopt it, so an admin has to
+// hand the secret back. The hash arrives already computed; the length rule lives with the hasher.
+func (s *Service) SetTeamJoinSecret(ctx context.Context, actor audit.Actor, teamID int64, hash string) (db.AdminSetTeamJoinSecretRow, error) {
+	var out db.AdminSetTeamJoinSecretRow
+	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		var err error
+		out, err = q.AdminSetTeamJoinSecret(ctx, db.AdminSetTeamJoinSecretParams{TeamID: teamID, PasswordHash: hash})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: id=%d", ErrTeamNotFound, teamID)
+		} else if err != nil {
+			return fmt.Errorf("adminops: set team %d join secret: %w", teamID, err)
 		}
 		return nil
 	})

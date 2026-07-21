@@ -62,6 +62,12 @@ export function useUpdateMyTeam() {
   return useTeamMutation(api.updateMyTeam);
 }
 
+// Captain-only. Rotating the join password does not change membership, so it does not need the
+// broad invalidation the roster mutations do — but reusing the helper keeps them uniform.
+export function useSetTeamJoinPassword() {
+  return useTeamMutation(api.setTeamJoinPassword);
+}
+
 // Captain-only roster controls. Captaincy is enforced in the write itself, so the client gate is
 // only there to keep the UI honest — the server is the authority on every one of these.
 export function useKickMember() {

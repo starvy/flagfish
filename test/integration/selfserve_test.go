@@ -116,7 +116,7 @@ func TestCaptainTeamSettings(t *testing.T) {
 	capAuth := []func(*http.Request){withCookie(capCookie), withCSRF(capCSRF)}
 
 	// The captain creates the team through the real route, so captaincy is the enrolled kind.
-	res, body := f.do(http.MethodPost, "/api/v1/teams", map[string]any{"name": "editable"}, capAuth...)
+	res, body := f.do(http.MethodPost, "/api/v1/teams", map[string]any{"name": "editable", "password": "editable-secret"}, capAuth...)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create team: %d (%s)", res.StatusCode, body)
 	}

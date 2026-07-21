@@ -4,15 +4,41 @@ package concurrency
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"testing"
 
+	"golang.org/x/crypto/argon2"
+
 	"github.com/starvy/flagfish/internal/accounts"
 	"github.com/starvy/flagfish/internal/domain/account"
 )
+
+// cheapEmptyHash mints an Argon2id hash of the empty string at throwaway cost — a few KiB of
+// memory instead of the hasher's 64 MiB. It verifies against "" like any real hash but for a
+// fraction of the work, which is what lets N goroutines race the team-size cap without each
+// paying a full-cost verification.
+func cheapEmptyHash(t *testing.T) string {
+	t.Helper()
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		t.Fatalf("salt: %v", err)
+	}
+	const (
+		aTime    = 1
+		aMemory  = 8 // KiB
+		aThreads = 1
+	)
+	key := argon2.IDKey([]byte(""), salt, aTime, aMemory, aThreads, 32)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, aMemory, aTime, aThreads,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(key))
+}
 
 // The team_size cap is a config value, so it cannot be a CHECK; the caps trigger serializes the
 // count-then-enroll behind the same advisory lock the registration cap uses. N users racing for one
@@ -27,11 +53,16 @@ func TestTeamSlotCap_ExactlyOneWins(t *testing.T) {
 		t.Fatalf("set team_size: %v", err)
 	}
 
-	// A captainless, password-less team with every slot open. Seeding it directly keeps the racers
-	// teamless — the harness's seedUser would give each its own team.
+	// A captainless team with every slot open. Seeding it directly keeps the racers teamless — the
+	// harness's seedUser would give each its own team. Every team now holds a join secret (the
+	// column is NOT NULL), so the team gets a cheap one: an Argon2id hash of the empty string minted
+	// at throwaway cost. It verifies against "" for a few KiB rather than 64 MiB, so N goroutines
+	// racing the cap do not each pay a full-cost verification, and the rehash-on-join of "" fails
+	// fast rather than minting N real hashes. The race still turns on the cap alone.
 	var teamID int64
 	if err := f.pool.QueryRow(ctx,
-		`INSERT INTO teams (name, email) VALUES ('slots', 'slots@ctf.test') RETURNING id`).Scan(&teamID); err != nil {
+		`INSERT INTO teams (name, email, password_hash) VALUES ('slots', 'slots@ctf.test', $1) RETURNING id`,
+		cheapEmptyHash(t)).Scan(&teamID); err != nil {
 		t.Fatalf("seed team: %v", err)
 	}
 
@@ -46,8 +77,8 @@ func TestTeamSlotCap_ExactlyOneWins(t *testing.T) {
 
 	acct := accounts.NewService(f.pool, account.ModeTeams, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	// A password-less team admits an empty join password, so the race turns on the cap alone and not
-	// on N argon2 verifications.
+	// The join secret verifies against an empty password at throwaway cost, so the race turns on the
+	// cap alone and not on N argon2 verifications.
 	errs := race(N, func(i int) error {
 		_, err := acct.JoinTeam(context.Background(), userIDs[i], "slots", "")
 		return err

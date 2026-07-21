@@ -20,6 +20,11 @@ SELECT id, password_hash, banned FROM teams WHERE name = @name;
 -- Rehash-on-join: an imported bcrypt join password is upgraded while the plaintext is in hand.
 UPDATE teams SET password_hash = @password_hash WHERE id = @team_id;
 
+-- name: SetJoinSecretByCaptain :execrows
+-- Captaincy is the WHERE clause, so a demoted captain's in-flight rotate affects zero rows rather
+-- than racing past a check. Zero rows also covers a caller who is on no team at all.
+UPDATE teams SET password_hash = @password_hash WHERE captain_id = @captain_id;
+
 -- name: AdoptCaptainlessTeam :exec
 -- A sole member adopts a captainless team (the captain's user row was deleted, FK SET NULL).
 UPDATE teams t SET captain_id = @user_id

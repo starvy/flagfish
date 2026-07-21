@@ -2,7 +2,9 @@ package importer
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -11,12 +13,50 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/crypto/argon2"
 
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/db"
 	"github.com/starvy/flagfish/internal/domain/account"
 	"github.com/starvy/flagfish/internal/domain/flags"
 )
+
+// joinSecretHash resolves an imported team's stored join password to the NOT NULL column. A
+// present hash (CTFd ships bcrypt) is carried verbatim and upgraded on first join; an absent or
+// empty one becomes a locked hash — well-formed, but satisfiable by no password — so the team is
+// closed until its secret is reset, never open to anyone who knows its name.
+func joinSecretHash(stored *string) (string, error) {
+	if stored != nil && *stored != "" {
+		return *stored, nil
+	}
+	return lockedJoinHash()
+}
+
+// lockedJoinHash mints an Argon2id string over bytes generated here and never returned, so
+// verification does the full work and always fails. The cost parameters mirror the credential
+// hasher's so a locked team is indistinguishable by timing from a password-protected one — the
+// same reason a failed login verifies against a dummy hash. This is kept local rather than
+// reaching into the accounts feature: the platform importer sits below it.
+func lockedJoinHash() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("importer: locked join hash: %w", err)
+	}
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("importer: locked join hash: %w", err)
+	}
+	const (
+		aTime    = 3
+		aMemory  = 64 * 1024
+		aThreads = 4
+	)
+	key := argon2.IDKey(secret, salt, aTime, aMemory, aThreads, 32)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, aMemory, aTime, aThreads,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(key)), nil
+}
 
 // Options tune a translation. The zero value is the supported, safe default: reject unknown
 // revisions and unknown challenge types rather than guessing their semantics.
@@ -230,10 +270,18 @@ func translateTeams(a *Archive, plan *Plan, rep *Report) error {
 	}
 	rep.read("teams", len(rows))
 	for _, t := range rows {
+		// Every team must hold a join secret. A source team without one is imported LOCKED: a
+		// hash nothing verifies against, which the team's captain (or an admin) resets before
+		// anyone can join. The alternative — a team open to whoever reads its name off the
+		// board — is the hole the requirement closes, and it must not be reintroduced by import.
+		hash, err := joinSecretHash(t.Password)
+		if err != nil {
+			return fmt.Errorf("team %d: %w", t.ID, err)
+		}
 		// secret has no reader anywhere here, but it is carried verbatim so a round-tripped
 		// instance loses nothing: import fidelity is the property, not a feature.
 		plan.Teams = append(plan.Teams, db.ImportTeamsParams{
-			ID: t.ID, Name: t.Name, Email: t.Email, PasswordHash: t.Password, Secret: t.Secret,
+			ID: t.ID, Name: t.Name, Email: t.Email, PasswordHash: hash, Secret: t.Secret,
 			Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,
 			BracketID: t.BracketID, CaptainID: t.CaptainID, Hidden: t.Hidden, Banned: t.Banned,
 			CreatedAt: nowTS(),
