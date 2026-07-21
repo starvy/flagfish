@@ -23,6 +23,7 @@ import (
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/stats"
 )
 
 // ListenAddr is the TCP address the server binds. It is a named type so the graph can
@@ -56,6 +57,7 @@ type serverParams struct {
 	Notify         *notify.Service
 	Broadcaster    *notify.Broadcaster
 	Anticheat      *anticheat.Service
+	Stats          *stats.Service
 	Files          *files.Service
 	Metrics        *metrics.Metrics
 	Ops            *opsjob.Service `optional:"true"`
@@ -79,6 +81,7 @@ func newServer(p serverParams) *Server {
 		Notify:         p.Notify,
 		Broadcaster:    p.Broadcaster,
 		Anticheat:      p.Anticheat,
+		Stats:          p.Stats,
 		Files:          p.Files,
 		Metrics:        p.Metrics,
 		Ops:            p.Ops,

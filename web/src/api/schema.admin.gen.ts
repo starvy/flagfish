@@ -663,6 +663,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard aggregates: totals, submissions by type, per-challenge solves, solves over time */
+        get: operations["admin-stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live submissions log, keyset-paginated newest-first (filter by type/challenge/user/team) */
+        get: operations["admin-submissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -929,7 +963,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AcAccountReportOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -941,7 +974,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AcFlagSharingOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -977,7 +1009,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AcIPOverlapOutputBody.json
              */
             readonly $schema?: string;
             clusters: components["schemas"]["AcIPClusterBody"][] | null;
@@ -1038,7 +1069,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AcUnissuedSolvesOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1053,7 +1083,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminAddFlagInputBody.json
              */
             readonly $schema?: string;
             case_insensitive?: boolean;
@@ -1065,7 +1094,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminAddHintInputBody.json
              */
             readonly $schema?: string;
             content: string;
@@ -1080,7 +1108,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminAssignBracketInputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1090,7 +1117,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminAssignBracketOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1103,7 +1129,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminAttachTagInputBody.json
              */
             readonly $schema?: string;
             value: string;
@@ -1127,7 +1152,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminAwardBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1144,7 +1168,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminBackupInputBody.json
              */
             readonly $schema?: string;
             /**
@@ -1157,7 +1180,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminBanInputBody.json
              */
             readonly $schema?: string;
             banned: boolean;
@@ -1166,7 +1188,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminBanOutputBody.json
              */
             readonly $schema?: string;
             banned: boolean;
@@ -1178,7 +1199,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminBracketBody.json
              */
             readonly $schema?: string;
             applies_to: string;
@@ -1191,7 +1211,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminChallengeBody.json
              */
             readonly $schema?: string;
             attribution?: string;
@@ -1233,7 +1252,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminChallengeFlagModeInputBody.json
              */
             readonly $schema?: string;
             /** @enum {string} */
@@ -1243,7 +1261,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminChallengeStateInputBody.json
              */
             readonly $schema?: string;
             /** @enum {string} */
@@ -1253,7 +1270,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminChallengeTagBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1266,7 +1282,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminConfigInputBody.json
              */
             readonly $schema?: string;
             /** @enum {string} */
@@ -1312,7 +1327,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminConfigOutputBody.json
              */
             readonly $schema?: string;
             account_visibility: string;
@@ -1355,7 +1369,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminCreateBracketInputBody.json
              */
             readonly $schema?: string;
             /** @enum {string} */
@@ -1367,7 +1380,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminCreateChallengeInputBody.json
              */
             readonly $schema?: string;
             attribution?: string;
@@ -1414,7 +1426,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminCreateFieldInputBody.json
              */
             readonly $schema?: string;
             /** @enum {string} */
@@ -1439,7 +1450,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminCreateNotificationInputBody.json
              */
             readonly $schema?: string;
             content: string;
@@ -1449,7 +1459,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminCreatePageInputBody.json
              */
             readonly $schema?: string;
             auth_required?: boolean;
@@ -1464,7 +1473,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminCreateTeamInputBody.json
              */
             readonly $schema?: string;
             affiliation?: string;
@@ -1479,7 +1487,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminFieldBody.json
              */
             readonly $schema?: string;
             applies_to: string;
@@ -1498,7 +1505,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminFileBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1514,7 +1520,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminFlagBody.json
              */
             readonly $schema?: string;
             case_insensitive: boolean;
@@ -1529,7 +1534,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminForcePasswordChangeOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1541,7 +1545,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminGrantAwardInputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1554,7 +1557,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminHintBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1587,7 +1589,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListAuditOutputBody.json
              */
             readonly $schema?: string;
             entries: components["schemas"]["AdminAuditEntry"][] | null;
@@ -1602,7 +1603,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListAwardsOutputBody.json
              */
             readonly $schema?: string;
             awards: components["schemas"]["AdminAwardBody"][] | null;
@@ -1611,7 +1611,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListBracketsOutputBody.json
              */
             readonly $schema?: string;
             brackets: components["schemas"]["AdminBracketBody"][] | null;
@@ -1620,7 +1619,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListFieldsOutputBody.json
              */
             readonly $schema?: string;
             fields: components["schemas"]["AdminFieldBody"][] | null;
@@ -1629,7 +1627,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListInstancesOutputBody.json
              */
             readonly $schema?: string;
             instances: components["schemas"]["AdminInstanceBody"][] | null;
@@ -1644,7 +1641,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListPagesOutputBody.json
              */
             readonly $schema?: string;
             pages: components["schemas"]["AdminPageListItem"][] | null;
@@ -1653,7 +1649,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListTagsOutputBody.json
              */
             readonly $schema?: string;
             tags: components["schemas"]["AdminTag"][] | null;
@@ -1662,7 +1657,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListTeamsOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1677,7 +1671,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminListUsersOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1692,7 +1685,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminMergeTagInputBody.json
              */
             readonly $schema?: string;
             into: string;
@@ -1701,7 +1693,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminPageBody.json
              */
             readonly $schema?: string;
             auth_required: boolean;
@@ -1742,7 +1733,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminPoolStatsOutputBody.json
              */
             readonly $schema?: string;
             pools: components["schemas"]["PoolStatBody"][] | null;
@@ -1751,7 +1741,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminPoolUploadInputBody.json
              */
             readonly $schema?: string;
             instances: components["schemas"]["AdminPoolInstanceInput"][] | null;
@@ -1760,7 +1749,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminPoolUploadOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int32 */
@@ -1775,7 +1763,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminReorderInputBody.json
              */
             readonly $schema?: string;
             items: components["schemas"]["Item"][] | null;
@@ -1784,7 +1771,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminReorderOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1799,7 +1785,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminRoleInputBody.json
              */
             readonly $schema?: string;
             /** @enum {string} */
@@ -1809,7 +1794,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminRoleOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1821,7 +1805,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminSetRequirementsInputBody.json
              */
             readonly $schema?: string;
             prerequisites: number[] | null;
@@ -1836,11 +1819,33 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminSetRequirementsOutputBody.json
              */
             readonly $schema?: string;
             challenge: components["schemas"]["AdminChallengeBody"];
             warnings?: string[] | null;
+        };
+        AdminStatsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             */
+            readonly $schema?: string;
+            bucket: string;
+            challenge_solves: components["schemas"]["StatChallengeSolves"][] | null;
+            solves_over_time: components["schemas"]["StatTimeBucket"][] | null;
+            submissions_by_type: components["schemas"]["StatTypeCount"][] | null;
+            totals: components["schemas"]["TotalsStruct"];
+        };
+        AdminSubmissionsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            limit: number;
+            next_cursor?: string;
+            submissions: components["schemas"]["SubmissionBody"][] | null;
         };
         AdminTag: {
             /** Format: int64 */
@@ -1851,7 +1856,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminTeamBanInputBody.json
              */
             readonly $schema?: string;
             banned: boolean;
@@ -1860,7 +1864,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminTeamBanOutputBody.json
              */
             readonly $schema?: string;
             banned: boolean;
@@ -1872,7 +1875,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminTeamBody.json
              */
             readonly $schema?: string;
             affiliation?: string;
@@ -1897,7 +1899,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminTeamHiddenInputBody.json
              */
             readonly $schema?: string;
             hidden: boolean;
@@ -1906,7 +1907,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminTeamHiddenOutputBody.json
              */
             readonly $schema?: string;
             hidden: boolean;
@@ -1918,7 +1918,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateBracketInputBody.json
              */
             readonly $schema?: string;
             description?: string;
@@ -1928,7 +1927,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateChallengeInputBody.json
              */
             readonly $schema?: string;
             attribution?: string | null;
@@ -1963,7 +1961,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateFieldInputBody.json
              */
             readonly $schema?: string;
             description?: string;
@@ -1978,7 +1975,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateFlagInputBody.json
              */
             readonly $schema?: string;
             case_insensitive?: boolean;
@@ -1990,7 +1986,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateHintInputBody.json
              */
             readonly $schema?: string;
             content?: string;
@@ -2005,7 +2000,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdatePageInputBody.json
              */
             readonly $schema?: string;
             auth_required?: boolean;
@@ -2020,7 +2014,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateTeamInputBody.json
              */
             readonly $schema?: string;
             affiliation?: string | null;
@@ -2034,7 +2027,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUpdateUserInputBody.json
              */
             readonly $schema?: string;
             affiliation?: string | null;
@@ -2046,7 +2038,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUserBody.json
              */
             readonly $schema?: string;
             affiliation?: string;
@@ -2070,7 +2061,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUserHiddenInputBody.json
              */
             readonly $schema?: string;
             hidden: boolean;
@@ -2079,7 +2069,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/AdminUserHiddenOutputBody.json
              */
             readonly $schema?: string;
             hidden: boolean;
@@ -2099,38 +2088,28 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/ErrorModel.json
              */
             readonly $schema?: string;
-            /**
-             * @description A human-readable explanation specific to this occurrence of the problem.
-             * @example Property foo is required but is missing.
-             */
+            /** @description A human-readable explanation specific to this occurrence of the problem. */
             detail?: string;
             /** @description Optional list of individual error details */
             errors?: components["schemas"]["ErrorDetail"][] | null;
             /**
              * Format: uri
              * @description A URI reference that identifies the specific occurrence of the problem.
-             * @example https://example.com/error-log/abc123
              */
             instance?: string;
             /**
              * Format: int64
              * @description HTTP status code
-             * @example 400
              */
             status?: number;
-            /**
-             * @description A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
-             * @example Bad Request
-             */
+            /** @description A short, human-readable summary of the problem type. This value should not change between occurrences of the error. */
             title?: string;
             /**
              * Format: uri
              * @description A URI reference to human-readable documentation for the error.
              * @default about:blank
-             * @example https://example.com/errors/example
              */
             type: string;
         };
@@ -2144,7 +2123,6 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/NotificationBody.json
              */
             readonly $schema?: string;
             content: string;
@@ -2165,11 +2143,51 @@ export interface components {
             /** Format: double */
             utilization: number;
         };
+        StatChallengeSolves: {
+            category: string;
+            /** Format: int64 */
+            challenge_id: number;
+            name: string;
+            /** Format: int64 */
+            solve_count: number;
+            /** Format: int32 */
+            value: number;
+        };
+        StatTimeBucket: {
+            /** Format: date-time */
+            bucket: string;
+            /** Format: int64 */
+            count: number;
+        };
+        StatTypeCount: {
+            /** Format: int64 */
+            count: number;
+            type: string;
+        };
+        SubmissionBody: {
+            /** Format: int64 */
+            attributed_account_id?: number;
+            /** Format: int64 */
+            challenge_id: number;
+            challenge_name: string;
+            /** Format: date-time */
+            date: string;
+            /** Format: int64 */
+            id: number;
+            ip?: string;
+            provided: string;
+            /** Format: int64 */
+            team_id?: number;
+            team_name?: string;
+            type: string;
+            /** Format: int64 */
+            user_id: number;
+            user_name?: string;
+        };
         TaskBody: {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/admin/schemas/TaskBody.json
              */
             readonly $schema?: string;
             /** Format: date-time */
@@ -2185,6 +2203,16 @@ export interface components {
             state: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        TotalsStruct: {
+            /** Format: int64 */
+            awards: number;
+            /** Format: int64 */
+            solved_challenges: number;
+            /** Format: int64 */
+            solves: number;
+            /** Format: int64 */
+            submissions: number;
         };
     };
     responses: never;
@@ -3846,6 +3874,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-stats": {
+        parameters: {
+            query?: {
+                /** @description timeline granularity: hour|day|week|month */
+                bucket?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStatsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-submissions": {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                /** @description correct|incorrect|partial|discard|ratelimited */
+                type?: string;
+                challenge_id?: number;
+                user_id?: number;
+                team_id?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSubmissionsOutputBody"];
                 };
             };
             /** @description Error */

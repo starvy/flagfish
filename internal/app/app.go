@@ -30,6 +30,7 @@ import (
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/stats"
 	"github.com/starvy/flagfish/internal/storage"
 )
 
@@ -70,6 +71,7 @@ func ServeOptions(ctx context.Context, env *config.Env, log *slog.Logger, sc Ser
 		board.Module,
 		adminops.Module,
 		anticheat.Module,
+		stats.Module,
 		files.Module,
 		metrics.Module,
 		opsjob.Module,

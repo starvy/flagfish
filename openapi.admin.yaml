@@ -1889,6 +1889,70 @@ components:
       required:
         - challenge
       type: object
+    AdminStatsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminStatsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        bucket:
+          type: string
+        challenge_solves:
+          items:
+            $ref: "#/components/schemas/StatChallengeSolves"
+          type:
+            - array
+            - "null"
+        solves_over_time:
+          items:
+            $ref: "#/components/schemas/StatTimeBucket"
+          type:
+            - array
+            - "null"
+        submissions_by_type:
+          items:
+            $ref: "#/components/schemas/StatTypeCount"
+          type:
+            - array
+            - "null"
+        totals:
+          $ref: "#/components/schemas/TotalsStruct"
+      required:
+        - totals
+        - submissions_by_type
+        - challenge_solves
+        - solves_over_time
+        - bucket
+      type: object
+    AdminSubmissionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminSubmissionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        limit:
+          format: int64
+          type: integer
+        next_cursor:
+          type: string
+        submissions:
+          items:
+            $ref: "#/components/schemas/SubmissionBody"
+          type:
+            - array
+            - "null"
+      required:
+        - submissions
+        - limit
+      type: object
     AdminTag:
       additionalProperties: false
       properties:
@@ -2510,6 +2574,96 @@ components:
         - issued
         - utilization
       type: object
+    StatChallengeSolves:
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        challenge_id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        solve_count:
+          format: int64
+          type: integer
+        value:
+          format: int32
+          type: integer
+      required:
+        - challenge_id
+        - name
+        - category
+        - value
+        - solve_count
+      type: object
+    StatTimeBucket:
+      additionalProperties: false
+      properties:
+        bucket:
+          format: date-time
+          type: string
+        count:
+          format: int64
+          type: integer
+      required:
+        - bucket
+        - count
+      type: object
+    StatTypeCount:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          type: integer
+        type:
+          type: string
+      required:
+        - type
+        - count
+      type: object
+    SubmissionBody:
+      additionalProperties: false
+      properties:
+        attributed_account_id:
+          format: int64
+          type: integer
+        challenge_id:
+          format: int64
+          type: integer
+        challenge_name:
+          type: string
+        date:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        ip:
+          type: string
+        provided:
+          type: string
+        team_id:
+          format: int64
+          type: integer
+        team_name:
+          type: string
+        type:
+          type: string
+        user_id:
+          format: int64
+          type: integer
+        user_name:
+          type: string
+      required:
+        - id
+        - date
+        - type
+        - provided
+        - challenge_id
+        - challenge_name
+        - user_id
+      type: object
     TaskBody:
       additionalProperties: false
       properties:
@@ -2549,6 +2703,27 @@ components:
         - progress
         - created_at
         - updated_at
+      type: object
+    TotalsStruct:
+      additionalProperties: false
+      properties:
+        awards:
+          format: int64
+          type: integer
+        solved_challenges:
+          format: int64
+          type: integer
+        solves:
+          format: int64
+          type: integer
+        submissions:
+          format: int64
+          type: integer
+      required:
+        - solves
+        - submissions
+        - awards
+        - solved_challenges
       type: object
 info:
   title: flagfish (admin)
@@ -4003,6 +4178,96 @@ paths:
       summary: Restore a --backup archive (async)
       tags:
         - admin/ops
+  /stats:
+    get:
+      operationId: admin-stats
+      parameters:
+        - description: "timeline granularity: hour|day|week|month"
+          explode: false
+          in: query
+          name: bucket
+          schema:
+            default: day
+            description: "timeline granularity: hour|day|week|month"
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Dashboard aggregates: totals, submissions by type, per-challenge solves, solves over time"
+      tags:
+        - admin/stats
+  /submissions:
+    get:
+      operationId: admin-submissions
+      parameters:
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: correct|incorrect|partial|discard|ratelimited
+          explode: false
+          in: query
+          name: type
+          schema:
+            description: correct|incorrect|partial|discard|ratelimited
+            type: string
+        - explode: false
+          in: query
+          name: challenge_id
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: user_id
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: team_id
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSubmissionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Live submissions log, keyset-paginated newest-first (filter by type/challenge/user/team)
+      tags:
+        - admin/submissions
   /tags:
     get:
       operationId: admin-list-tags

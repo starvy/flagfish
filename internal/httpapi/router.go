@@ -26,6 +26,7 @@ import (
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/stats"
 	"github.com/starvy/flagfish/internal/web"
 )
 
@@ -49,6 +50,7 @@ type Options struct {
 	Board     *board.Service
 	AdminOps  *adminops.Service
 	Anticheat *anticheat.Service
+	Stats     *stats.Service
 	Files     *files.Service
 
 	// Ops enqueues and reports async admin operations (backup, restore, import) over the tasks

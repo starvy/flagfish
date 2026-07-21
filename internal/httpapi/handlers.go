@@ -45,6 +45,7 @@ func (s *Server) registerRoutes() {
 	}
 	if s.opts.Board != nil {
 		s.registerScoreboard()
+		s.registerScoreboardDetail()
 	} else {
 		s.opts.Log.Warn("no board service configured: scoreboard routes are not registered")
 	}
@@ -76,6 +77,10 @@ func (s *Server) registerRoutes() {
 	}
 	if s.opts.Anticheat != nil {
 		s.registerAdminAnticheat()
+		s.registerAdminSubmissions()
+	}
+	if s.opts.Stats != nil {
+		s.registerAdminStats()
 	}
 	if s.opts.Config != nil {
 		s.registerAdminConfig()

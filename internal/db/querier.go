@@ -473,6 +473,20 @@ type Querier interface {
 	// The public read. Returns the row whatever its draft/auth_required flags — the policy gate decides
 	// visibility against them, so the query must not pre-filter drafts or the gate could never be tested.
 	GetPageByRoute(ctx context.Context, route string) (Page, error)
+	// One account's cumulative score over time, replayed from the same append-only ledger the
+	// scoreboard sums. Powers the graph on a public profile, so it is freeze-safe by the same mechanism:
+	// the caller passes the freeze horizon as `cutoff` and every event at or after it is excluded. The
+	// query takes no is_admin freeze flag — `cutoff` IS the horizon, so the clamp cannot be forgotten by
+	// handing in the wrong boolean.
+	// `admin` here only widens visibility to a hidden or banned subject; it never lifts the freeze. A
+	// non-admin viewing a hidden account gets an empty timeline, exactly as that account is absent from
+	// the board — and a non-existent account reads the same empty, leaking nothing about which is which.
+	//
+	// The account column is resolved from `instance`, immutable since setup, so the timeline can never be
+	// keyed on the wrong account model. `value <> 0` mirrors the scoreboard: a zero-point event does not
+	// move the line. The running total is a window SUM over (date, value); microsecond ties settle on
+	// value, and the final cumulative is order-independent regardless.
+	GetScoreHistory(ctx context.Context, arg GetScoreHistoryParams) ([]GetScoreHistoryRow, error)
 	// Expiry is a WHERE clause, not a Go comparison: an expired session must be indistinguishable from
 	// a missing one, and it must be so at the only place that can be tricked into disagreeing — the
 	// database. `now()` is the transaction's clock, not the app server's, so a skewed pod cannot extend
@@ -663,6 +677,20 @@ type Querier interface {
 	// The public list behind the nav: published pages only, drafts never appear. auth_required rides
 	// along so the client can mark a link that will ask an anonymous visitor to log in.
 	ListPublishedPages(ctx context.Context) ([]ListPublishedPagesRow, error)
+	// The live submissions feed an organiser watches during an event and mines for cheat review.
+	// Read-only over the append-only attempt log; it never joins its way to a scoring decision.
+	// Keyset pagination, newest first, on the (date, id) cursor — never OFFSET, which re-counts the
+	// skipped rows on every page and drifts as new attempts land mid-scroll during a live event. A NULL
+	// cursor is the first page; otherwise the strict (date, id) < (before_date, before_id) tuple resumes
+	// exactly after the last row already seen. The display joins are LEFT so a challenge or account whose
+	// name cannot be resolved never drops the attempt from a cheat-review feed.
+	//
+	// attributed_account_id is passed through verbatim — it is a fact stamped inside the submit
+	// transaction, never re-derived by joining the (mutable, rotatable) flag issue here.
+	//
+	// Ordering matches submissions_admin_list_idx and submissions_admin_type_idx (both DESC on date),
+	// so the unfiltered feed and the `type` facet each walk an index backwards rather than sort.
+	ListSubmissions(ctx context.Context, arg ListSubmissionsParams) ([]ListSubmissionsRow, error)
 	ListTeamManualAwards(ctx context.Context, teamID *int64) ([]ListTeamManualAwardsRow, error)
 	// Per-member attribution reads the stamped solves.team_id, so points stay with the team that
 	// scored them regardless of later roster churn. include_masked lifts the hidden/banned member
@@ -824,6 +852,23 @@ type Querier interface {
 	// Claims a queued task for a worker. Kept narrow to state='queued' so a redelivered job cannot
 	// reset a task that already advanced.
 	StartTask(ctx context.Context, arg StartTaskParams) error
+	// One row per challenge with its solve count, most-solved first. LEFT JOIN so a challenge nobody has
+	// solved appears with zero rather than vanishing — the least-solved tail is the half an organiser
+	// actually acts on. The count is the per-challenge distribution the dashboard renders.
+	StatsChallengeSolves(ctx context.Context) ([]StatsChallengeSolvesRow, error)
+	// Solves bucketed onto a time grid for the dashboard's timeline. The bucket width is a caller-chosen
+	// date_trunc field ('hour', 'day', …), passed as a bound parameter — the handler restricts it to a
+	// known set, so it is never interpolated SQL. Empty buckets do not appear; a sparse grid is the
+	// caller's to fill.
+	StatsSolvesOverTime(ctx context.Context, bucket string) ([]StatsSolvesOverTimeRow, error)
+	// The attempt log split by status. Every type present is one row; a type nobody hit is simply
+	// absent, and the caller fills the zero.
+	StatsSubmissionsByType(ctx context.Context) ([]StatsSubmissionsByTypeRow, error)
+	// Aggregations for the admin dashboard. Admin-gated: solve distributions are exactly what the
+	// scoreboard freeze exists to hide, so this surface never leaks onto a public route. Reads only.
+	// The headline counters, one round trip. Scalar sub-selects rather than joins so an empty table
+	// reads as zero, not as a missing row.
+	StatsTotals(ctx context.Context) (StatsTotalsRow, error)
 	// Read-side disambiguation for the roster mutations above: which of captaincy, membership, or the
 	// scored guard turned a zero-row write away. Off the hot path — it runs only to shape an error.
 	TeamCaptainScored(ctx context.Context, teamID int64) (TeamCaptainScoredRow, error)

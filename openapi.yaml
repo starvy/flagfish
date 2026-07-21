@@ -994,6 +994,46 @@ components:
         - token
         - password
       type: object
+    ScoreHistoryOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/ScoreHistoryOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        account_id:
+          format: int64
+          type: integer
+        points:
+          items:
+            $ref: "#/components/schemas/ScorePointBody"
+          type:
+            - array
+            - "null"
+      required:
+        - account_id
+        - points
+      type: object
+    ScorePointBody:
+      additionalProperties: false
+      properties:
+        date:
+          format: date-time
+          type: string
+        delta:
+          format: int64
+          type: integer
+        score:
+          format: int64
+          type: integer
+      required:
+        - date
+        - delta
+        - score
+      type: object
     ScoreboardOutputBody:
       additionalProperties: false
       properties:
@@ -2072,6 +2112,38 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Get the standings
+      tags:
+        - scoreboard
+  /scoreboard/{id}:
+    get:
+      operationId: scoreboard-detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - explode: false
+          in: query
+          name: as_of
+          schema:
+            format: date-time
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreHistoryOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One account's cumulative score over time (freeze-safe; honours ?as_of)
       tags:
         - scoreboard
   /teams:
