@@ -75,6 +75,40 @@ export function useAnswerFields() {
   });
 }
 
+export function useChangeName() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.changeName,
+    onSuccess: (me) => {
+      qc.setQueryData(qk.me(), me);
+    },
+  });
+}
+
+// The response carries the pending address so /me immediately shows "check your inbox". The live
+// email does not move until the confirmation token is used, so nothing else in the cache changes yet.
+export function useChangeEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.changeEmail,
+    onSuccess: (me) => {
+      qc.setQueryData(qk.me(), me);
+    },
+  });
+}
+
+// The confirmation lands on whatever device opened the new inbox; when it is this one, the live email
+// has just changed, so refresh /me.
+export function useConfirmEmailChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.confirmEmailChange,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.me() });
+    },
+  });
+}
+
 export function useChangePassword() {
   const qc = useQueryClient();
   return useMutation({

@@ -127,7 +127,9 @@ function ScoreboardPage() {
               {s.name}
             </Link>
           ) : (
-            <span>{s.name}</span>
+            <Link to="/users/$userId" params={{ userId: s.account_id }}>
+              {s.name}
+            </Link>
           )}
           {s.account_id === selfAccount && <Badge tone="accent">you</Badge>}
         </span>

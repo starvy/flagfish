@@ -27,6 +27,8 @@ export type TokenListItem = Schemas["TokenListItem"];
 export type CreatedToken = Schemas["CreateTokenOutputBody"];
 export type PageLink = Schemas["PageLink"];
 export type PageContent = Schemas["PageOutputBody"];
+export type UserProfile = Schemas["UserProfileBody"];
+export type ProfileSolve = Schemas["ProfileSolveBody"];
 
 /** The server's verdict on a flag. A wrong flag is a 200 with `status: "incorrect"`, never an error. */
 export type AttemptStatus = "correct" | "incorrect" | "already_solved";
@@ -251,6 +253,15 @@ export const api = {
 
   // Profile PATCH semantics: an omitted key keeps, an explicit null clears, a value sets.
   updateMe: (body: Body<Schemas["UpdateMeInputBody"]>) => request<Me>("PATCH", "/me", body),
+
+  changeName: (body: Body<Schemas["ChangeNameInputBody"]>) => request<Me>("PATCH", "/me/name", body),
+
+  changeEmail: (body: Body<Schemas["ChangeEmailInputBody"]>) => request<Me>("PATCH", "/me/email", body),
+
+  confirmEmailChange: (body: Body<Schemas["ConfirmEmailInputBody"]>) =>
+    request<Schemas["OkOutputBody"]>("POST", "/verify/email-change", body, { localUnauthorized: true }),
+
+  userProfile: (id: number) => request<UserProfile>("GET", `/users/${id}`),
 
   changePassword: (body: Body<Schemas["ChangePasswordInputBody"]>) =>
     request<Session>("POST", "/me/password", body, { localUnauthorized: true }).then(rememberSession),

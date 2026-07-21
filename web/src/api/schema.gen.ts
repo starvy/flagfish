@@ -192,6 +192,23 @@ export interface paths {
         patch: operations["update-me"];
         trace?: never;
     };
+    "/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Request an email change (sends a confirmation to the new address) */
+        patch: operations["change-email"];
+        trace?: never;
+    };
     "/me/fields": {
         parameters: {
             query?: never;
@@ -207,6 +224,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/me/name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change the current account's display name */
+        patch: operations["change-name"];
         trace?: never;
     };
     "/me/password": {
@@ -502,6 +536,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A user's public profile */
+        get: operations["user-detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/verify/confirm": {
         parameters: {
             query?: never;
@@ -513,6 +564,23 @@ export interface paths {
         put?: never;
         /** Confirm an email address with a token */
         post: operations["verify-confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verify/email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a pending email change with a token */
+        post: operations["email-change-confirm"];
         delete?: never;
         options?: never;
         head?: never;
@@ -682,6 +750,25 @@ export interface components {
              */
             readonly $schema?: string;
             challenges: components["schemas"]["ChallengeListItem"][] | null;
+        };
+        ChangeEmailInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChangeEmailInputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: email */
+            email: string;
+        };
+        ChangeNameInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChangeNameInputBody.json
+             */
+            readonly $schema?: string;
+            name: string;
         };
         ChangePasswordInputBody: {
             /**
@@ -916,6 +1003,7 @@ export interface components {
             is_admin: boolean;
             language?: string;
             name: string;
+            pending_email?: string;
             role: string;
             /** Format: int64 */
             team_id?: number;
@@ -957,6 +1045,16 @@ export interface components {
             format: string;
             route: string;
             title: string;
+        };
+        ProfileSolveBody: {
+            category: string;
+            /** Format: int64 */
+            challenge_id: number;
+            challenge_name: string;
+            /** Format: date-time */
+            date: string;
+            /** Format: int32 */
+            value: number;
         };
         RegisterInputBody: {
             /**
@@ -1129,6 +1227,28 @@ export interface components {
             /** Format: email */
             email?: string | null;
             website?: string | null;
+        };
+        UserProfileBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UserProfileBody.json
+             */
+            readonly $schema?: string;
+            affiliation?: string;
+            /** Format: int64 */
+            bracket_id?: number;
+            bracket_name?: string;
+            country?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            score: number;
+            solves: components["schemas"]["ProfileSolveBody"][] | null;
+            website?: string;
         };
     };
     responses: never;
@@ -1512,6 +1632,39 @@ export interface operations {
             };
         };
     };
+    "change-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeEmailInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "answer-fields": {
         parameters: {
             query?: never;
@@ -1532,6 +1685,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnswerFieldsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "change-name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeNameInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOutputBody"];
                 };
             };
             /** @description Error */
@@ -2208,7 +2394,71 @@ export interface operations {
             };
         };
     };
+    "user-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfileBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "verify-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmEmailInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "email-change-confirm": {
         parameters: {
             query?: never;
             header?: never;

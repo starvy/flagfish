@@ -29,6 +29,8 @@ export const qk = {
   team: (id: number) => ["teams", id] as const,
   myTeam: () => ["me", "team"] as const,
 
+  user: (id: number) => ["users", id] as const,
+
   tokens: () => ["tokens"] as const,
 
   pages: () => ["pages"] as const,

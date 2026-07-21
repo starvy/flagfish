@@ -19,6 +19,8 @@ import {
   meQuery,
   tokensQuery,
   useAnswerFields,
+  useChangeEmail,
+  useChangeName,
   useChangePassword,
   useCreateToken,
   useDeleteToken,
@@ -106,17 +108,6 @@ function Profile() {
     <div className="ff-stack">
       <Card title="Account">
         <dl className="ff-stack">
-          <Row label="Name">{me.name}</Row>
-          <Row label="Email">
-            <span className="ff-row">
-              {me.email}
-              {me.verified ? (
-                <Badge tone="success">verified</Badge>
-              ) : (
-                <Badge tone="warn">not verified</Badge>
-              )}
-            </span>
-          </Row>
           <Row label="Role">{me.is_admin ? <Badge tone="accent">admin</Badge> : me.role}</Row>
           <Row label="Account id">
             <span className="ff-mono">{me.user_id}</span>
@@ -128,11 +119,15 @@ function Profile() {
               <Link to="/team">your team</Link>
             )}
           </Row>
+          <Row label="Public profile">
+            <Link to="/users/$userId" params={{ userId: me.user_id }}>
+              how others see you
+            </Link>
+          </Row>
         </dl>
-        <p className="muted">
-          Name and email are your identity here — an organiser can fix those if they are wrong.
-        </p>
       </Card>
+
+      <IdentityForm me={me} />
 
       <ProfileForm me={me} />
 
@@ -171,6 +166,105 @@ const LANGUAGES: readonly { value: string; label: string }[] = [
   { value: "ko", label: "한국어" },
   { value: "zh", label: "中文" },
 ];
+
+/**
+ * Identity — display name and email. Name and email are not profile fields: a name change is
+ * immediate, an email change is a re-verification. The live email never moves until the address is
+ * confirmed from a link mailed to it, so the form shows the pending address as "check your inbox"
+ * rather than pretending the change already took.
+ */
+function IdentityForm({ me }: { me: Me }) {
+  const toast = useToast();
+  const changeName = useChangeName();
+  const changeEmail = useChangeEmail();
+
+  const [name, setName] = useState(me.name);
+  const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    setName(me.name);
+  }, [me.name]);
+
+  const submitName = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const next = name.trim();
+    if (next === "" || next === me.name) return;
+    changeName.mutate({ name: next }, { onSuccess: () => toast.success("Name changed") });
+  };
+
+  const submitEmail = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const next = email.trim();
+    if (next === "") return;
+    changeEmail.mutate(
+      { email: next },
+      {
+        onSuccess: () => {
+          setEmail("");
+          toast.success("Check your inbox", `Confirm the change from the link sent to ${next}.`);
+        },
+      },
+    );
+  };
+
+  return (
+    <Card title="Identity">
+      <div className="ff-stack">
+        <Form
+          onSubmit={submitName}
+          error={changeName.error ? messageOf(changeName.error) : undefined}
+          errors={fieldsOf(changeName.error)}
+          footer={
+            <Button type="submit" variant="primary" loading={changeName.isPending} disabled={name.trim() === me.name}>
+              Change name
+            </Button>
+          }
+        >
+          <Field name="name" label="Display name" hint="Shown on the scoreboard and your public profile.">
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={128} required />
+          </Field>
+        </Form>
+
+        <Form
+          onSubmit={submitEmail}
+          error={changeEmail.error ? messageOf(changeEmail.error) : undefined}
+          errors={fieldsOf(changeEmail.error)}
+          footer={
+            <Button type="submit" variant="primary" loading={changeEmail.isPending} disabled={email.trim() === ""}>
+              Change email
+            </Button>
+          }
+        >
+          <Field
+            name="email"
+            label="Email"
+            hint={
+              me.verified
+                ? "Current: " + me.email
+                : "Current: " + me.email + " (not verified)"
+            }
+          >
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="new address"
+              maxLength={255}
+              autoComplete="email"
+            />
+          </Field>
+        </Form>
+
+        {me.pending_email !== undefined && (
+          <Alert tone="info" title="Email change pending">
+            A confirmation was sent to <span className="ff-mono">{me.pending_email}</span>. Your
+            address stays <span className="ff-mono">{me.email}</span> until you open that link.
+          </Alert>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 /** The player-owned fields. Submitting sends them all; an emptied box clears its field. */
 function ProfileForm({ me }: { me: Me }) {

@@ -12,12 +12,17 @@ export {
   useLogout,
   useUpdateMe,
   useAnswerFields,
+  useChangeName,
+  useChangeEmail,
+  useConfirmEmailChange,
   useChangePassword,
   useResetRequest,
   useResetApply,
   useVerifyResend,
   useVerifyConfirm,
 } from "./queries/auth";
+
+export { userProfileQuery } from "./queries/profiles";
 
 export {
   challengesQuery,
