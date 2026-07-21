@@ -5,8 +5,12 @@ production. For the docker compose stack, see [deploy.md](deploy.md).
 
 ## Source of truth
 
-`internal/config/env.go` (`Env` + `LoadEnv`) is authoritative for every process-level knob.
-`.env.example` mirrors it exactly and is the one file a self-hoster reads.
+`internal/config/env.go` (`Env` + `LoadEnv`) is authoritative for every process-level knob, and the
+table below tracks it. The repo-root `.env.example` lists the same set for a local checkout.
+
+Under docker compose you edit `deploy/.env` instead (`deploy/.env.example` is its template). That
+file carries only the subset `deploy/compose.yaml` passes through to the container, not the whole
+surface below — see [deploy.md](deploy.md#environment).
 
 Runtime *instance* config — event name, start/end/freeze times, visibility — is not here. It lives
 in the database `config` table and is edited through the admin API.
@@ -33,6 +37,13 @@ Run it **before** a deploy, not after. It fails loudly and lists every problem a
 | `FLAGFISH_MAX_UPLOAD_BYTES` | `33554432` | Largest multipart upload accepted (32 MiB). Every other body is capped at 1 MiB. Positive integer. |
 | `FLAGFISH_DB_MAX_CONNS` | `25` | pgx pool ceiling. At least 1. |
 | `FLAGFISH_DB_MIN_CONNS` | `2` | pgx pool floor. A minimum above the maximum is a boot error. |
+
+**`FLAGFISH_AUTH_RATE_LIMIT` is the shared-NAT knob.** A whole university behind one outbound
+address shares one bucket, and 10 credential requests per minute is a low ceiling for a team that
+all logs in at the start of an event. Raise it if that is your audience — but keep it well under
+`FLAGFISH_RATE_LIMIT`, because these are the routes worth guessing against. The shipped
+`deploy/compose.yaml` does not pass this variable through, so under compose you must add it to the
+`flagfish` service's `environment:` block; putting it in `deploy/.env` alone has no effect.
 
 **`FLAGFISH_TRUSTED_PROXIES` deserves a second look.** A wrong value here breaks nothing visibly —
 it just attributes every request to the proxy's own address, which quietly poisons the anti-cheat
@@ -129,7 +140,13 @@ on either.
 headroom: the config listener parks on one pool connection for the life of the process, blocked in
 `LISTEN`, so the pool serves queries with one fewer than its ceiling.
 
-**Observability.** Set `OTEL_EXPORTER_OTLP_ENDPOINT` to your collector to export traces. Keep
-structured JSON logs on (`FLAGFISH_LOG_FORMAT=json`, the default). Add a liveness/readiness probe
+**Observability.** The binary exports Prometheus metrics on `GET /metrics` and a readiness check
+that actually pings the pool on `GET /readyz`. Both mount outside the authenticated chain — they
+are infrastructure, not a logged-in caller — so keep them off the public internet at your proxy.
+Keep structured JSON logs on (`FLAGFISH_LOG_FORMAT=json`, the default). Add a liveness probe
 against `GET /healthz` at the orchestrator layer: the distroless image ships no shell and no curl,
 so the binary probes itself with `flagfish healthcheck`.
+
+There is **no tracing exporter**. The binary has no OpenTelemetry dependency and reads no `OTEL_*`
+variable, so setting `OTEL_EXPORTER_OTLP_ENDPOINT` does nothing at all. Traces are a roadmap item;
+until they land, metrics and logs are the whole story.

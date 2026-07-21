@@ -238,9 +238,13 @@ func usage() {
   export [--safe|--backup] <out.zip>
                           export the instance in our own format (default: --safe,
                           field-masked and shareable; --backup is full fidelity)
-  restore <in.zip>        restore a --backup archive into an empty instance
+  restore <in.zip>        REPLACE this instance's data with a --backup archive: every table
+                          it owns is truncated and reloaded in one transaction. Not a merge,
+                          and it does not require an empty instance — it makes one.
   env                     print the resolved environment and exit
   openapi [--admin]       print the OpenAPI document (public surface; --admin for the admin one)
+  healthcheck             GET /healthz on the local listener; exit non-zero unless 200.
+                          The container health probe: the image has no shell and no curl.
 
 Environment (see .env.example):
   FLAGFISH_DATABASE_URL     postgres://user:pass@host:5432/flagfish   (required;
@@ -477,8 +481,9 @@ func exportCmd(ctx context.Context, args []string, env *config.Env, log *slog.Lo
 	return nil
 }
 
-// restoreCmd rehydrates a --backup archive into an empty instance, in one transaction. A --safe
-// archive is rejected loudly: it was field-masked and carries no secrets to restore.
+// restoreCmd replaces this instance's data with a --backup archive, in one transaction: it
+// truncates every table it owns rather than refusing a populated database. A --safe archive is
+// rejected loudly: it was field-masked and carries no secrets to restore.
 func restoreCmd(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	if err := fs.Parse(args); err != nil {

@@ -531,7 +531,12 @@ tasks:
       # value — so a copied-and-unedited file stops here rather than booting a public CTF on a
       # password that ships in the repository.
       - "{{.DEPLOY_COMPOSE}} up -d --build --wait"
-      - 'echo "  app is up. Finish first-run setup (mark setup done + promote an admin): see docs/ops/deploy.md"'
+      # Until `admin create` runs, the route policy denies everything and /setup just prints
+      # this command — the instance is not usable yet, so say so rather than "app is up".
+      - 'echo "  stack is up, but the instance is not live until it has an admin:"'
+      - 'echo "    {{.DEPLOY_COMPOSE}} exec flagfish /flagfish admin create --email you@example.com"'
+      - 'echo "  prompts for the password, and fixes the account model with --mode users|teams."'
+      - 'echo "  see docs/ops/deploy.md#first-run-create-the-first-admin"'
 
   deploy-down:
     desc: Stop the production stack (keeps the named volumes)
