@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/starvy/flagfish/internal/db"
@@ -27,6 +29,9 @@ var (
 	// database cannot tell them apart, and neither may the caller: which one it
 	// was is information about someone else's token.
 	ErrTokenInvalid = errors.New("accounts: invalid or expired token")
+
+	// ErrEmailUnchanged means the requested new address is the one the account already has.
+	ErrEmailUnchanged = errors.New("accounts: email is unchanged")
 )
 
 // ResendVerification queues a fresh verification email for an unverified user.
@@ -81,6 +86,85 @@ func (s *Service) ConfirmEmail(ctx context.Context, token string) error {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("accounts: confirm email: %w", err)
+	}
+	return nil
+}
+
+// ChangeEmail queues a new address for the account and sends a confirmation token TO THAT ADDRESS.
+// The live email is not touched here: it flips only when ConfirmEmailChange consumes the token, so a
+// change is a re-verification and never an unverified edit. A taken address — live or already queued
+// by someone else — is a loud conflict, caught by the unique indexes rather than a prior read.
+func (s *Service) ChangeEmail(ctx context.Context, userID int64, newEmail, ctfName string) (Profile, error) {
+	// A live address already in use anywhere is a conflict; the same address on the caller's own
+	// account is a no-op the UI should treat as done, not as an error to retry.
+	existing, err := s.q.GetUserByEmail(ctx, newEmail)
+	switch {
+	case err == nil && existing.ID == userID:
+		return Profile{}, ErrEmailUnchanged
+	case err == nil:
+		return Profile{}, ErrEmailTaken
+	case !errors.Is(err, pgx.ErrNoRows):
+		return Profile{}, fmt.Errorf("accounts: change email: %w", err)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Profile{}, fmt.Errorf("accounts: change email: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	q := s.q.WithTx(tx)
+
+	if _, err := q.SetPendingEmail(ctx, db.SetPendingEmailParams{UserID: userID, Email: &newEmail}); err != nil {
+		var pg *pgconn.PgError
+		if errors.As(err, &pg) && pg.Code == pgerrcode.UniqueViolation && pg.ConstraintName == "users_pending_email_uniq" {
+			return Profile{}, ErrEmailTaken
+		}
+		return Profile{}, fmt.Errorf("accounts: change email: %w", err)
+	}
+
+	if err := s.enqueueTokenEmail(ctx, tx, userID, newEmail, "email_change", verifyTokenTTL, emailChangeMail(ctfName, newEmail)); err != nil {
+		return Profile{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Profile{}, fmt.Errorf("accounts: change email: %w", err)
+	}
+	return s.Profile(ctx, userID)
+}
+
+// ConfirmEmailChange consumes an email-change token and promotes the pending address to live. Only a
+// token of purpose 'email_change' — the one delivered to the NEW address — reaches the flip, so a
+// stale registration token sent to the old address can never complete a change. If the address was
+// taken between request and confirm, the live unique index rejects the flip as a conflict.
+func (s *Service) ConfirmEmailChange(ctx context.Context, token string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("accounts: confirm email change: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	q := s.q.WithTx(tx)
+
+	userID, err := q.ConsumeEmailToken(ctx, db.ConsumeEmailTokenParams{
+		TokenHash: digestOf(token), Purpose: "email_change",
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrTokenInvalid
+	} else if err != nil {
+		return fmt.Errorf("accounts: confirm email change: %w", err)
+	}
+
+	if _, err := q.ConfirmEmailChange(ctx, userID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Token was valid but the pending address had since been cleared: nothing to promote.
+			return ErrTokenInvalid
+		}
+		var pg *pgconn.PgError
+		if errors.As(err, &pg) && pg.Code == pgerrcode.UniqueViolation && pg.ConstraintName == "users_email_uniq" {
+			return ErrEmailTaken
+		}
+		return fmt.Errorf("accounts: confirm email change: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("accounts: confirm email change: %w", err)
 	}
 	return nil
 }
@@ -191,6 +275,17 @@ func verificationMail(ctfName string) func(token string) (subject, body string) 
 			"Enter this code to verify your email address:\n\n%s\n\n"+
 				"The code expires in 24 hours. If you did not register, ignore this message.\n",
 			token,
+		)
+	}
+}
+
+func emailChangeMail(ctfName, newEmail string) func(token string) (subject, body string) {
+	return func(token string) (string, string) {
+		return mailSubject(ctfName, "Confirm your new email address"), fmt.Sprintf(
+			"Enter this code to confirm %s as the email address for your account:\n\n%s\n\n"+
+				"The code expires in 24 hours. Until you confirm, your current address is unchanged. "+
+				"If you did not request this, ignore this message.\n",
+			newEmail, token,
 		)
 	}
 }

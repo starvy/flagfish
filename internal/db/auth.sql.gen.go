@@ -35,6 +35,36 @@ func (q *Queries) BumpRateLimit(ctx context.Context, arg BumpRateLimitParams) (i
 	return n, err
 }
 
+const clearPendingEmail = `-- name: ClearPendingEmail :exec
+UPDATE users SET pending_email = NULL WHERE id = $1
+`
+
+// Drop a queued change without confirming it (the player cancelled, or is re-queuing a different
+// address). Idempotent: no pending change is a no-op.
+func (q *Queries) ClearPendingEmail(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, clearPendingEmail, userID)
+	return err
+}
+
+const confirmEmailChange = `-- name: ConfirmEmailChange :one
+UPDATE users
+   SET email = pending_email, pending_email = NULL, verified = true
+ WHERE id = $1 AND pending_email IS NOT NULL
+RETURNING id
+`
+
+// Promote the pending address to live, atomically, and only if there is one to promote. verified is
+// set true because the token that reached this statement was delivered to the new address and proves
+// control of it. users_email_uniq rejects a race where the address was taken since it was queued —
+// a loud 23505 the caller turns into a conflict, never a silent overwrite. Zero rows means the
+// pending address was already cleared (a spent or duplicate confirm).
+func (q *Queries) ConfirmEmailChange(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, confirmEmailChange, userID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createAPIToken = `-- name: CreateAPIToken :one
 
 INSERT INTO api_tokens (user_id, token_hash, description, expires_at)
@@ -363,7 +393,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id,
+SELECT id, name, email, pending_email, password_hash, role, verified, banned, must_change_password, team_id,
        website, affiliation, country, language
   FROM users WHERE id = $1
 `
@@ -372,6 +402,7 @@ type GetUserByIDRow struct {
 	ID                 int64
 	Name               string
 	Email              string
+	PendingEmail       *string
 	PasswordHash       *string
 	Role               string
 	Verified           bool
@@ -391,6 +422,7 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (GetUserByIDRow
 		&i.ID,
 		&i.Name,
 		&i.Email,
+		&i.PendingEmail,
 		&i.PasswordHash,
 		&i.Role,
 		&i.Verified,
@@ -539,6 +571,26 @@ func (q *Queries) PromoteToAdmin(ctx context.Context, email string) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const setPendingEmail = `-- name: SetPendingEmail :execrows
+UPDATE users SET pending_email = $1 WHERE id = $2
+`
+
+type SetPendingEmailParams struct {
+	Email  *string
+	UserID int64
+}
+
+// Queue a new address for verification. It becomes live only when a token delivered to it is
+// confirmed (ConfirmEmailChange). users_pending_email_uniq rejects a duplicate queued address —
+// surfaced as a conflict, not a lost check-then-insert race.
+func (q *Queries) SetPendingEmail(ctx context.Context, arg SetPendingEmailParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPendingEmail, arg.Email, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions SET last_seen = now() WHERE id_hash = $1
 `
@@ -559,7 +611,7 @@ UPDATE users SET
     language    = CASE WHEN $7::bool THEN NULL
                        ELSE COALESCE($8, language) END
 WHERE id = $9
-RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country, language
+RETURNING id, name, email, pending_email, role, verified, banned, team_id, website, affiliation, country, language
 `
 
 type UpdateOwnProfileParams struct {
@@ -575,17 +627,18 @@ type UpdateOwnProfileParams struct {
 }
 
 type UpdateOwnProfileRow struct {
-	ID          int64
-	Name        string
-	Email       string
-	Role        string
-	Verified    bool
-	Banned      bool
-	TeamID      *int64
-	Website     *string
-	Affiliation *string
-	Country     *string
-	Language    *string
+	ID           int64
+	Name         string
+	Email        string
+	PendingEmail *string
+	Role         string
+	Verified     bool
+	Banned       bool
+	TeamID       *int64
+	Website      *string
+	Affiliation  *string
+	Country      *string
+	Language     *string
 }
 
 // The self-serve profile write: the player-owned fields and nothing else. Identity and
@@ -607,6 +660,7 @@ func (q *Queries) UpdateOwnProfile(ctx context.Context, arg UpdateOwnProfilePara
 		&i.ID,
 		&i.Name,
 		&i.Email,
+		&i.PendingEmail,
 		&i.Role,
 		&i.Verified,
 		&i.Banned,
@@ -651,4 +705,53 @@ type UpdatePasswordHashParams struct {
 func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error {
 	_, err := q.db.Exec(ctx, updatePasswordHash, arg.PasswordHash, arg.UserID)
 	return err
+}
+
+const updateUserName = `-- name: UpdateUserName :one
+UPDATE users SET name = $1
+ WHERE id = $2
+RETURNING id, name, email, pending_email, role, verified, banned, team_id, website, affiliation, country, language
+`
+
+type UpdateUserNameParams struct {
+	Name   string
+	UserID int64
+}
+
+type UpdateUserNameRow struct {
+	ID           int64
+	Name         string
+	Email        string
+	PendingEmail *string
+	Role         string
+	Verified     bool
+	Banned       bool
+	TeamID       *int64
+	Website      *string
+	Affiliation  *string
+	Country      *string
+	Language     *string
+}
+
+// The self-serve display-name write. name is deliberately not unique (a display name is not an
+// identity), so this is a plain update with no collision to catch. email and moderation state are
+// not in the SET list, so this statement cannot be talked into touching the account's identity.
+func (q *Queries) UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (UpdateUserNameRow, error) {
+	row := q.db.QueryRow(ctx, updateUserName, arg.Name, arg.UserID)
+	var i UpdateUserNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PendingEmail,
+		&i.Role,
+		&i.Verified,
+		&i.Banned,
+		&i.TeamID,
+		&i.Website,
+		&i.Affiliation,
+		&i.Country,
+		&i.Language,
+	)
+	return i, err
 }

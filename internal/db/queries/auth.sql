@@ -127,7 +127,7 @@ SELECT id, name, email, password_hash, role, verified, banned, must_change_passw
   FROM users WHERE lower(email) = lower(@email);
 
 -- name: GetUserByID :one
-SELECT id, name, email, password_hash, role, verified, banned, must_change_password, team_id,
+SELECT id, name, email, pending_email, password_hash, role, verified, banned, must_change_password, team_id,
        website, affiliation, country, language
   FROM users WHERE id = @user_id;
 
@@ -144,7 +144,37 @@ UPDATE users SET
     language    = CASE WHEN @clear_language::bool THEN NULL
                        ELSE COALESCE(sqlc.narg(language), language) END
 WHERE id = @user_id
-RETURNING id, name, email, role, verified, banned, team_id, website, affiliation, country, language;
+RETURNING id, name, email, pending_email, role, verified, banned, team_id, website, affiliation, country, language;
+
+-- name: UpdateUserName :one
+-- The self-serve display-name write. name is deliberately not unique (a display name is not an
+-- identity), so this is a plain update with no collision to catch. email and moderation state are
+-- not in the SET list, so this statement cannot be talked into touching the account's identity.
+UPDATE users SET name = @name
+ WHERE id = @user_id
+RETURNING id, name, email, pending_email, role, verified, banned, team_id, website, affiliation, country, language;
+
+-- name: SetPendingEmail :execrows
+-- Queue a new address for verification. It becomes live only when a token delivered to it is
+-- confirmed (ConfirmEmailChange). users_pending_email_uniq rejects a duplicate queued address —
+-- surfaced as a conflict, not a lost check-then-insert race.
+UPDATE users SET pending_email = @email WHERE id = @user_id;
+
+-- name: ClearPendingEmail :exec
+-- Drop a queued change without confirming it (the player cancelled, or is re-queuing a different
+-- address). Idempotent: no pending change is a no-op.
+UPDATE users SET pending_email = NULL WHERE id = @user_id;
+
+-- name: ConfirmEmailChange :one
+-- Promote the pending address to live, atomically, and only if there is one to promote. verified is
+-- set true because the token that reached this statement was delivered to the new address and proves
+-- control of it. users_email_uniq rejects a race where the address was taken since it was queued —
+-- a loud 23505 the caller turns into a conflict, never a silent overwrite. Zero rows means the
+-- pending address was already cleared (a spent or duplicate confirm).
+UPDATE users
+   SET email = pending_email, pending_email = NULL, verified = true
+ WHERE id = @user_id AND pending_email IS NOT NULL
+RETURNING id;
 
 -- name: UpdatePasswordHash :exec
 -- The rehash-on-login path only: a bcrypt hash from an import, silently upgraded to Argon2id while

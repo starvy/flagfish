@@ -216,6 +216,15 @@ type Querier interface {
 	// Atomic on Postgres alone. The row is the counter, so there is no increment to lose: two
 	// concurrent bumps serialize on the primary key and both see a correct value.
 	BumpRateLimit(ctx context.Context, arg BumpRateLimitParams) (int32, error)
+	// Drop a queued change without confirming it (the player cancelled, or is re-queuing a different
+	// address). Idempotent: no pending change is a no-op.
+	ClearPendingEmail(ctx context.Context, userID int64) error
+	// Promote the pending address to live, atomically, and only if there is one to promote. verified is
+	// set true because the token that reached this statement was delivered to the new address and proves
+	// control of it. users_email_uniq rejects a race where the address was taken since it was queued —
+	// a loud 23505 the caller turns into a conflict, never a silent overwrite. Zero rows means the
+	// pending address was already cleared (a spent or duplicate confirm).
+	ConfirmEmailChange(ctx context.Context, userID int64) (int64, error)
 	// Single-use is enforced by this one statement: two concurrent consumers race on the row
 	// lock, and the loser sees consumed_at already set and gets zero rows. A SELECT-then-UPDATE
 	// would let both pass the check. Expiry lives in the WHERE clause so an expired token is
@@ -487,6 +496,12 @@ type Querier interface {
 	// is one cached-page lookup. `instance` is created at setup; NO ROWS means the instance was never
 	// set up, which is a hard error and not a defaultable condition. Loud beats silent.
 	GetUserMode(ctx context.Context) (string, error)
+	// Public account profiles: a user's page, gated exactly like the scoreboard and the team page.
+	// A hidden or banned user 404s to the public and is visible to an admin — the `admin` flag is the
+	// only thing that widens the row, mirroring the scoreboard. The score sums the stamped solves.user_id
+	// and awards.user_id ledgers under the caller's freeze horizon (cutoff strict `<`, NULL = live), so a
+	// public page served during a freeze hands over the frozen standing, one account at a time.
+	GetUserPublicProfile(ctx context.Context, arg GetUserPublicProfileParams) (GetUserPublicProfileRow, error)
 	// Standings and scoreboard time-travel. The heaviest read in the product.
 	// Four things here are load-bearing:
 	//
@@ -651,6 +666,11 @@ type Querier interface {
 	// Only type='standard' rows: hint spends and first-blood bonuses are gameplay facts, not admin
 	// adjustments, and must never appear in a revoke list.
 	ListUserManualAwards(ctx context.Context, userID int64) ([]ListUserManualAwardsRow, error)
+	// The account's solved challenges, newest first, under the same freeze horizon as the score above.
+	// Only visible challenges are listed: the total score sums the whole ledger (matching the board), but
+	// naming a hidden challenge here would leak its existence, so the itemised history hides it just as
+	// the per-challenge solve list does.
+	ListUserSolves(ctx context.Context, arg ListUserSolvesParams) ([]ListUserSolvesRow, error)
 	// Authentication: sessions, API tokens, and the one query that resolves a caller to a Principal.
 	// THE authentication query. Sessions and API tokens both converge here before any
 	// authorization runs, so a token cannot route around a wall a cookie hits.
@@ -781,6 +801,10 @@ type Querier interface {
 	// found_type means "no such award" (type is never empty), a zero deleted_id means "not deleted"
 	// (ids start at 1). The caller reads the two together to pick the outcome.
 	RevokeManualAward(ctx context.Context, id int64) (RevokeManualAwardRow, error)
+	// Queue a new address for verification. It becomes live only when a token delivered to it is
+	// confirmed (ConfirmEmailChange). users_pending_email_uniq rejects a duplicate queued address —
+	// surfaced as a conflict, not a lost check-then-insert race.
+	SetPendingEmail(ctx context.Context, arg SetPendingEmailParams) (int64, error)
 	// Read-side disambiguation for the roster mutations above: which of captaincy, membership, or the
 	// scored guard turned a zero-row write away. Off the hot path — it runs only to shape an error.
 	TeamCaptainScored(ctx context.Context, teamID int64) (TeamCaptainScoredRow, error)
@@ -804,6 +828,10 @@ type Querier interface {
 	UpdateTeamByCaptain(ctx context.Context, arg UpdateTeamByCaptainParams) (int64, error)
 	// Rehash-on-join: an imported bcrypt join password is upgraded while the plaintext is in hand.
 	UpdateTeamPasswordHash(ctx context.Context, arg UpdateTeamPasswordHashParams) error
+	// The self-serve display-name write. name is deliberately not unique (a display name is not an
+	// identity), so this is a plain update with no collision to catch. email and moderation state are
+	// not in the SET list, so this statement cannot be talked into touching the account's identity.
+	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (UpdateUserNameRow, error)
 	// Runs on every authenticated request. One idempotent statement that cannot raise:
 	// there is no error path left to mishandle.
 	UpsertTracking(ctx context.Context, arg UpsertTrackingParams) (Tracking, error)

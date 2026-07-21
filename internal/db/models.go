@@ -292,4 +292,5 @@ type User struct {
 	Verified           bool
 	MustChangePassword bool
 	CreatedAt          pgtype.Timestamptz
+	PendingEmail       *string
 }

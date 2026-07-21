@@ -127,17 +127,20 @@ type resetPasswordInput struct {
 
 type meOutput struct {
 	Body struct {
-		UserID      int64   `json:"user_id"`
-		Name        string  `json:"name"`
-		Email       string  `json:"email"`
-		Role        string  `json:"role"`
-		Verified    bool    `json:"verified"`
-		IsAdmin     bool    `json:"is_admin"`
-		TeamID      *int64  `json:"team_id,omitempty"`
-		Website     *string `json:"website,omitempty"`
-		Affiliation *string `json:"affiliation,omitempty"`
-		Country     *string `json:"country,omitempty"`
-		Language    *string `json:"language,omitempty"`
+		UserID int64  `json:"user_id"`
+		Name   string `json:"name"`
+		Email  string `json:"email"`
+		// PendingEmail is the address awaiting confirmation, if a change is in flight. The settings
+		// page shows it as "check your inbox"; it is the caller's own, and only ever their own.
+		PendingEmail *string `json:"pending_email,omitempty"`
+		Role         string  `json:"role"`
+		Verified     bool    `json:"verified"`
+		IsAdmin      bool    `json:"is_admin"`
+		TeamID       *int64  `json:"team_id,omitempty"`
+		Website      *string `json:"website,omitempty"`
+		Affiliation  *string `json:"affiliation,omitempty"`
+		Country      *string `json:"country,omitempty"`
+		Language     *string `json:"language,omitempty"`
 		// The session cookie outlives the tab that minted it, and it is HttpOnly, so a client
 		// that comes back with a live cookie and no CSRF token cannot mint one: login and
 		// register are the only other emitters, and even logout is a CSRF-guarded POST. Without
@@ -182,6 +185,26 @@ func (s *Server) registerAuth() {
 		OperationID: "update-me", Method: http.MethodPatch, Path: "/me",
 		Summary: "Update the current account's profile", Tags: []string{"auth"},
 	}, s.updateMe)
+
+	// Identity — name and email — is edited on its own routes, never folded into the profile PATCH:
+	// a display-name change is immediate, an email change is a re-verification, and neither is a
+	// profile field.
+	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
+		OperationID: "change-name", Method: http.MethodPatch, Path: "/me/name",
+		Summary: "Change the current account's display name", Tags: []string{"auth"},
+	}, s.changeName)
+
+	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
+		OperationID: "change-email", Method: http.MethodPatch, Path: "/me/email",
+		Summary: "Request an email change (sends a confirmation to the new address)", Tags: []string{"auth"},
+	}, s.changeEmail)
+
+	// Token-based, like the other confirm flows: the link lands wherever the new inbox is opened,
+	// which need not be the session that requested the change.
+	Register(s.Public, policy.ClassConfirm, huma.Operation{
+		OperationID: "email-change-confirm", Method: http.MethodPost, Path: "/verify/email-change",
+		Summary: "Confirm a pending email change with a token", Tags: []string{"auth"},
+	}, s.confirmEmailChange)
 
 	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
 		OperationID: "answer-fields", Method: http.MethodPut, Path: "/me/fields",
@@ -317,6 +340,7 @@ func meOut(p accounts.Profile, isAdmin bool, csrf string, fields []accounts.User
 	out.Body.UserID = p.ID
 	out.Body.Name = p.Name
 	out.Body.Email = p.Email
+	out.Body.PendingEmail = p.PendingEmail
 	out.Body.Role = p.Role
 	out.Body.Verified = p.Verified
 	out.Body.IsAdmin = isAdmin
@@ -355,6 +379,69 @@ func (s *Server) updateMe(ctx context.Context, in *updateMeInput) (*meOutput, er
 		return nil, huma.Error500InternalServerError("could not update your profile")
 	}
 	return meOut(p, a.Principal.IsAdmin, a.CSRFToken, fields), nil
+}
+
+type changeNameInput struct {
+	Body struct {
+		Name string `json:"name" minLength:"1" maxLength:"128"`
+	}
+}
+
+func (s *Server) changeName(ctx context.Context, in *changeNameInput) (*meOutput, error) {
+	a := AuthOf(ctx)
+	p, err := s.opts.Accounts.ChangeName(ctx, a.Principal.UserID, in.Body.Name)
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "change name failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not change your name")
+	}
+	fields, err := s.opts.Accounts.UserFields(ctx, a.Principal.UserID)
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "profile fields lookup failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not change your name")
+	}
+	return meOut(p, a.Principal.IsAdmin, a.CSRFToken, fields), nil
+}
+
+type changeEmailInput struct {
+	Body struct {
+		Email string `json:"email" format:"email" maxLength:"255"`
+	}
+}
+
+// changeEmail queues the new address and mails it a token. The response carries the pending address so
+// the client can show "check your inbox"; the live email is unchanged until the token is confirmed.
+func (s *Server) changeEmail(ctx context.Context, in *changeEmailInput) (*meOutput, error) {
+	a := AuthOf(ctx)
+	p, err := s.opts.Accounts.ChangeEmail(ctx, a.Principal.UserID, in.Body.Email, s.opts.Config.Current().CTFName)
+	switch {
+	case errors.Is(err, accounts.ErrEmailUnchanged):
+		return nil, huma.Error409Conflict("that is already your email address")
+	case errors.Is(err, accounts.ErrEmailTaken):
+		return nil, huma.Error409Conflict("that email is already in use")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "change email failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not start the email change")
+	}
+	fields, err := s.opts.Accounts.UserFields(ctx, a.Principal.UserID)
+	if err != nil {
+		s.opts.Log.ErrorContext(ctx, "profile fields lookup failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not start the email change")
+	}
+	return meOut(p, a.Principal.IsAdmin, a.CSRFToken, fields), nil
+}
+
+func (s *Server) confirmEmailChange(ctx context.Context, in *confirmEmailInput) (*okOutput, error) {
+	err := s.opts.Accounts.ConfirmEmailChange(ctx, in.Body.Token)
+	switch {
+	case errors.Is(err, accounts.ErrTokenInvalid):
+		return nil, huma.Error400BadRequest("that confirmation link is invalid or has expired")
+	case errors.Is(err, accounts.ErrEmailTaken):
+		return nil, huma.Error409Conflict("that email was taken before you confirmed it")
+	case err != nil:
+		s.opts.Log.ErrorContext(ctx, "confirm email change failed", "error", err)
+		return nil, huma.Error500InternalServerError("could not confirm the email change")
+	}
+	return ok(), nil
 }
 
 // answerFieldsInput is the self-serve write over the caller's custom fields.
