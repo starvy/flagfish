@@ -11,6 +11,7 @@ import {
 } from "../../../queries";
 import {
   AdminPage,
+  BackupRestore,
   Def,
   DefList,
   ErrorState,
@@ -208,6 +209,8 @@ function OverviewPage() {
             {inst.mode === "teams" && <a href="/api/v1/admin/export/teams.csv">Teams</a>}
           </nav>
         </Card>
+
+        <BackupRestore />
 
         <Card title="Go to">
           <nav className="admin-links" aria-label="Console shortcuts">

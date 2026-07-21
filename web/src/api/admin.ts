@@ -32,6 +32,7 @@ export type AcSharingPair = Schemas["AcSharingPairBody"];
 export type AcIPCluster = Schemas["AcIPClusterBody"];
 export type AcAccountReport = Schemas["AcAccountReportOutputBody"];
 export type AdminInstance = Schemas["AdminInstanceBody"];
+export type AdminTask = Schemas["TaskBody"];
 export type PoolStat = Schemas["PoolStatBody"];
 export type AdminPoolUploadResult = Schemas["AdminPoolUploadOutputBody"];
 
@@ -281,4 +282,24 @@ export const adminApi = {
       "GET",
       `${P}/anticheat/unissued-solves${query({ ...params })}`,
     ),
+
+  // Async ops (backup / restore / import). Each mutating call returns a task immediately; poll
+  // getTask until it succeeds or fails. The download URL for a finished backup is carried on the
+  // task itself (task.download), served by the same admin session cookie.
+  startBackup: (profile: "backup" | "safe" = "backup") =>
+    request<AdminTask>("POST", `${P}/backup`, { profile }),
+
+  startRestore: (archive: File) => {
+    const form = new FormData();
+    form.append("archive", archive);
+    return upload<AdminTask>("POST", `${P}/restore`, form);
+  },
+
+  startImport: (archive: File) => {
+    const form = new FormData();
+    form.append("archive", archive);
+    return upload<AdminTask>("POST", `${P}/import`, form);
+  },
+
+  getTask: (id: number) => request<AdminTask>("GET", `${P}/tasks/${id}`),
 };
