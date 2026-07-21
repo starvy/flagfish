@@ -520,6 +520,15 @@ var coherenceRules = []coherenceRule{
 		}
 		return nil
 	}},
+	// verify_emails gates every gameplay route on a flag only a delivered email can clear:
+	// with no mailer the whole player base registers straight into a 403. mail_server is
+	// the whole test — the rules above are what make a set one deliverable.
+	{keys: []string{"verify_emails", "mail_server"}, check: func(s *Snapshot) error {
+		if s.VerifyEmails && s.MailServer == "" {
+			return errors.New("verify_emails is true but mail_server is not set: no account could ever be verified, and an unverified account cannot play")
+		}
+		return nil
+	}},
 	// An enabled feed with no endpoint would boot fine and then fail on the first
 	// first-blood of the event; refuse the half-configuration up front.
 	{keys: []string{"webhook_enabled", "webhook_url"}, check: func(s *Snapshot) error {

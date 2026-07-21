@@ -209,6 +209,7 @@ func TestCombinationsThatCannotBeRight(t *testing.T) {
 		{"freeze after end", func(r map[string]string) { r["freeze"] = "1785000000" }},
 		{"team_size in users mode", func(r map[string]string) { r["user_mode"] = "users"; r["team_size"] = "4" }},
 		{"webhook enabled without a url", func(r map[string]string) { r["webhook_enabled"] = "true" }},
+		{"verify_emails without a mailer", func(r map[string]string) { r["verify_emails"] = "true" }},
 	} {
 		rows := sane()
 		tc.mut(rows)
@@ -216,6 +217,182 @@ func TestCombinationsThatCannotBeRight(t *testing.T) {
 			t.Errorf("%s: accepted, want a boot failure", tc.name)
 		}
 	}
+}
+
+// verify_emails is the one toggle that can lock out every player at once: it gates
+// every gameplay route on a flag that only a delivered email can clear. Without a
+// mailer the whole player base registers into a 403 and nobody finds out until the
+// complaints arrive, so the config must not boot.
+func TestVerifyEmailsRequiresAMailer(t *testing.T) {
+	withMailer := func(r map[string]string) {
+		r["mail_server"] = "smtp.example.com"
+		r["mail_port"] = "587"
+		r["mailfrom_addr"] = "ctf@example.com"
+	}
+
+	for _, tc := range []struct {
+		name string
+		mut  func(map[string]string)
+		// wantIn is a key the boot failure must name. Empty means the config is legitimate.
+		wantIn string
+	}{
+		{name: "on with no mail at all", wantIn: "mail_server", mut: func(r map[string]string) {
+			r["verify_emails"] = "true"
+		}},
+		{name: "on with a blank mail_server row", wantIn: "mail_server", mut: func(r map[string]string) {
+			withMailer(r)
+			r["verify_emails"] = "true"
+			r["mail_server"] = "   " // an empty row means "unset", and unset is not a mailer
+		}},
+		// Half a mailer is still no mailer, and the operator gets both halves in one boot.
+		{name: "on with a server but no from address", wantIn: "mailfrom_addr", mut: func(r map[string]string) {
+			r["verify_emails"] = "true"
+			r["mail_server"] = "smtp.example.com"
+			r["mail_port"] = "587"
+		}},
+		// The posture of most instances. It must stay valid, mail or no mail.
+		{name: "off with no mail at all", mut: func(map[string]string) {}},
+		{name: "off with a full mailer", mut: withMailer},
+		{name: "on with a full mailer", mut: func(r map[string]string) {
+			withMailer(r)
+			r["verify_emails"] = "true"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := sane()
+			tc.mut(rows)
+
+			_, err := config.Build(rows, modep(account.ModeTeams))
+			switch {
+			case tc.wantIn == "":
+				if err != nil {
+					t.Fatalf("a legitimate config was refused: %v", err)
+				}
+			case err == nil:
+				t.Fatal("accepted: every registration would land in a 403 no email can clear")
+			case !strings.Contains(err.Error(), tc.wantIn):
+				t.Errorf("error %q does not name %q — an operator cannot act on it", err, tc.wantIn)
+			}
+		})
+	}
+}
+
+// The same lockout, one step earlier: enabling verification without a mailer is a
+// write nobody can undo from the inside, so the write path refuses it for the same
+// reason boot does — and the repair stays expressible in a single write.
+func TestSetRefusesEmailVerificationWithoutAMailer(t *testing.T) {
+	ctx := context.Background()
+	mailer := map[string]string{
+		"mail_server":   "smtp.example.com",
+		"mail_port":     "587",
+		"mailfrom_addr": "ctf@example.com",
+	}
+
+	t.Run("turning it on with no mailer is refused whole", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		m, err := config.New(ctx, store, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = m.Set(ctx, map[string]string{"verify_emails": "true"})
+		if !errors.Is(err, config.ErrRejected) {
+			t.Fatalf("verify_emails without a mailer: got %v, want ErrRejected", err)
+		}
+		if !strings.Contains(err.Error(), "mail_server") {
+			t.Errorf("the refusal does not name the missing key: %v", err)
+		}
+		if m.Current().VerifyEmails {
+			t.Error("the live snapshot changed despite the write being rejected")
+		}
+		rows, allErr := store.All(ctx)
+		if allErr != nil {
+			t.Fatal(allErr)
+		}
+		if rows["verify_emails"] != "false" {
+			t.Error("the refused write reached the store")
+		}
+	})
+
+	t.Run("pulling the mailer out from under it is refused too", func(t *testing.T) {
+		rows := sane()
+		rows["verify_emails"] = "true"
+		maps.Copy(rows, mailer)
+		m, err := config.New(ctx, &mapStore{rows: rows, mode: modep(account.ModeTeams)}, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := m.Set(ctx, map[string]string{"mail_server": ""}); !errors.Is(err, config.ErrRejected) {
+			t.Fatalf("clearing mail_server under verify_emails: got %v, want ErrRejected", err)
+		}
+		if m.Current().MailServer == "" {
+			t.Error("the live snapshot lost the mailer despite the write being rejected")
+		}
+	})
+
+	t.Run("one write turns it on and configures the mailer", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		m, err := config.New(ctx, store, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		kv := maps.Clone(mailer)
+		kv["verify_emails"] = "true"
+		if err := m.Set(ctx, kv); err != nil {
+			t.Fatalf("turning verification on together with its mailer was refused: %v", err)
+		}
+		if snap := m.Current(); !snap.VerifyEmails || snap.MailServer != "smtp.example.com" {
+			t.Errorf("the write did not land: verify=%v server=%q", snap.VerifyEmails, snap.MailServer)
+		}
+		if got := m.Problems(); len(got) != 0 {
+			t.Errorf("Problems() = %q, want none", got)
+		}
+	})
+
+	t.Run("an instance seeded broken is repairable by writing the mailer", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		m, err := config.New(ctx, store, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.rows["verify_emails"] = "true" // out of band: after boot, behind the manager's back
+
+		if err := m.Set(ctx, map[string]string{"ctf_name": "locked out"}); err != nil {
+			t.Fatalf("a disjoint write was refused over incoherence it did not touch: %v", err)
+		}
+		if problems := strings.Join(m.Problems(), "\n"); !strings.Contains(problems, "mail_server") {
+			t.Fatalf("Problems() does not name the lockout: %q", problems)
+		}
+		if err := m.Set(ctx, mailer); err != nil {
+			t.Fatalf("the repair was refused: %v", err)
+		}
+		if got := m.Problems(); len(got) != 0 {
+			t.Errorf("Problems() = %q after the repair, want none", got)
+		}
+	})
+
+	// The other repair, and the one an organizer reaches for mid-event: a locked-out
+	// instance must always be able to drop the gate without first finding an SMTP server.
+	t.Run("turning it back off unbricks an instance with no mailer", func(t *testing.T) {
+		store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+		m, err := config.New(ctx, store, discard())
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.rows["verify_emails"] = "true" // out of band: after boot, behind the manager's back
+
+		if err := m.Set(ctx, map[string]string{"verify_emails": "false"}); err != nil {
+			t.Fatalf("turning verification off was refused, leaving the lockout in place: %v", err)
+		}
+		if m.Current().VerifyEmails {
+			t.Error("the gate is still up")
+		}
+		if got := m.Problems(); len(got) != 0 {
+			t.Errorf("Problems() = %q after the gate came down, want none", got)
+		}
+	})
 }
 
 // An unknown key is a row, not an error and not a migration. This is what lets the

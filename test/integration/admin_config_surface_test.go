@@ -60,8 +60,11 @@ func TestAdminConfigGameTogglesRoundTrip(t *testing.T) {
 	auth := []func(*http.Request){withCookie(cookie), withCSRF(csrf)}
 
 	before := f.configAuditRows(adminID)
+	// The mailer rides along: verify_emails without one is refused, so the write that
+	// turns verification on is the write that gives it something to send with.
 	res, body := f.do(http.MethodPatch, "/api/v1/admin/config", map[string]any{
 		"verify_emails": true, "view_after_ctf": true, "team_creation": false,
+		"mail_server": "smtp.ctf.test", "mail_port": 587, "mailfrom_addr": "noreply@ctf.test",
 	}, auth...)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("patch toggles: got %d, want 200 (%s)", res.StatusCode, body)

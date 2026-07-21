@@ -118,6 +118,18 @@ func newEmailAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) (*apiFix, 
 		t.Fatalf("truncate river_job: %v", execErr)
 	}
 	seedInstance(t, ctx, pool, mode)
+	// A mailer, because verify_emails without one is a config that refuses to boot —
+	// an instance that gates gameplay on an email it can never send. Delivery here is
+	// the fake above; these rows only make the config a legal one.
+	for _, kv := range [][2]string{
+		{"mail_server", "smtp.ctf.test"},
+		{"mail_port", "587"},
+		{"mailfrom_addr", "noreply@ctf.test"},
+	} {
+		if _, execErr := pool.Exec(ctx, `INSERT INTO config (key, value) VALUES ($1,$2)`, kv[0], kv[1]); execErr != nil {
+			t.Fatalf("seed mail config %s: %v", kv[0], execErr)
+		}
+	}
 	for _, kv := range cfgKV {
 		if _, execErr := pool.Exec(ctx, `INSERT INTO config (key, value) VALUES ($1,$2)`, kv[0], kv[1]); execErr != nil {
 			t.Fatalf("seed config %s: %v", kv[0], execErr)
