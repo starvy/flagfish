@@ -26,8 +26,13 @@ Run it **before** a deploy, not after. It fails loudly and lists every problem a
 | `FLAGFISH_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
 | `FLAGFISH_LOG_FORMAT` | `json` | `text` \| `json`. Use `json` in production. |
 | `FLAGFISH_RATE_LIMIT` | `60` | Requests per window, per caller, before the limiter denies. Positive integer. |
-| `FLAGFISH_RATE_WINDOW` | `1m` | Window over which the rate limit is counted. Go duration, must be positive. |
+| `FLAGFISH_AUTH_RATE_LIMIT` | `10` | The same, for the auth routes, which are the ones worth guessing against. Positive integer. |
+| `FLAGFISH_RATE_WINDOW` | `1m` | Window over which both rate limits are counted. Go duration, must be positive. |
 | `FLAGFISH_TRUSTED_PROXIES` | empty | Comma-separated CIDRs (or bare IPs) whose `X-Forwarded-For` is believed. Empty = trust nobody, use the socket peer address. |
+| `FLAGFISH_SECURE_COOKIES` | `true` | Mark session cookies `Secure`. Defaults on; `false` only when you serve plain HTTP on purpose. |
+| `FLAGFISH_MAX_UPLOAD_BYTES` | `33554432` | Largest multipart upload accepted (32 MiB). Every other body is capped at 1 MiB. Positive integer. |
+| `FLAGFISH_DB_MAX_CONNS` | `25` | pgx pool ceiling. At least 1. |
+| `FLAGFISH_DB_MIN_CONNS` | `2` | pgx pool floor. A minimum above the maximum is a boot error. |
 
 **`FLAGFISH_TRUSTED_PROXIES` deserves a second look.** A wrong value here breaks nothing visibly —
 it just attributes every request to the proxy's own address, which quietly poisons the anti-cheat
@@ -68,17 +73,21 @@ FLAGFISH_ADMIN_PASSWORD='…' flagfish admin create --email you@example.com --na
 flagfish admin create --email you@example.com --promote
 ```
 
-Under docker compose, run it as a one-shot against the app image once the database is migrated:
-
-```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm \
-  -e FLAGFISH_ADMIN_PASSWORD \
-  flagfish admin create --email you@example.com --name You
-```
+Under docker compose this is the whole of first-run setup, and
+[deploy.md](deploy.md#first-run-create-the-first-admin) is the canonical walkthrough — it has the
+exact `docker compose exec` invocation and what to configure next. Do not bootstrap by hand with
+`psql`: the two rows that make an instance live belong in the same transaction as the admin.
 
 - Password source order: `--password` (discouraged), then `FLAGFISH_ADMIN_PASSWORD`, then an
   interactive no-echo prompt if stdin is a TTY. Policy matches registration: 8–128 characters.
   Empty or weak passwords, and a missing DSN, are hard errors.
+- `--mode users|teams` fixes the account model in the same transaction, and it is immutable
+  afterwards. Defaulted, it yields to whatever an already-set-up instance plays; typed and
+  disagreeing, it is an error rather than a flag that was quietly ignored.
+- The account is stamped `verified`: there is no inbox flow behind a console command, so the first
+  admin can sign in even with `verify_emails` on.
+- The transaction ends with a `NOTIFY`, so a server that is already running picks the change up on
+  commit instead of needing a restart.
 - The insert bypasses the `num_users` cap (the caps trigger is suppressed for that one transaction,
   the same exemption the importer runs under), so a full instance cannot lock its own first admin
   out.
@@ -111,10 +120,14 @@ point-in-time recovery if you are running an event that matters. Test the restor
 it. Production should use managed Postgres or a backed-up volume — never the compose development
 service. `flagfish export --backup <out.zip>` and `flagfish restore <in.zip>` round-trip an instance
 in flagfish's own format; that is a migration and disaster-recovery tool, not a substitute for
-database backups.
+database backups. Restore *replaces* an instance rather than merging into one, and the archive
+profiles differ in what they carry — see [deploy.md](deploy.md#backup-and-restore) before you rely
+on either.
 
 **Resource limits.** Set CPU and memory limits and requests on the app. Size Postgres
-`max_connections` against the app's pgx pool configuration.
+`max_connections` against `FLAGFISH_DB_MAX_CONNS` times the number of app replicas, and leave
+headroom: the config listener parks on one pool connection for the life of the process, blocked in
+`LISTEN`, so the pool serves queries with one fewer than its ceiling.
 
 **Observability.** Set `OTEL_EXPORTER_OTLP_ENDPOINT` to your collector to export traces. Keep
 structured JSON logs on (`FLAGFISH_LOG_FORMAT=json`, the default). Add a liveness/readiness probe
