@@ -23,6 +23,22 @@ FROM notifications
 ORDER BY date DESC, id DESC
 LIMIT @lim::int;
 
+-- name: LatestNotificationID :one
+-- The watermark the listen pump starts from. Zero on an empty table, which is why the COALESCE is
+-- here and not in Go: "no notifications yet" and "an error" must not arrive as the same value.
+SELECT COALESCE(max(id), 0)::bigint FROM notifications;
+
+-- name: NotificationsAfter :many
+-- The pump's catch-up after it resubscribes. NOTIFY has no replay, so a connection that died took
+-- every signal sent while it was gone with it; the ids are monotonic, so the rows themselves are
+-- the replay log. Oldest first — clients receive them in publication order — and capped, because a
+-- long outage must not turn one reconnect into an unbounded read.
+SELECT id, title, content, date
+FROM notifications
+WHERE id > @after::bigint
+ORDER BY id
+LIMIT @lim::int;
+
 -- name: ListNotifications :many
 -- COUNT(*) OVER () returns the total in the same round trip rather than a second query. Ordered by
 -- a total key (date then id) so pages are stable when two rows share a timestamp.

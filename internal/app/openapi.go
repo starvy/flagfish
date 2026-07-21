@@ -47,7 +47,7 @@ func OpenAPIYAML(ctx context.Context, log *slog.Logger, admin bool) ([]byte, err
 		Anticheat:   anticheat.New(nil),
 		Stats:       stats.New(nil),
 		Notify:      notifySvc,
-		Broadcaster: notify.NewBroadcaster(nil, notifySvc, log),
+		Broadcaster: notify.NewBroadcaster(nil, notifySvc, log, nil),
 		Files:       files.New(nil, nil, log),
 	})
 

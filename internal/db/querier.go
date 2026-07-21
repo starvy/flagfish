@@ -6,8 +6,6 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -340,10 +338,21 @@ type Querier interface {
 	// SELECT-then-check in Go, so there is no window and no forgotten guard. Zero rows affected means
 	// "not yours, or not there", and the caller cannot tell the difference — which is correct.
 	DeleteAPIToken(ctx context.Context, arg DeleteAPITokenParams) (int64, error)
-	DeleteExpiredAPITokens(ctx context.Context) error
+	// Bounded and looped, for the same reason as the session sweep. An expired token is already refused
+	// at lookup, so this is hygiene rather than revocation — which is exactly why it must never be
+	// allowed to stall a live event.
+	DeleteExpiredAPITokens(ctx context.Context, batchSize int32) (int64, error)
 	DeleteExpiredEmailTokens(ctx context.Context) error
-	DeleteExpiredSessions(ctx context.Context) error
-	DeleteOldRateLimits(ctx context.Context, before pgtype.Timestamptz) error
+	// The reaper's sweep, deliberately bounded and deliberately called in a loop. The first sweep of a
+	// table nobody has ever swept is the dangerous one: a single unbounded DELETE takes row locks and
+	// writes WAL for millions of rows in one transaction, and the login path waits behind it. The row
+	// count comes back so the reaper can say what it did and know when to stop.
+	DeleteExpiredSessions(ctx context.Context, batchSize int32) (int64, error)
+	// This is the table that grows forever: one row per bucket per window, and the submit path reads it
+	// on every attempt. Only rows whose window is long past are eligible — the caller picks `before`
+	// with enough slack that a counter someone is still spending against cannot be deleted out from
+	// under them. Bounded and looped, because this is the sweep most likely to meet a huge table.
+	DeleteOldRateLimits(ctx context.Context, arg DeleteOldRateLimitsParams) (int64, error)
 	DeleteSession(ctx context.Context, idHash []byte) error
 	// A team ban's session sweep. The ban wall stops every member on their next request even
 	// without this — the wall reads team_banned per request — but a live cookie on a banned
@@ -663,6 +672,9 @@ type Querier interface {
 	// mirrors leave: solves stamp team_id, so a roster that can shrink after scoring would leave the
 	// board attributing points to a lineup nobody can reconstruct.
 	KickMember(ctx context.Context, arg KickMemberParams) (int64, error)
+	// The watermark the listen pump starts from. Zero on an empty table, which is why the COALESCE is
+	// here and not in Go: "no notifications yet" and "an error" must not arrive as the same value.
+	LatestNotificationID(ctx context.Context) (int64, error)
 	// Departure is forbidden once the team has scored: solves stamp team_id, so a roster that can
 	// shrink after scoring would misattribute the board. The condition lives in the statement so two
 	// racing writes (a leave and a solve) serialize in the database, not in Go.
@@ -850,6 +862,11 @@ type Querier interface {
 	// live instance rewrites the same value.
 	MarkSetupComplete(ctx context.Context) error
 	MarkUserVerified(ctx context.Context, userID int64) error
+	// The pump's catch-up after it resubscribes. NOTIFY has no replay, so a connection that died took
+	// every signal sent while it was gone with it; the ids are monotonic, so the rows themselves are
+	// the replay log. Oldest first — clients receive them in publication order — and capped, because a
+	// long outage must not turn one reconnect into an unbounded read.
+	NotificationsAfter(ctx context.Context, arg NotificationsAfterParams) ([]Notification, error)
 	// The one number that must be right before the event starts. Pool exhaustion mid-CTF is a hard
 	// failure by design, and this gauge is what makes it preventable rather than merely loud.
 	PoolStats(ctx context.Context) ([]PoolStatsRow, error)

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -43,6 +44,10 @@ type WorkerDeps struct {
 	Pool    *pgxpool.Pool
 	Store   storage.Store
 	Version ProductVersion
+
+	// RateWindow is the limiter's fixed window, which the reaper needs to know how long a
+	// rate-limit row stays live before it is safe to delete.
+	RateWindow time.Duration
 }
 
 // ErrNoWorkers is returned when the worker role is started but nothing is
@@ -73,6 +78,18 @@ func Workers(deps WorkerDeps) (workers *river.Workers, registered int) {
 		Log:      deps.Log,
 	})
 	registered++
+
+	// The reaper runs wherever workers run. Its periodic schedule is attached to the worker client
+	// (see periodicJobs), so registering the worker without the schedule would leave the deletes as
+	// dead code again — the two are wired together in NewWorker on purpose.
+	if deps.Pool != nil {
+		river.AddWorker(w, &ReapExpiredWorker{
+			Pool:       deps.Pool,
+			Log:        deps.Log,
+			RateWindow: deps.RateWindow,
+		})
+		registered++
+	}
 
 	// The backup/restore/import workers need a pool and a store. Register them only when both are
 	// wired: a worker process with no object storage cannot honestly run a backup, and registering a
@@ -110,8 +127,9 @@ func NewWorker(pool *pgxpool.Pool, deps WorkerDeps) (*river.Client[pgx.Tx], erro
 	}
 
 	c, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}},
-		Workers: workers,
+		Queues:       map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}},
+		Workers:      workers,
+		PeriodicJobs: periodicJobs(deps),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jobs: worker client: %w", err)

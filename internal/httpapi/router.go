@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"html"
 	"log/slog"
 	"net"
@@ -193,16 +194,21 @@ func New(opts Options) *Server {
 
 	// Metrics and readiness sit beside health, outside the authenticated chain: a scrape and a
 	// readiness probe are infrastructure, not a logged-in caller. Readiness — unlike the static
-	// healthz — actually pings the pool, so a replica with a dead database is pulled from rotation
-	// instead of staying green.
+	// healthz — checks the dependencies this replica cannot serve correctly without: the pool, and
+	// the LISTEN subscriptions that carry config changes and notifications. A replica whose pump is
+	// dead looks perfect to a ping and is quietly serving a config the fleet has moved on from.
 	if opts.Metrics != nil {
 		r.Handle("/metrics", opts.Metrics.Handler())
 		r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 			defer cancel()
 			if err := opts.Metrics.Ready(ctx); err != nil {
-				opts.Log.WarnContext(ctx, "readyz: database unreachable", "error", err)
-				problem(w, http.StatusServiceUnavailable, "not-ready", "database unreachable")
+				detail := "database unreachable"
+				if errors.Is(err, metrics.ErrListenersDown) {
+					detail = "a Postgres LISTEN subscription is down"
+				}
+				opts.Log.ErrorContext(ctx, "readyz: not ready", "error", err)
+				problem(w, http.StatusServiceUnavailable, "not-ready", detail)
 				return
 			}
 			w.WriteHeader(http.StatusOK)

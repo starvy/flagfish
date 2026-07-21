@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,6 +29,11 @@ type (
 	Inserter struct{ *river.Client[pgx.Tx] }
 	Worker   struct{ *river.Client[pgx.Tx] }
 )
+
+// RateWindow is the limiter's fixed window, supplied into the worker graph so the reaper can tell a
+// dead rate-limit row from a live one. A distinct type so fx injects the right duration rather than
+// any time.Duration that happens to be in the graph.
+type RateWindow time.Duration
 
 // InserterModule provides the insert-only client the API role holds. It is built eagerly
 // at boot: constructing it proves the River schema and pool are usable before the first
@@ -60,8 +66,8 @@ var WorkerModule = fx.Module(
 	fx.Invoke(func(*Worker) {}),
 )
 
-func newWorker(root context.Context, lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) (*Worker, error) {
-	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version})
+func newWorker(root context.Context, lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion, rw RateWindow) (*Worker, error) {
+	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version, RateWindow: time.Duration(rw)})
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +87,8 @@ var InProcessWorkerModule = fx.Module(
 	fx.Invoke(startInProcessWorker),
 )
 
-func startInProcessWorker(root context.Context, lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion) error {
-	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version})
+func startInProcessWorker(root context.Context, lc fx.Lifecycle, pool *pgxpool.Pool, log *slog.Logger, mailer mail.Mailer, cfg *config.Manager, poster WebhookPoster, notifier AdminNotifier, store storage.Store, version ProductVersion, rw RateWindow) error {
+	c, err := NewWorker(pool, WorkerDeps{Mailer: mailer, Config: cfg, Poster: poster, Notifier: notifier, Log: log, Pool: pool, Store: store, Version: version, RateWindow: time.Duration(rw)})
 	if errors.Is(err, ErrNoWorkers) {
 		log.Warn("no workers are registered yet; serving without an in-process worker")
 		return nil

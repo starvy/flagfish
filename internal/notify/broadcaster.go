@@ -2,18 +2,27 @@ package notify
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/starvy/flagfish/internal/health"
+	"github.com/starvy/flagfish/internal/pglisten"
 )
 
 // subscriberBuffer is how many undelivered notifications a client may fall behind before it is
 // dropped. Notifications are rare and small; a client that cannot keep up with a handful of them
 // is not going to catch up, so the buffer is a slack allowance, not a queue to grow.
 const subscriberBuffer = 16
+
+// catchUpLimit caps the replay after a reconnect. A long outage must not turn one resubscribe into
+// an unbounded read and a burst that overruns every subscriber's buffer; past the cap the pump says
+// so and jumps to the head.
+const catchUpLimit = 100
 
 // A Broadcaster owns the single dedicated LISTEN connection and fans received notifications out to
 // the in-process SSE subscribers.
@@ -22,21 +31,35 @@ const subscriberBuffer = 16
 // client cannot be allowed to wedge delivery for every other client, so a send that would block is
 // a drop — loud, logged, and final — never a wait.
 type Broadcaster struct {
-	pool *pgxpool.Pool
-	svc  *Service
-	log  *slog.Logger
+	pool   *pgxpool.Pool
+	svc    *Service
+	log    *slog.Logger
+	health *health.Listener
 
 	mu      sync.Mutex
 	subs    map[*subscriber]struct{}
 	stopped bool
+
+	// lastID is the highest id fanned out so far — the watermark a reconnect replays from.
+	// Negative means "not seeded yet", which is how the first subscribe tells itself apart from
+	// every later one.
+	lastID atomic.Int64
 }
 
 type subscriber struct {
 	ch chan Notification
 }
 
-func NewBroadcaster(pool *pgxpool.Pool, svc *Service, log *slog.Logger) *Broadcaster {
-	return &Broadcaster{pool: pool, svc: svc, log: log, subs: map[*subscriber]struct{}{}}
+// NewBroadcaster builds the fan-out. reg may be nil, in which case the pump's subscription state is
+// simply not published — a narrow harness that has no readiness probe to feed.
+func NewBroadcaster(pool *pgxpool.Pool, svc *Service, log *slog.Logger, reg *health.Registry) *Broadcaster {
+	b := &Broadcaster{
+		pool: pool, svc: svc, log: log,
+		health: reg.Listener(channel),
+		subs:   map[*subscriber]struct{}{},
+	}
+	b.lastID.Store(-1)
+	return b
 }
 
 // Subscribe registers a client and returns its receive channel plus the function that unregisters
@@ -102,43 +125,81 @@ func (b *Broadcaster) closeAll() {
 	}
 }
 
-// Run holds the dedicated LISTEN connection and pumps notifications until ctx is cancelled.
-//
-// The connection is acquired from the pool and never released back while listening: a connection
-// parked in WaitForNotification is not usable for a query, and handing it to one would be a bug
-// that only shows under load. It is released when Run returns, on shutdown.
+// Run pumps notifications until ctx is cancelled, reconnecting for as long as that takes. It
+// returns only on shutdown — a dropped connection is a reconnect, not the end of delivery, because
+// a pump that gives up leaves every connected client watching a stream that will never move again.
 func (b *Broadcaster) Run(ctx context.Context) error {
-	conn, err := b.pool.Acquire(ctx)
+	p := &pglisten.Pump{
+		Pool:        b.pool,
+		Channel:     channel,
+		Log:         b.log,
+		Health:      b.health,
+		OnSubscribe: b.catchUp,
+		OnNotify:    b.deliver,
+	}
+	return p.Run(ctx)
+}
+
+// catchUp runs after every subscribe. The first one only seeds the watermark: nothing is connected
+// yet, so there is nothing to be behind on. Every later one replays what the dead connection was
+// never told about — signals are not queued for a listener that is gone, and the clients on the
+// other side of this process stay connected across the outage and would silently never see them.
+func (b *Broadcaster) catchUp(ctx context.Context) error {
+	latest, err := b.svc.LatestID(ctx)
 	if err != nil {
-		return fmt.Errorf("notify: acquire listener: %w", err)
+		return err
 	}
-	defer conn.Release()
-
-	if _, err := conn.Exec(ctx, "LISTEN "+channel); err != nil {
-		return fmt.Errorf("notify: listen: %w", err)
+	if b.lastID.Load() < 0 {
+		b.lastID.Store(latest)
+		return nil
 	}
 
-	for {
-		note, err := conn.Conn().WaitForNotification(ctx)
-		if err != nil {
-			// Includes ctx cancellation at shutdown; the caller unwraps to decide whether it was
-			// expected.
-			return fmt.Errorf("notify: wait for notification: %w", err)
-		}
-
-		id, perr := strconv.ParseInt(note.Payload, 10, 64)
-		if perr != nil {
-			b.log.WarnContext(ctx, "notify: unparseable payload", "payload", note.Payload)
-			continue
-		}
-
-		n, gerr := b.svc.Get(ctx, id)
-		if gerr != nil {
-			// A row deleted between signal and reload is not an error worth stopping the pump for;
-			// anything else is, but the pump's job is to keep delivering, so log and carry on.
-			b.log.WarnContext(ctx, "notify: could not load a signalled notification", "id", id, "error", gerr)
-			continue
-		}
+	missed, err := b.svc.After(ctx, b.lastID.Load(), catchUpLimit)
+	if err != nil {
+		return err
+	}
+	for _, n := range missed {
+		b.advance(n.ID)
 		b.broadcast(n)
+	}
+	if len(missed) == catchUpLimit {
+		b.log.WarnContext(ctx, "notify: more was published during the outage than the pump replays; skipping the rest",
+			"replayed", len(missed), "resuming_at", latest)
+		b.advance(latest)
+	}
+	return nil
+}
+
+// deliver turns one signalled id into a fan-out.
+func (b *Broadcaster) deliver(ctx context.Context, payload string) {
+	id, err := strconv.ParseInt(payload, 10, 64)
+	if err != nil {
+		b.log.WarnContext(ctx, "notify: unparseable payload", "payload", payload)
+		return
+	}
+
+	n, err := b.svc.Get(ctx, id)
+	if err != nil {
+		// A row deleted between signal and reload is not an error worth stopping the pump for, and
+		// the watermark still moves past it. Anything else keeps the watermark where it is, so a
+		// reconnect's catch-up gets a second chance at the row.
+		b.log.WarnContext(ctx, "notify: could not load a signalled notification", "id", id, "error", err)
+		if errors.Is(err, ErrNotFound) {
+			b.advance(id)
+		}
+		return
+	}
+	b.advance(id)
+	b.broadcast(n)
+}
+
+// advance raises the watermark, never lowers it: a catch-up and a live notification can arrive for
+// the same id, and the replay must not rewind past what was already delivered.
+func (b *Broadcaster) advance(id int64) {
+	for {
+		cur := b.lastID.Load()
+		if id <= cur || b.lastID.CompareAndSwap(cur, id) {
+			return
+		}
 	}
 }

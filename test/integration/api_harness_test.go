@@ -89,7 +89,7 @@ func newAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) *apiFix {
 		Gameplay: gameplay.New(pool, stubInserter{}, mode),
 		Catalog:  catalog.New(pool),
 		Board:    board.New(pool, mode),
-		Metrics:  metrics.New(ctx, pool, log),
+		Metrics:  metrics.New(ctx, pool, log, nil),
 	})
 
 	ts := httptest.NewServer(srv.Router)

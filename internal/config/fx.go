@@ -31,17 +31,26 @@ func newManager(root context.Context, lc fx.Lifecycle, store Store, w Watcher, l
 	// The watcher outlives every OnStart context (those are cancelled once Start
 	// returns), so it runs on a context we cancel ourselves at OnStop.
 	watchCtx, cancel := context.WithCancel(context.WithoutCancel(root))
+	done := make(chan struct{})
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			go func() {
+				defer close(done)
 				if err := m.Run(watchCtx, w); err != nil && watchCtx.Err() == nil {
 					log.Error("config watcher stopped", "error", err)
 				}
 			}()
 			return nil
 		},
-		OnStop: func(context.Context) error {
+		OnStop: func(ctx context.Context) error {
 			cancel()
+			// Wait for the watcher to release its pooled connection before the pool closes,
+			// bounded by the shutdown budget so a wedged watcher costs a log line, not the drain.
+			select {
+			case <-done:
+			case <-ctx.Done():
+				log.Warn("config watcher did not stop within the shutdown budget")
+			}
 			return nil
 		},
 	})

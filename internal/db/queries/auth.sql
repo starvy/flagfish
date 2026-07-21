@@ -86,8 +86,13 @@ DELETE FROM sessions WHERE user_id = @user_id;
 DELETE FROM sessions
  WHERE user_id IN (SELECT id FROM users WHERE team_id = @team_id);
 
--- name: DeleteExpiredSessions :exec
-DELETE FROM sessions WHERE expires_at <= now();
+-- name: DeleteExpiredSessions :execrows
+-- The reaper's sweep, deliberately bounded and deliberately called in a loop. The first sweep of a
+-- table nobody has ever swept is the dangerous one: a single unbounded DELETE takes row locks and
+-- writes WAL for millions of rows in one transaction, and the login path waits behind it. The row
+-- count comes back so the reaper can say what it did and know when to stop.
+DELETE FROM sessions
+ WHERE ctid IN (SELECT ctid FROM sessions WHERE expires_at <= now() LIMIT sqlc.arg(batch_size)::int);
 
 -- ── api tokens ──────────────────────────────────────────────────────────────────
 
@@ -126,8 +131,12 @@ DELETE FROM api_tokens WHERE id = @id AND user_id = @user_id;
 -- is a support ticket, and one silently surviving is a breach.
 DELETE FROM api_tokens WHERE user_id = @user_id;
 
--- name: DeleteExpiredAPITokens :exec
-DELETE FROM api_tokens WHERE expires_at <= now();
+-- name: DeleteExpiredAPITokens :execrows
+-- Bounded and looped, for the same reason as the session sweep. An expired token is already refused
+-- at lookup, so this is hygiene rather than revocation — which is exactly why it must never be
+-- allowed to stall a live event.
+DELETE FROM api_tokens
+ WHERE ctid IN (SELECT ctid FROM api_tokens WHERE expires_at <= now() LIMIT sqlc.arg(batch_size)::int);
 
 -- ── credentials ─────────────────────────────────────────────────────────────────
 
@@ -242,5 +251,12 @@ RETURNING n;
 UPDATE rate_limits SET n = GREATEST(n - 1, 0)
  WHERE bucket = @bucket AND window_start = @window_start;
 
--- name: DeleteOldRateLimits :exec
-DELETE FROM rate_limits WHERE window_start < @before;
+-- name: DeleteOldRateLimits :execrows
+-- This is the table that grows forever: one row per bucket per window, and the submit path reads it
+-- on every attempt. Only rows whose window is long past are eligible — the caller picks `before`
+-- with enough slack that a counter someone is still spending against cannot be deleted out from
+-- under them. Bounded and looped, because this is the sweep most likely to meet a huge table.
+DELETE FROM rate_limits
+ WHERE ctid IN (
+   SELECT rl.ctid FROM rate_limits rl WHERE rl.window_start < @before LIMIT sqlc.arg(batch_size)::int
+ );

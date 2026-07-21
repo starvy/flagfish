@@ -73,7 +73,7 @@ func newInsightAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) *apiFix 
 		AdminOps:  adminops.New(pool),
 		Anticheat: anticheat.New(pool),
 		Stats:     stats.New(pool),
-		Metrics:   metrics.New(ctx, pool, log),
+		Metrics:   metrics.New(ctx, pool, log, nil),
 	})
 
 	ts := httptest.NewServer(srv.Router)

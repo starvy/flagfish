@@ -20,21 +20,30 @@ func runBroadcaster(root context.Context, lc fx.Lifecycle, b *Broadcaster, log *
 	// The pump outlives every OnStart context (those are cancelled once Start returns), so it runs
 	// on a context we cancel ourselves at OnStop.
 	pumpCtx, cancel := context.WithCancel(context.WithoutCancel(root))
+	done := make(chan struct{})
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			go func() {
+				defer close(done)
 				if err := b.Run(pumpCtx); err != nil && pumpCtx.Err() == nil {
 					log.Error("notify broadcaster stopped", "error", err)
 				}
 			}()
 			return nil
 		},
-		OnStop: func(context.Context) error {
+		OnStop: func(ctx context.Context) error {
 			// Stop the pump, then close every subscriber so the SSE handlers return at once. This
 			// hook must run before the HTTP server drains, or those handlers block the drain until
 			// its timeout — which is why this module is wired after httpapi in the serve graph.
 			cancel()
 			b.closeAll()
+			// Wait for the goroutine to hand its pooled connection back before the pool closes,
+			// bounded by the shutdown budget so a wedged pump costs a log line, not the shutdown.
+			select {
+			case <-done:
+			case <-ctx.Done():
+				log.Warn("notify broadcaster did not stop within the shutdown budget")
+			}
 			return nil
 		},
 	})

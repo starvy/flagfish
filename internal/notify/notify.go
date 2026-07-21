@@ -129,6 +129,30 @@ func (s *Service) Get(ctx context.Context, id int64) (Notification, error) {
 	return fromRow(row), nil
 }
 
+// LatestID is the highest published notification id, or zero on an empty table. The pump seeds its
+// watermark from it so a fresh subscription starts at "now" rather than replaying history.
+func (s *Service) LatestID(ctx context.Context) (int64, error) {
+	id, err := s.q.LatestNotificationID(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("notify: latest id: %w", err)
+	}
+	return id, nil
+}
+
+// After returns up to limit notifications published after id, oldest first. It is the pump's
+// catch-up: the ids are the replay log a dropped LISTEN connection has no other way to recover.
+func (s *Service) After(ctx context.Context, id int64, limit int32) ([]Notification, error) {
+	rows, err := s.q.NotificationsAfter(ctx, db.NotificationsAfterParams{After: id, Lim: limit})
+	if err != nil {
+		return nil, fmt.Errorf("notify: after %d: %w", id, err)
+	}
+	out := make([]Notification, len(rows))
+	for i, r := range rows {
+		out[i] = fromRow(r)
+	}
+	return out, nil
+}
+
 // Recent returns up to limit of the newest notifications, newest first, for replay on connect.
 func (s *Service) Recent(ctx context.Context, limit int32) ([]Notification, error) {
 	rows, err := s.q.RecentNotifications(ctx, limit)

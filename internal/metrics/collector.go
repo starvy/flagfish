@@ -7,7 +7,47 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/starvy/flagfish/internal/health"
 )
+
+// listenerCollector exposes the LISTEN subscriptions' state. It is the metric that answers "when
+// did this replica go deaf, and how often does it happen" — readiness only says yes or no, and the
+// resubscribe count is what tells an operator a flapping network apart from one bad night.
+type listenerCollector struct {
+	reg *health.Registry
+
+	subscribed *prometheus.Desc
+	subscribes *prometheus.Desc
+}
+
+func newListenerCollector(reg *health.Registry) *listenerCollector {
+	return &listenerCollector{
+		reg: reg,
+		subscribed: prometheus.NewDesc("flagfish_listener_subscribed",
+			"1 when the process holds a live LISTEN subscription on this channel, 0 when it does not.",
+			[]string{"channel"}, nil),
+		subscribes: prometheus.NewDesc("flagfish_listener_subscribes_total",
+			"Times this process has established its LISTEN subscription; anything above 1 is a reconnect.",
+			[]string{"channel"}, nil),
+	}
+}
+
+func (c *listenerCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.subscribed
+	ch <- c.subscribes
+}
+
+func (c *listenerCollector) Collect(ch chan<- prometheus.Metric) {
+	for _, l := range c.reg.All() {
+		var up float64
+		if l.Subscribed() {
+			up = 1
+		}
+		ch <- prometheus.MustNewConstMetric(c.subscribed, prometheus.GaugeValue, up, l.Name())
+		ch <- prometheus.MustNewConstMetric(c.subscribes, prometheus.CounterValue, float64(l.Subscribes()), l.Name())
+	}
+}
 
 // dbCollector emits the gauges that are cheapest read fresh at scrape time rather than tracked on
 // the hot path: pool saturation, job-queue depth, and the instance-pool utilisation that must be

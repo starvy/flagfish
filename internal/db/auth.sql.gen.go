@@ -223,31 +223,61 @@ func (q *Queries) DeleteAPIToken(ctx context.Context, arg DeleteAPITokenParams) 
 	return result.RowsAffected(), nil
 }
 
-const deleteExpiredAPITokens = `-- name: DeleteExpiredAPITokens :exec
-DELETE FROM api_tokens WHERE expires_at <= now()
+const deleteExpiredAPITokens = `-- name: DeleteExpiredAPITokens :execrows
+DELETE FROM api_tokens
+ WHERE ctid IN (SELECT ctid FROM api_tokens WHERE expires_at <= now() LIMIT $1::int)
 `
 
-func (q *Queries) DeleteExpiredAPITokens(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteExpiredAPITokens)
-	return err
+// Bounded and looped, for the same reason as the session sweep. An expired token is already refused
+// at lookup, so this is hygiene rather than revocation — which is exactly why it must never be
+// allowed to stall a live event.
+func (q *Queries) DeleteExpiredAPITokens(ctx context.Context, batchSize int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredAPITokens, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
-DELETE FROM sessions WHERE expires_at <= now()
+const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions
+ WHERE ctid IN (SELECT ctid FROM sessions WHERE expires_at <= now() LIMIT $1::int)
 `
 
-func (q *Queries) DeleteExpiredSessions(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteExpiredSessions)
-	return err
+// The reaper's sweep, deliberately bounded and deliberately called in a loop. The first sweep of a
+// table nobody has ever swept is the dangerous one: a single unbounded DELETE takes row locks and
+// writes WAL for millions of rows in one transaction, and the login path waits behind it. The row
+// count comes back so the reaper can say what it did and know when to stop.
+func (q *Queries) DeleteExpiredSessions(ctx context.Context, batchSize int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredSessions, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteOldRateLimits = `-- name: DeleteOldRateLimits :exec
-DELETE FROM rate_limits WHERE window_start < $1
+const deleteOldRateLimits = `-- name: DeleteOldRateLimits :execrows
+DELETE FROM rate_limits
+ WHERE ctid IN (
+   SELECT rl.ctid FROM rate_limits rl WHERE rl.window_start < $1 LIMIT $2::int
+ )
 `
 
-func (q *Queries) DeleteOldRateLimits(ctx context.Context, before pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteOldRateLimits, before)
-	return err
+type DeleteOldRateLimitsParams struct {
+	Before    pgtype.Timestamptz
+	BatchSize int32
+}
+
+// This is the table that grows forever: one row per bucket per window, and the submit path reads it
+// on every attempt. Only rows whose window is long past are eligible — the caller picks `before`
+// with enough slack that a counter someone is still spending against cannot be deleted out from
+// under them. Bounded and looped, because this is the sweep most likely to meet a huge table.
+func (q *Queries) DeleteOldRateLimits(ctx context.Context, arg DeleteOldRateLimitsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldRateLimits, arg.Before, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteSession = `-- name: DeleteSession :exec

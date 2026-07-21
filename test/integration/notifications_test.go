@@ -26,7 +26,9 @@ import (
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/domain/account"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/health"
 	"github.com/starvy/flagfish/internal/httpapi"
+	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 )
 
@@ -35,6 +37,9 @@ import (
 // here, where the tests that assert on it live.
 type notifyFix struct {
 	*apiFix
+	// health is the registry the broadcaster's pump publishes into and readiness reads from, so a
+	// test can drive the connection down and watch /readyz notice.
+	health *health.Registry
 }
 
 // newNotifyAPI builds the full server with the notifications service and broadcaster, and runs the
@@ -65,7 +70,8 @@ func newNotifyAPI(t *testing.T, mode account.Mode, mut ...func(*httpapi.Options)
 
 	acct := accounts.NewService(pool, mode, log)
 	svc := notify.NewService(pool)
-	bc := notify.NewBroadcaster(pool, svc, log)
+	reg := health.NewRegistry()
+	bc := notify.NewBroadcaster(pool, svc, log, reg)
 
 	opts := httpapi.Options{
 		Config:      cfg,
@@ -79,6 +85,7 @@ func newNotifyAPI(t *testing.T, mode account.Mode, mut ...func(*httpapi.Options)
 		AdminOps:    adminops.New(pool),
 		Notify:      svc,
 		Broadcaster: bc,
+		Metrics:     metrics.New(ctx, pool, log, reg),
 	}
 	for _, m := range mut {
 		m(&opts)
@@ -105,12 +112,15 @@ func newNotifyAPI(t *testing.T, mode account.Mode, mut ...func(*httpapi.Options)
 		}
 	})
 
-	return &notifyFix{apiFix: &apiFix{
-		t: t, pool: pool, acct: acct, server: ts,
-		client: &http.Client{
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	return &notifyFix{
+		apiFix: &apiFix{
+			t: t, pool: pool, acct: acct, server: ts,
+			client: &http.Client{
+				CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			},
 		},
-	}}
+		health: reg,
+	}
 }
 
 // sseNotification is the decoded SSE data payload. It mirrors the server's notification body; a

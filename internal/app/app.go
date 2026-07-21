@@ -24,6 +24,7 @@ import (
 	"github.com/starvy/flagfish/internal/domain/account"
 	"github.com/starvy/flagfish/internal/files"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/health"
 	"github.com/starvy/flagfish/internal/httpapi"
 	"github.com/starvy/flagfish/internal/jobs"
 	"github.com/starvy/flagfish/internal/mail"
@@ -79,6 +80,7 @@ func ServeOptions(ctx context.Context, env *config.Env, log *slog.Logger, sc Ser
 		fx.Provide(provideStore),
 		fx.Supply(httpapi.ListenAddr(sc.Addr)),
 		fx.Supply(sc.TrustedProxies),
+		fx.Supply(jobs.RateWindow(env.RateWindow)),
 		fx.Supply(accounts.LimiterConfig{Limit: env.RateLimit, Window: env.RateWindow}),
 		fx.Supply(accounts.AuthLimiterConfig{Limit: env.AuthRateLimit, Window: env.RateWindow}),
 		fx.Supply(accounts.AuthFailureLimiterConfig{Limit: env.AuthIPFailureLimit, Window: env.RateWindow}),
@@ -115,7 +117,9 @@ func WorkerOptions(ctx context.Context, env *config.Env, log *slog.Logger) []fx.
 	// is built from — both roles pull the same SMTP settings out of the same table. It also needs
 	// the object store: the backup/restore/import workers read and write archives and file blobs
 	// through it, and without it those jobs are not registered at all.
-	return append(baseOptions(ctx, env, log), config.Module, mail.Module, fx.Provide(provideStore), jobs.WorkerModule)
+	return append(baseOptions(ctx, env, log), config.Module, mail.Module,
+		fx.Supply(jobs.RateWindow(env.RateWindow)),
+		fx.Provide(provideStore), jobs.WorkerModule)
 }
 
 func baseOptions(ctx context.Context, env *config.Env, log *slog.Logger) []fx.Option {
@@ -133,6 +137,10 @@ func baseOptions(ctx context.Context, env *config.Env, log *slog.Logger) []fx.Op
 		fx.Supply(env),
 		fx.Supply(log),
 		fx.Supply(jobs.ProductVersion(Version)),
+		// Every role that LISTENs registers here, and readiness reads it. It is in the base options
+		// rather than beside the probe because the worker role subscribes too — it just has no
+		// /readyz to answer with.
+		fx.Provide(health.NewRegistry),
 		fx.Provide(providePool),
 	}
 }

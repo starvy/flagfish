@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/starvy/flagfish/internal/audit"
 	"github.com/starvy/flagfish/internal/domain/account"
+	"github.com/starvy/flagfish/internal/health"
+	"github.com/starvy/flagfish/internal/pglisten"
 )
 
 // configChannel is the LISTEN/NOTIFY channel. One channel, one payload-free
@@ -133,33 +136,41 @@ func (s *PGStore) Replace(ctx context.Context, kv map[string]string) error {
 	return nil
 }
 
-// PGWatcher turns NOTIFY config_changed into a callback. It holds a DEDICATED
-// connection outside the pool, because a connection that is blocked in
-// WaitForNotification is not available for anything else and must not be handed
-// back to a query.
+// PGWatcher turns NOTIFY config_changed into a callback, across as many connections as it takes.
+// It holds a DEDICATED connection, because a connection that is blocked in WaitForNotification is
+// not available for anything else and must not be handed back to a query.
 type PGWatcher struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	log    *slog.Logger
+	health *health.Listener
 }
 
-func NewPGWatcher(pool *pgxpool.Pool) *PGWatcher { return &PGWatcher{pool: pool} }
+// NewPGWatcher builds the watcher. reg may be nil, which simply leaves the subscription's state
+// unpublished — a harness with no readiness probe to feed.
+func NewPGWatcher(pool *pgxpool.Pool, log *slog.Logger, reg *health.Registry) *PGWatcher {
+	return &PGWatcher{pool: pool, log: log, health: reg.Listener(configChannel)}
+}
 
+// Watch calls onChange on every signal, and — this is the load-bearing part — on every successful
+// subscribe as well.
+//
+// A signal is not a message: Postgres delivers it to whoever is listening at that instant and keeps
+// no copy. So a connection that dies takes every config change made while it was gone with it, and
+// resubscribing alone would leave this replica serving a snapshot the fleet abandoned. The worst
+// case is the pause switch: the console reports the CTF paused while this process keeps accepting
+// submissions, and nothing anywhere says so. Re-reading the table on subscribe is what makes the
+// recovery total, and it closes the same gap at boot, between the first load and the first LISTEN.
 func (w *PGWatcher) Watch(ctx context.Context, onChange func()) error {
-	conn, err := w.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("config: acquire listener: %w", err)
+	p := &pglisten.Pump{
+		Pool:    w.pool,
+		Channel: configChannel,
+		Log:     w.log,
+		Health:  w.health,
+		OnSubscribe: func(context.Context) error {
+			onChange()
+			return nil
+		},
+		OnNotify: func(context.Context, string) { onChange() },
 	}
-	defer conn.Release()
-
-	if _, err := conn.Exec(ctx, "LISTEN "+configChannel); err != nil {
-		return fmt.Errorf("config: listen: %w", err)
-	}
-
-	for {
-		if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
-			// Wrapped, not naked: this includes ctx cancellation, and the caller
-			// decides whether to retry by unwrapping with errors.Is.
-			return fmt.Errorf("config: wait for notification: %w", err)
-		}
-		onChange()
-	}
+	return p.Run(ctx)
 }

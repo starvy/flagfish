@@ -59,6 +59,19 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 	return i, err
 }
 
+const latestNotificationID = `-- name: LatestNotificationID :one
+SELECT COALESCE(max(id), 0)::bigint FROM notifications
+`
+
+// The watermark the listen pump starts from. Zero on an empty table, which is why the COALESCE is
+// here and not in Go: "no notifications yet" and "an error" must not arrive as the same value.
+func (q *Queries) LatestNotificationID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, latestNotificationID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listNotifications = `-- name: ListNotifications :many
 SELECT id, title, content, date, COUNT(*) OVER () AS total
 FROM notifications
@@ -96,6 +109,48 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 			&i.Content,
 			&i.Date,
 			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const notificationsAfter = `-- name: NotificationsAfter :many
+SELECT id, title, content, date
+FROM notifications
+WHERE id > $1::bigint
+ORDER BY id
+LIMIT $2::int
+`
+
+type NotificationsAfterParams struct {
+	After int64
+	Lim   int32
+}
+
+// The pump's catch-up after it resubscribes. NOTIFY has no replay, so a connection that died took
+// every signal sent while it was gone with it; the ids are monotonic, so the rows themselves are
+// the replay log. Oldest first — clients receive them in publication order — and capped, because a
+// long outage must not turn one reconnect into an unbounded read.
+func (q *Queries) NotificationsAfter(ctx context.Context, arg NotificationsAfterParams) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, notificationsAfter, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Content,
+			&i.Date,
 		); err != nil {
 			return nil, err
 		}
