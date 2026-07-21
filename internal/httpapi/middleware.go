@@ -269,10 +269,10 @@ func newRequestID() string {
 // validRequestID keeps an adopted inbound id to a bounded, safe token, so a trusted proxy's header
 // cannot carry control characters into a log line or fold a second header into the response.
 func validRequestID(s string) bool {
-	if len(s) == 0 || len(s) > maxRequestIDLen {
+	if s == "" || len(s) > maxRequestIDLen {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		switch {
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
@@ -290,11 +290,18 @@ func validRequestID(s string) bool {
 // remembering to add the field.
 type requestIDLog struct{ slog.Handler }
 
+// slog.Handler fixes this signature: Record is passed by value by the interface, so the
+// hugeParam suggestion to take a pointer cannot apply here.
+//
+//nolint:gocritic // hugeParam: slog.Handler.Handle takes Record by value; the signature is not ours to change.
 func (h requestIDLog) Handle(ctx context.Context, r slog.Record) error {
 	if id, ok := ctx.Value(ctxRequestID).(string); ok && id != "" {
 		r.AddAttrs(slog.String("request_id", id))
 	}
-	return h.Handler.Handle(ctx, r)
+	if err := h.Handler.Handle(ctx, r); err != nil {
+		return fmt.Errorf("request-id log handler: %w", err)
+	}
+	return nil
 }
 
 func (h requestIDLog) WithAttrs(as []slog.Attr) slog.Handler {

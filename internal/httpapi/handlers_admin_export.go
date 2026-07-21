@@ -54,33 +54,32 @@ func (s *Server) adminExportStandings(ctx context.Context, _ *struct{}) (*huma.S
 			Score: e.Score, LastEvent: e.LastEvent, Hidden: e.Hidden, Banned: e.Banned,
 		}
 	}
-	return s.csvStream("standings.csv", func(_ context.Context, w io.Writer) error {
+	return s.csvStream(ctx, "standings.csv", func(_ context.Context, w io.Writer) error {
 		return exporter.WriteStandings(w, rows)
 	}), nil
 }
 
-func (s *Server) adminExportUsers(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
-	return s.csvStream("users.csv", s.opts.AdminOps.ExportUsersCSV), nil
+func (s *Server) adminExportUsers(ctx context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+	return s.csvStream(ctx, "users.csv", s.opts.AdminOps.ExportUsersCSV), nil
 }
 
-func (s *Server) adminExportTeams(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
-	return s.csvStream("teams.csv", s.opts.AdminOps.ExportTeamsCSV), nil
+func (s *Server) adminExportTeams(ctx context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+	return s.csvStream(ctx, "teams.csv", s.opts.AdminOps.ExportTeamsCSV), nil
 }
 
 // csvStream builds the streaming response shared by the three exports: the CSV headers, then the
 // caller's writer draining rows into the body. Like the file download, the response status and headers
 // are committed the moment the body func runs, so an error surfacing mid-stream can only be logged —
 // the fallible reads the handler can catch (the standings query) are run before this is called.
-func (s *Server) csvStream(filename string, write func(context.Context, io.Writer) error) *huma.StreamResponse {
-	//nolint:contextcheck // the stream body gets a huma.Context and threads it (hctx.Context()); contextcheck only sees a context.Context param.
+func (s *Server) csvStream(ctx context.Context, filename string, write func(context.Context, io.Writer) error) *huma.StreamResponse {
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
 		hctx.SetHeader("Content-Type", "text/csv; charset=utf-8")
 		hctx.SetHeader("Content-Disposition", contentDisposition(filename))
 		hctx.SetHeader("X-Content-Type-Options", "nosniff")
-		if err := write(hctx.Context(), hctx.BodyWriter()); err != nil {
+		if err := write(ctx, hctx.BodyWriter()); err != nil {
 			// Headers and a 200 are already on the wire; the export broke mid-stream. Log and stop —
 			// there is no second status to send.
-			s.opts.Log.WarnContext(hctx.Context(), "csv export stream failed", "file", filename, "error", err)
+			s.opts.Log.WarnContext(ctx, "csv export stream failed", "file", filename, "error", err)
 		}
 	}}
 }

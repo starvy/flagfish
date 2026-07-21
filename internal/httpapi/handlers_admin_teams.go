@@ -218,7 +218,8 @@ func (s *Server) adminListTeams(ctx context.Context, in *adminListTeamsInput) (*
 	out.Body.Page = in.Page
 	out.Body.PerPage = in.PerPage
 	out.Body.Teams = make([]adminTeamBody, len(page.Teams))
-	for i, t := range page.Teams {
+	for i := range page.Teams {
+		t := &page.Teams[i]
 		out.Body.Teams[i] = adminTeamBody{
 			ID: t.ID, Name: t.Name, Email: t.Email,
 			Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,

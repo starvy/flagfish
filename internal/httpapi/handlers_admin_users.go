@@ -167,7 +167,8 @@ func (s *Server) adminListUsers(ctx context.Context, in *adminListUsersInput) (*
 	out.Body.Page = in.Page
 	out.Body.PerPage = in.PerPage
 	out.Body.Users = make([]adminUserBody, len(page.Users))
-	for i, u := range page.Users {
+	for i := range page.Users {
+		u := &page.Users[i]
 		out.Body.Users[i] = adminUserBody{
 			ID: u.ID, Name: u.Name, Email: u.Email, Role: u.Role,
 			Verified: u.Verified, Banned: u.Banned, Hidden: u.Hidden,

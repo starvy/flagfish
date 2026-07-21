@@ -113,7 +113,7 @@ func (s *Server) registerAdminPages() {
 	}, s.adminDeletePage)
 }
 
-func pageBody(p db.Page) adminPageBody {
+func pageBody(p *db.Page) adminPageBody {
 	return adminPageBody{
 		ID: p.ID, Route: p.Route, Title: p.Title, Content: p.Content, Format: p.Format,
 		Draft: p.Draft, AuthRequired: p.AuthRequired,
@@ -128,7 +128,8 @@ func (s *Server) adminListPages(ctx context.Context, _ *struct{}) (*adminListPag
 	}
 	out := &adminListPagesOutput{}
 	out.Body.Pages = make([]adminPageListItem, len(rows))
-	for i, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		out.Body.Pages[i] = adminPageListItem{
 			ID: r.ID, Route: r.Route, Title: r.Title, Format: r.Format,
 			Draft: r.Draft, AuthRequired: r.AuthRequired,
@@ -143,7 +144,7 @@ func (s *Server) adminGetPage(ctx context.Context, in *adminPageIDInput) (*admin
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "get page")
 	}
-	return &adminPageOutput{Body: pageBody(p)}, nil
+	return &adminPageOutput{Body: pageBody(&p)}, nil
 }
 
 func (s *Server) adminCreatePage(ctx context.Context, in *adminCreatePageInput) (*adminPageOutput, error) {
@@ -159,7 +160,7 @@ func (s *Server) adminCreatePage(ctx context.Context, in *adminCreatePageInput) 
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "create page")
 	}
-	return &adminPageOutput{Body: pageBody(p)}, nil
+	return &adminPageOutput{Body: pageBody(&p)}, nil
 }
 
 func (s *Server) adminUpdatePage(ctx context.Context, in *adminUpdatePageInput) (*adminPageOutput, error) {
@@ -170,7 +171,7 @@ func (s *Server) adminUpdatePage(ctx context.Context, in *adminUpdatePageInput) 
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "update page")
 	}
-	return &adminPageOutput{Body: pageBody(p)}, nil
+	return &adminPageOutput{Body: pageBody(&p)}, nil
 }
 
 func (s *Server) adminDeletePage(ctx context.Context, in *adminPageIDInput) (*adminDeleteOutput, error) {

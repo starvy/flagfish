@@ -451,7 +451,7 @@ func (s *Server) adminUpdateChallenge(ctx context.Context, in *adminUpdateChalle
 	firstBloodBonus, clearFirstBloodBonus := b.FirstBloodBonus.split()
 	nextID, clearNextID := b.NextID.split()
 
-	c, err := s.opts.AdminOps.UpdateChallenge(ctx, s.adminActor(ctx), in.ID, adminops.ChallengePatch{
+	c, err := s.opts.AdminOps.UpdateChallenge(ctx, s.adminActor(ctx), in.ID, &adminops.ChallengePatch{
 		Name: b.Name, Category: b.Category, Description: b.Description,
 		Attribution: attribution, ConnectionInfo: connectionInfo,
 		Value: b.Value, Function: b.Function,

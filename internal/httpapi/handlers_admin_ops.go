@@ -68,7 +68,7 @@ type taskOutput struct {
 	Body taskBody
 }
 
-func taskOut(t opsjob.Task) *taskOutput {
+func taskOut(t *opsjob.Task) *taskOutput {
 	b := taskBody{
 		ID: t.ID, Kind: t.Kind, State: t.State, Progress: t.Progress,
 		Detail: t.Detail, Error: t.Error, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
@@ -100,7 +100,7 @@ func (s *Server) adminBackup(ctx context.Context, in *adminBackupInput) (*taskOu
 	if err != nil {
 		return nil, s.opsError(ctx, err, "start backup")
 	}
-	return taskOut(task), nil
+	return taskOut(&task), nil
 }
 
 type adminRestoreInput struct {
@@ -118,7 +118,7 @@ func (s *Server) adminRestore(ctx context.Context, in *adminRestoreInput) (*task
 	if err != nil {
 		return nil, s.opsError(ctx, err, "start restore")
 	}
-	return taskOut(task), nil
+	return taskOut(&task), nil
 }
 
 type adminImportInput struct {
@@ -140,7 +140,7 @@ func (s *Server) adminImport(ctx context.Context, in *adminImportInput) (*taskOu
 	if err != nil {
 		return nil, s.opsError(ctx, err, "start import")
 	}
-	return taskOut(task), nil
+	return taskOut(&task), nil
 }
 
 type adminTaskInput struct {
@@ -152,7 +152,7 @@ func (s *Server) adminTask(ctx context.Context, in *adminTaskInput) (*taskOutput
 	if err != nil {
 		return nil, s.opsError(ctx, err, "read task")
 	}
-	return taskOut(task), nil
+	return taskOut(&task), nil
 }
 
 func (s *Server) adminTaskDownload(ctx context.Context, in *adminTaskInput) (*huma.StreamResponse, error) {

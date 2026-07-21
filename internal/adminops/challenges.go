@@ -98,7 +98,7 @@ func (s *Service) CreateChallenge(ctx context.Context, actor audit.Actor, in New
 	return out, err
 }
 
-func (s *Service) UpdateChallenge(ctx context.Context, actor audit.Actor, challengeID int64, patch ChallengePatch) (db.Challenge, error) {
+func (s *Service) UpdateChallenge(ctx context.Context, actor audit.Actor, challengeID int64, patch *ChallengePatch) (db.Challenge, error) {
 	var out db.Challenge
 	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
 		var typ *string
@@ -438,17 +438,17 @@ func (s *Service) AddHint(ctx context.Context, actor audit.Actor, challengeID in
 	}
 	var out db.Hint
 	err = s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
-		var err error
-		out, err = q.AdminInsertHint(ctx, db.AdminInsertHintParams{
+		var ierr error
+		out, ierr = q.AdminInsertHint(ctx, db.AdminInsertHintParams{
 			ChallengeID: challengeID, Title: in.Title, Content: in.Content,
 			Cost: in.Cost, Position: in.Position, Requirements: raw,
 		})
-		if err != nil {
+		if ierr != nil {
 			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			if errors.As(ierr, &pgErr) && pgErr.Code == "23503" {
 				return fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
 			}
-			return fmt.Errorf("adminops: add hint to challenge %d: %w", challengeID, err)
+			return fmt.Errorf("adminops: add hint to challenge %d: %w", challengeID, ierr)
 		}
 		return validateHintPrereqs(ctx, q, challengeID, out.ID, ids)
 	})
