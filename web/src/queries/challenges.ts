@@ -48,6 +48,9 @@ export function useAttempt() {
       if (result.status === "correct") {
         void qc.invalidateQueries({ queryKey: qk.challenges() });
         void qc.invalidateQueries({ queryKey: qk.scoreboard() });
+        // The header shows the score, and in teams mode it reads the team, not the board — invalidate
+        // it too so the points badge moves without a reload. Users mode reads the board, above.
+        void qc.invalidateQueries({ queryKey: qk.myTeam() });
       }
     },
   });
