@@ -2,11 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
-	"errors"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -123,33 +119,14 @@ func (s *Server) adminSubmissions(ctx context.Context, in *adminSubmissionsInput
 	return out, nil
 }
 
-// The cursor is an opaque token over the wire: the client round-trips it without parsing, so its shape
-// is ours to change. It carries the last row's (date, id) — the exact keyset the query resumes after.
 func encodeSubmissionCursor(c anticheat.SubmissionCursor) string {
-	raw := strconv.FormatInt(c.Date.UnixNano(), 10) + ":" + strconv.FormatInt(c.ID, 10)
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return encodeKeysetCursor(c.Date, c.ID)
 }
 
-// errBadCursor is the single failure mode a malformed token surfaces: the exact parse fault is never
-// shown to the caller (it becomes one 422), so there is nothing to gain from wrapping each step.
-var errBadCursor = errors.New("malformed cursor")
-
 func decodeSubmissionCursor(s string) (anticheat.SubmissionCursor, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
+	date, id, err := decodeKeysetCursor(s)
 	if err != nil {
-		return anticheat.SubmissionCursor{}, errBadCursor
+		return anticheat.SubmissionCursor{}, err
 	}
-	nanos, id, ok := strings.Cut(string(b), ":")
-	if !ok {
-		return anticheat.SubmissionCursor{}, errBadCursor
-	}
-	n, err := strconv.ParseInt(nanos, 10, 64)
-	if err != nil {
-		return anticheat.SubmissionCursor{}, errBadCursor
-	}
-	i, err := strconv.ParseInt(id, 10, 64)
-	if err != nil {
-		return anticheat.SubmissionCursor{}, errBadCursor
-	}
-	return anticheat.SubmissionCursor{Date: time.Unix(0, n).UTC(), ID: i}, nil
+	return anticheat.SubmissionCursor{Date: date, ID: id}, nil
 }

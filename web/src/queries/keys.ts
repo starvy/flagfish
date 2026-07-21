@@ -19,7 +19,7 @@ export const qk = {
 
   challenges: () => ["challenges"] as const,
   challenge: (id: number) => ["challenges", id] as const,
-  challengeSolves: (id: number) => ["challenges", id, "solves"] as const,
+  challengeSolves: (id: number, cursor?: string) => ["challenges", id, "solves", cursor ?? ""] as const,
 
   scoreboard: (params?: ScoreboardParams) =>
     (params === undefined ? ["scoreboard"] : ["scoreboard", params]) as

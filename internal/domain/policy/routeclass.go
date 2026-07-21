@@ -117,7 +117,9 @@ var classAttrs = map[RouteClass]attrs{
 		visGates: []VisKind{VisChallenge}, requiresAuth: true, requiresVerified: true,
 		requiresProfile: true, requiresTeam: true, timeGated: true, mutatesScore: true,
 	},
-	ClassChallengeSolves: {visGates: []VisKind{VisChallenge}, requiresVerified: true, timeGated: true},
+	// The solve list names accounts, so it is gated on account visibility as well — an instance
+	// that hides who its players are cannot have that answered one challenge at a time.
+	ClassChallengeSolves: {visGates: []VisKind{VisChallenge, VisAccount}, requiresVerified: true, timeGated: true},
 
 	// No pause gate on the unlock classes. See PolicyPauseDoesNotBlockUnlocks.
 	ClassHintUnlock:     {requiresAuth: true, requiresVerified: true, timeGated: true, mutatesScore: true},

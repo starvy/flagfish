@@ -1107,6 +1107,11 @@ components:
           format: uri
           readOnly: true
           type: string
+        limit:
+          format: int64
+          type: integer
+        next_cursor:
+          type: string
         solves:
           items:
             $ref: "#/components/schemas/ChallengeSolve"
@@ -1115,6 +1120,7 @@ components:
             - "null"
       required:
         - solves
+        - limit
       type: object
     Standing:
       additionalProperties: false
@@ -1515,6 +1521,20 @@ paths:
           required: true
           schema:
             format: int64
+            type: integer
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 100
+            minimum: 1
             type: integer
       responses:
         "200":

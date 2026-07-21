@@ -1176,6 +1176,9 @@ export interface components {
              * @example /api/v1/schemas/SolvesOutputBody.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            limit: number;
+            next_cursor?: string;
             solves: components["schemas"]["ChallengeSolve"][] | null;
         };
         Standing: {
@@ -1466,7 +1469,10 @@ export interface operations {
     };
     "challenge-solves": {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: number;

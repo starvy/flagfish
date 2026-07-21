@@ -286,3 +286,9 @@
   font-variant-numeric: tabular-nums;
   width: 3rem;
 }
+
+.solve-list__more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-3);
+}

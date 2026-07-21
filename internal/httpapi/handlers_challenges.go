@@ -107,9 +107,22 @@ type challengeSolve struct {
 	Date  time.Time `json:"date"`
 }
 
+type challengeSolvesInput struct {
+	ID int64 `path:"id"`
+	// Cursor is the opaque keyset position from the previous page's next_cursor. Absent means the
+	// first page. Deliberately not an offset — solves land while a reader scrolls.
+	Cursor string `query:"cursor"`
+	// A tighter cap than the admin feed's: this is an unprivileged route on the public surface, and
+	// the whole point of the bound is that a popular challenge cannot be scraped in one request.
+	Limit int `query:"limit" minimum:"1" maximum:"100" default:"50"`
+}
+
 type solvesOutput struct {
 	Body struct {
 		Solves []challengeSolve `json:"solves"`
+		// NextCursor is empty on the last page. Feed it back as ?cursor to fetch the next.
+		NextCursor string `json:"next_cursor,omitempty"`
+		Limit      int    `json:"limit"`
 	}
 }
 
@@ -281,9 +294,19 @@ func instanceBody(i gameplay.IssuedInstance) (*challengeInstance, error) {
 	return &challengeInstance{InstanceID: i.InstanceID, ArtifactID: i.ArtifactID, Vars: vars}, nil
 }
 
-func (s *Server) challengeSolves(ctx context.Context, in *challengeIDInput) (*solvesOutput, error) {
+func (s *Server) challengeSolves(ctx context.Context, in *challengeSolvesInput) (*solvesOutput, error) {
 	p := PolicyOf(ctx)
-	rows, err := s.opts.Catalog.Solves(ctx, in.ID, freezeCutoff(p))
+
+	var after *catalog.SolveCursor
+	if in.Cursor != "" {
+		date, id, err := decodeKeysetCursor(in.Cursor)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid cursor")
+		}
+		after = &catalog.SolveCursor{Date: date, ID: id}
+	}
+
+	page, err := s.opts.Catalog.Solves(ctx, in.ID, freezeCutoff(p), after, in.Limit)
 	switch {
 	case errors.Is(err, catalog.ErrChallengeNotFound):
 		return nil, huma.Error404NotFound("challenge not found")
@@ -291,10 +314,23 @@ func (s *Server) challengeSolves(ctx context.Context, in *challengeIDInput) (*so
 		s.opts.Log.ErrorContext(ctx, "challenge solves failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load solves")
 	}
+
+	entries := make([]policy.SolveEntry, len(page.Rows))
+	for i, r := range page.Rows {
+		entries[i] = policy.SolveEntry{Name: r.Name, Value: r.Value, Date: r.Date}
+	}
+	shown := policy.NewRedactor(p).ChallengeSolveList(entries)
+
 	out := &solvesOutput{}
-	out.Body.Solves = make([]challengeSolve, len(rows))
-	for i, r := range rows {
-		out.Body.Solves[i] = challengeSolve{Name: r.Name, Value: r.Value, Date: r.Date}
+	out.Body.Limit = in.Limit
+	out.Body.Solves = make([]challengeSolve, len(shown))
+	for i, e := range shown {
+		out.Body.Solves[i] = challengeSolve{Name: e.Name, Value: e.Value, Date: e.Date}
+	}
+	// nil means the list was withheld, and the cursor goes with it: a resume token for a list we
+	// refused to serve is an invitation to page through it.
+	if shown != nil && page.Next != nil {
+		out.Body.NextCursor = encodeKeysetCursor(page.Next.Date, page.Next.ID)
 	}
 	return out, nil
 }

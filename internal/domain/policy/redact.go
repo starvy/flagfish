@@ -1,5 +1,7 @@
 package policy
 
+import "time"
+
 // L4 — field redaction.
 //
 // This is a different mechanism from the view mask, and it must stay separate.
@@ -80,4 +82,23 @@ func (r Redactor) ChallengeSolveCount(count *int) *int {
 		return count
 	}
 	return nil // null, not 0
+}
+
+// A SolveEntry is one row of a per-challenge solve list: who solved it, for how much, when.
+type SolveEntry struct {
+	Name  string
+	Value int32
+	Date  time.Time
+}
+
+// ChallengeSolveList applies the same conjunction ChallengeSolveCount does, and has to: the
+// length of this list IS the solve count, so serving rows beside a nulled count would hand back
+// by difference the very number the count withholds. That is also why redaction here is omission
+// rather than anonymised rows — an anonymous row still counts, and a timestamped one still says
+// when the solve landed.
+func (r Redactor) ChallengeSolveList(solves []SolveEntry) []SolveEntry {
+	if r.ScoresVisible && r.AccountsVisible {
+		return solves
+	}
+	return nil
 }

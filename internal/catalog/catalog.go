@@ -105,6 +105,20 @@ type Solve struct {
 	Date  time.Time
 }
 
+// SolveCursor is the keyset position in a challenge's solve list: the (date, id) of the last row
+// the previous page READ — not the last one it showed. A page whose solvers are all hidden shows
+// nothing and must still advance, or the next request re-reads the same rows forever.
+type SolveCursor struct {
+	Date time.Time
+	ID   int64
+}
+
+// SolvesPage is one page of a solve list plus the cursor to resume from. Next is nil at the end.
+type SolvesPage struct {
+	Rows []Solve
+	Next *SolveCursor
+}
+
 // cutoff is the freeze horizon: a non-nil value hides solves at or after it. nil means live.
 func cutoffArg(cutoff *time.Time) pgtype.Timestamptz {
 	if cutoff == nil {
@@ -224,26 +238,47 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 	return d, nil
 }
 
-// Solves returns who solved a challenge, oldest first, hiding solves at or after cutoff. It reports
-// ErrChallengeNotFound for a challenge that is not visible, the same as Detail — the query returns no
-// rows for that case, and rows with shown=false when the challenge exists but a solve must not appear
-// (no visible solves, or a hidden/banned solver).
-func (s *Service) Solves(ctx context.Context, challengeID int64, cutoff *time.Time) ([]Solve, error) {
+// Solves returns one page of who solved a challenge, oldest first, hiding solves at or after cutoff.
+// after is the cursor from the previous page, or nil for the first; limit is the page size, bounded
+// by the caller. It reports ErrChallengeNotFound for a challenge that is not visible, the same as
+// Detail — the query returns no rows for that case, and rows with shown=false when the challenge
+// exists but a solve must not appear (no visible solves, or a hidden/banned solver).
+func (s *Service) Solves(
+	ctx context.Context, challengeID int64, cutoff *time.Time, after *SolveCursor, limit int,
+) (SolvesPage, error) {
+	var (
+		afterDate pgtype.Timestamptz
+		afterID   *int64
+	)
+	if after != nil {
+		afterDate = pgtype.Timestamptz{Time: after.Date, Valid: true}
+		id := after.ID
+		afterID = &id
+	}
+
 	rows, err := s.q.ListChallengeSolves(ctx, db.ListChallengeSolvesParams{
 		ChallengeID: challengeID, Cutoff: cutoffArg(cutoff),
+		AfterDate: afterDate, AfterID: afterID,
+		Lim: int32(limit), //nolint:gosec // limit is bounded by the handler's schema
 	})
 	if err != nil {
-		return nil, fmt.Errorf("catalog: solves: %w", err)
+		return SolvesPage{}, fmt.Errorf("catalog: solves: challenge %d: %w", challengeID, err)
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
+		return SolvesPage{}, fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
 	}
-	out := make([]Solve, 0, len(rows))
+
+	page := SolvesPage{Rows: make([]Solve, 0, len(rows))}
 	for _, r := range rows {
 		if !r.Shown {
 			continue
 		}
-		out = append(out, Solve{Name: r.Name, Value: r.Value, Date: r.Date.Time})
+		page.Rows = append(page.Rows, Solve{Name: r.Name, Value: r.Value, Date: r.Date.Time})
 	}
-	return out, nil
+	// A full page may have more behind it; a short one is the tail. The last row is a solve only
+	// when the challenge actually had one — the no-solves case is a single row of NULLs.
+	if last := rows[len(rows)-1]; len(rows) == limit && last.SolveID != nil {
+		page.Next = &SolveCursor{Date: last.Date.Time, ID: *last.SolveID}
+	}
+	return page, nil
 }

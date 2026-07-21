@@ -287,8 +287,8 @@ export const api = {
 
   challenge: (id: number) => request<ChallengeDetail>("GET", `/challenges/${id}`),
 
-  challengeSolves: (id: number) =>
-    request<Schemas["SolvesOutputBody"]>("GET", `/challenges/${id}/solves`),
+  challengeSolves: (id: number, cursor?: string) =>
+    request<Schemas["SolvesOutputBody"]>("GET", `/challenges/${id}/solves${query({ cursor })}`),
 
   attempt: (id: number, flag: string) =>
     request<AttemptResult>("POST", `/challenges/${id}/attempt`, { flag }),

@@ -686,6 +686,14 @@ type Querier interface {
 	// two empty cases stay distinguishable in one round trip: zero rows means no visible challenge (the
 	// caller 404s), while `shown = false` marks a row the challenge kept but the projection must hide —
 	// no visible solve at all, or a hidden/banned solver filtered out. The caller drops the unshown rows.
+	//
+	// One bounded page, keyset-paginated on (date, id) — never OFFSET, which re-walks the skipped rows
+	// and drifts as solves land mid-scroll. A thousand-solver challenge on a public route is a slow
+	// query and a one-request scrape, so the bound is the query's, not the caller's good manners. The
+	// cursor sits in the ON clause with the freeze cutoff for the reason above: a page past the last
+	// solve must still return the challenge's row, or the tail of a list would look like a 404.
+	//
+	// (challenge_id, date, id) is solves_challenge_firstblood_idx, so each page is an index walk.
 	ListChallengeSolves(ctx context.Context, arg ListChallengeSolvesParams) ([]ListChallengeSolvesRow, error)
 	ListChallengeTags(ctx context.Context, challengeID int64) ([]string, error)
 	// Read models for the challenge board and challenge detail. All account-scoped predicates resolve the

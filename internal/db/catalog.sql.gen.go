@@ -256,6 +256,7 @@ WITH mode AS (
     SELECT user_mode FROM instance
 )
 SELECT
+    s.id                             AS solve_id,
     COALESCE(u.name, t.name, '')     AS name,
     COALESCE(s.value, 0)::int        AS value,
     s.date,
@@ -265,24 +266,32 @@ SELECT
   LEFT JOIN solves s
          ON s.challenge_id = c.id
         AND ($1::timestamptz IS NULL OR s.date < $1::timestamptz)
+        AND ($2::timestamptz IS NULL
+             OR s.date > $2::timestamptz
+             OR (s.date = $2::timestamptz AND s.id > $3::bigint))
   LEFT JOIN users u
          ON m.user_mode = 'users' AND u.id = s.user_id AND u.hidden = false AND u.banned = false
   LEFT JOIN teams t
          ON m.user_mode = 'teams' AND t.id = s.team_id AND t.hidden = false AND t.banned = false
- WHERE c.id = $2 AND c.state = 'visible'
+ WHERE c.id = $4 AND c.state = 'visible'
  ORDER BY s.date ASC, s.id ASC
+ LIMIT $5::int
 `
 
 type ListChallengeSolvesParams struct {
 	Cutoff      pgtype.Timestamptz
+	AfterDate   pgtype.Timestamptz
+	AfterID     *int64
 	ChallengeID int64
+	Lim         int32
 }
 
 type ListChallengeSolvesRow struct {
-	Name  string
-	Value int32
-	Date  pgtype.Timestamptz
-	Shown bool
+	SolveID *int64
+	Name    string
+	Value   int32
+	Date    pgtype.Timestamptz
+	Shown   bool
 }
 
 // Who solved a challenge, oldest first, with cutoff (strict <, NULL = live) as the freeze horizon.
@@ -290,8 +299,22 @@ type ListChallengeSolvesRow struct {
 // two empty cases stay distinguishable in one round trip: zero rows means no visible challenge (the
 // caller 404s), while `shown = false` marks a row the challenge kept but the projection must hide —
 // no visible solve at all, or a hidden/banned solver filtered out. The caller drops the unshown rows.
+//
+// One bounded page, keyset-paginated on (date, id) — never OFFSET, which re-walks the skipped rows
+// and drifts as solves land mid-scroll. A thousand-solver challenge on a public route is a slow
+// query and a one-request scrape, so the bound is the query's, not the caller's good manners. The
+// cursor sits in the ON clause with the freeze cutoff for the reason above: a page past the last
+// solve must still return the challenge's row, or the tail of a list would look like a 404.
+//
+// (challenge_id, date, id) is solves_challenge_firstblood_idx, so each page is an index walk.
 func (q *Queries) ListChallengeSolves(ctx context.Context, arg ListChallengeSolvesParams) ([]ListChallengeSolvesRow, error) {
-	rows, err := q.db.Query(ctx, listChallengeSolves, arg.Cutoff, arg.ChallengeID)
+	rows, err := q.db.Query(ctx, listChallengeSolves,
+		arg.Cutoff,
+		arg.AfterDate,
+		arg.AfterID,
+		arg.ChallengeID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -300,6 +323,7 @@ func (q *Queries) ListChallengeSolves(ctx context.Context, arg ListChallengeSolv
 	for rows.Next() {
 		var i ListChallengeSolvesRow
 		if err := rows.Scan(
+			&i.SolveID,
 			&i.Name,
 			&i.Value,
 			&i.Date,

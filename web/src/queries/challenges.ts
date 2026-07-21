@@ -15,10 +15,12 @@ export const challengeQuery = (id: number) =>
     staleTime: 15_000,
   });
 
-export const challengeSolvesQuery = (id: number) =>
+// One query per loaded page, keyed by the opaque cursor that opens it — the same keyset shape the
+// admin submissions feed uses. An absent cursor is the first page.
+export const challengeSolvesQuery = (id: number, cursor?: string) =>
   queryOptions({
-    queryKey: qk.challengeSolves(id),
-    queryFn: () => api.challengeSolves(id),
+    queryKey: qk.challengeSolves(id, cursor),
+    queryFn: () => api.challengeSolves(id, cursor),
     staleTime: 15_000,
   });
 

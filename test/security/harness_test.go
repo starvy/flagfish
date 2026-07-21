@@ -31,6 +31,7 @@ import (
 	"github.com/starvy/flagfish/internal/accounts"
 	"github.com/starvy/flagfish/internal/adminops"
 	"github.com/starvy/flagfish/internal/board"
+	"github.com/starvy/flagfish/internal/catalog"
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/db"
 
@@ -75,6 +76,15 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 
 	truncate(t, ctx, pool)
 	seedInstance(t, ctx, pool, mode)
+	// Before config.New: the snapshot is read once at construction, so a visibility setting a test
+	// asks for has to be in the table by then.
+	for _, kv := range o.cfg {
+		if _, cerr := pool.Exec(ctx,
+			`INSERT INTO config (key, value) VALUES ($1,$2)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, kv[0], kv[1]); cerr != nil {
+			t.Fatalf("seed config %s: %v", kv[0], cerr)
+		}
+	}
 
 	logDst := io.Discard
 	if o.logTo != nil {
@@ -136,6 +146,8 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		// The write side the ban/hide tests drive, and the board their visibility is asserted on.
 		AdminOps: adminops.New(pool),
 		Board:    board.New(pool, mode),
+		// The challenge surface, for the tests that assert who may read a solve list.
+		Catalog: catalog.New(pool),
 
 		// Everything else is left at its zero value on purpose: the fixture is the server a
 		// forgetful operator gets, and the tests below assert that server is the safe one.
@@ -175,6 +187,12 @@ type fixOpts struct {
 	auth             httpapi.Authenticator
 	teams            bool
 	logTo            io.Writer
+	cfg              [][2]string
+}
+
+// withConfig sets an instance setting — a visibility, a freeze — as an operator would.
+func withConfig(key, value string) func(*fixOpts) {
+	return func(o *fixOpts) { o.cfg = append(o.cfg, [2]string{key, value}) }
 }
 
 // withLogTo captures the server's structured log so a test can assert on what was written — the
