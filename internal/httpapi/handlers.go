@@ -28,6 +28,7 @@ func (s *Server) registerRoutes() {
 		s.registerAuth()
 		s.registerTokens()
 		s.registerTeams()
+		s.registerProfiles()
 	} else {
 		s.opts.Log.Warn("no accounts service configured: auth and token routes are not registered")
 	}

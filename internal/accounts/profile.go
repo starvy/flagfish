@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/starvy/flagfish/internal/db"
 	"github.com/starvy/flagfish/internal/domain/account"
@@ -11,6 +14,10 @@ import (
 
 // ErrInvalidLanguage is returned when a language preference is not a well-formed BCP 47 tag.
 var ErrInvalidLanguage = errors.New("accounts: language is not a well-formed BCP 47 tag")
+
+// ErrUserNotFound is returned when a public profile is requested for an account that does not exist
+// or is hidden/banned from the caller — the two are indistinguishable to a non-admin, by design.
+var ErrUserNotFound = errors.New("accounts: user not found")
 
 // Profile is the caller's own account, for the "who am I" endpoint.
 type Profile struct {
@@ -44,6 +51,65 @@ func (s *Service) Profile(ctx context.Context, userID int64) (Profile, error) {
 		Affiliation: u.Affiliation,
 		Country:     u.Country,
 		Language:    u.Language,
+	}, nil
+}
+
+// PublicProfile is a user's public page: the visibility-gated identity fields, the score summed from
+// the stamped ledger, and the solved-challenge history. Contact data (email) is never here.
+type PublicProfile struct {
+	ID          int64
+	Name        string
+	Website     *string
+	Affiliation *string
+	Country     *string
+	BracketID   *int64
+	BracketName *string
+	Score       int64
+	CreatedAt   time.Time
+	Solves      []ProfileSolve
+}
+
+// ProfileSolve is one solved challenge on a public profile, newest first.
+type ProfileSolve struct {
+	ChallengeID   int64
+	ChallengeName string
+	Category      string
+	Value         int32
+	Date          time.Time
+}
+
+// UserProfile is the public user page, gated exactly like the scoreboard and the team page: a hidden
+// or banned account 404s to the public and is visible to an admin. cutoff is the caller's freeze
+// horizon (nil = live), clamping both the score and the solve history.
+func (s *Service) UserProfile(ctx context.Context, userID int64, admin bool, cutoff *time.Time) (PublicProfile, error) {
+	row, err := s.q.GetUserPublicProfile(ctx, db.GetUserPublicProfileParams{
+		UserID: userID, Admin: admin, Cutoff: cutoffArg(cutoff),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PublicProfile{}, fmt.Errorf("%w: id=%d", ErrUserNotFound, userID)
+	} else if err != nil {
+		return PublicProfile{}, fmt.Errorf("accounts: user profile: %w", err)
+	}
+
+	solveRows, err := s.q.ListUserSolves(ctx, db.ListUserSolvesParams{
+		UserID: userID, Cutoff: cutoffArg(cutoff),
+	})
+	if err != nil {
+		return PublicProfile{}, fmt.Errorf("accounts: user profile solves: %w", err)
+	}
+	solves := make([]ProfileSolve, 0, len(solveRows))
+	for _, r := range solveRows {
+		solves = append(solves, ProfileSolve{
+			ChallengeID: r.ChallengeID, ChallengeName: r.ChallengeName,
+			Category: r.Category, Value: r.Value, Date: r.Date.Time,
+		})
+	}
+
+	return PublicProfile{
+		ID: row.ID, Name: row.Name,
+		Website: row.Website, Affiliation: row.Affiliation, Country: row.Country,
+		BracketID: row.BracketID, BracketName: row.BracketName,
+		Score: row.Score, CreatedAt: row.CreatedAt.Time, Solves: solves,
 	}, nil
 }
 
