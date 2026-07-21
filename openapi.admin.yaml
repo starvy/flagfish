@@ -624,6 +624,49 @@ components:
         - updated_at
         - requirements
       type: object
+    AdminChallengeDetailOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminChallengeDetailOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenge:
+          $ref: "#/components/schemas/AdminChallengeBody"
+        files:
+          items:
+            $ref: "#/components/schemas/ChallengeFile"
+          type:
+            - array
+            - "null"
+        flags:
+          items:
+            $ref: "#/components/schemas/AdminFlagBody"
+          type:
+            - array
+            - "null"
+        hints:
+          items:
+            $ref: "#/components/schemas/AdminHintBody"
+          type:
+            - array
+            - "null"
+        tags:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - challenge
+        - flags
+        - hints
+        - tags
+        - files
+      type: object
     AdminChallengeFlagModeInputBody:
       additionalProperties: false
       properties:
@@ -641,6 +684,43 @@ components:
           type: string
       required:
         - flag_mode
+      type: object
+    AdminChallengeListItem:
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        flag_count:
+          format: int64
+          type: integer
+        function:
+          type: string
+        hint_count:
+          format: int64
+          type: integer
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        solve_count:
+          format: int64
+          type: integer
+        state:
+          type: string
+        value:
+          format: int32
+          type: integer
+      required:
+        - id
+        - name
+        - category
+        - value
+        - function
+        - state
+        - solve_count
+        - flag_count
+        - hint_count
       type: object
     AdminChallengeStateInputBody:
       additionalProperties: false
@@ -1428,6 +1508,25 @@ components:
             - "null"
       required:
         - brackets
+      type: object
+    AdminListChallengesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListChallengesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenges:
+          items:
+            $ref: "#/components/schemas/AdminChallengeListItem"
+          type:
+            - array
+            - "null"
+      required:
+        - challenges
       type: object
     AdminListFieldsOutputBody:
       additionalProperties: false
@@ -2612,6 +2711,22 @@ components:
       required:
         - verified
       type: object
+    ChallengeFile:
+      additionalProperties: false
+      properties:
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        size_bytes:
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - size_bytes
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -3332,6 +3447,24 @@ paths:
       tags:
         - admin/brackets
   /challenges:
+    get:
+      operationId: admin-list-challenges
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListChallengesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List every challenge, hidden ones included, with flag and hint counts
+      tags:
+        - admin/challenges
     post:
       operationId: admin-create-challenge
       requestBody:
@@ -3403,6 +3536,31 @@ paths:
       summary: Delete a challenge (refused while it has solves)
       tags:
         - admin/challenges
+    get:
+      operationId: admin-get-challenge
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChallengeDetailOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get one challenge with its flags, hints, tags and files
+      tags:
+        - admin/challenges
     patch:
       operationId: admin-update-challenge
       parameters:
@@ -3449,13 +3607,10 @@ paths:
           multipart/form-data:
             schema:
               properties:
-                filename:
+                file:
                   contentMediaType: application/octet-stream
-                  description: filename of the file being uploaded
+                  description: the file to attach to the challenge
                   format: binary
-                  type: string
-                name:
-                  description: general purpose name for multipart form value
                   type: string
               type: object
         required: true

@@ -68,6 +68,25 @@ func (s *Server) registerAdminFiles() {
 		OperationID: "admin-upload-file", Method: http.MethodPost, Path: "/challenges/{id}/files",
 		DefaultStatus: http.StatusCreated,
 		Summary:       "Attach a file to a challenge", Tags: []string{"admin/files"},
+		// The handler reads one multipart part named "file"; spell that in the schema so the
+		// generated spec matches the field the server actually requires, not Huma's generic default.
+		RequestBody: &huma.RequestBody{
+			Required: true,
+			Content: map[string]*huma.MediaType{
+				"multipart/form-data": {
+					Schema: &huma.Schema{
+						Type: "object",
+						Properties: map[string]*huma.Schema{
+							"file": {
+								Type:        "string",
+								Format:      "binary",
+								Description: "the file to attach to the challenge",
+							},
+						},
+					},
+				},
+			},
+		},
 	}, s.adminUploadFile)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{

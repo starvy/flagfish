@@ -1,13 +1,19 @@
 import { useState } from "react";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { isApiError, request, type ChallengeDetail } from "../../../api/client";
-import { adminApi, type AdminChallenge, type AdminFlag, type AdminInstance } from "../../../api/admin";
+import { isApiError } from "../../../api/client";
 import {
-  ADMIN_STALE_TIME,
+  adminApi,
+  type AdminChallenge,
+  type AdminChallengeDetail,
+  type AdminFlag,
+  type AdminHint,
+  type AdminInstance,
+} from "../../../api/admin";
+import {
+  adminChallengeQuery,
+  adminChallengesQuery,
   challengeInstancesQuery,
-  challengeQuery,
-  qk,
   useAddFlag,
   useAddHint,
   useAttachTag,
@@ -66,11 +72,11 @@ function ChallengeEditor() {
   const parsed = Number(challengeId);
   const id = isNew || !Number.isInteger(parsed) ? null : parsed;
 
-  // The last body the server wrote back. It outranks the read: it is newer, and it carries the
-  // fields the player-facing read does not return (logic, position, the decay parameters).
+  // The last body the server wrote back. It outranks the read: it is newer, and after a create it
+  // carries the challenge before the detail query has caught up.
   const [saved, setSaved] = useState<AdminChallenge | null>(null);
 
-  const detail = useQuery({ ...challengeQuery(id ?? 0), enabled: id !== null, retry: false });
+  const detail = useQuery({ ...adminChallengeQuery(id ?? 0), enabled: id !== null, retry: false });
 
   if (!isNew && id === null) {
     return <Alert tone="danger" title="Not a challenge id">{challengeId} is not a number.</Alert>;
@@ -86,11 +92,6 @@ function ChallengeEditor() {
   }
 
   if (id !== null && detail.isError && saved === null) {
-    // A hidden challenge is a 404 on every read the API publishes — the board and the detail are
-    // both visible-only. Publishing it is the only way back to a body, and it is one op away.
-    if (isApiError(detail.error) && detail.error.status === 404) {
-      return <UnreadableChallenge id={id} onPublished={setSaved} />;
-    }
     return denialOf(detail.error) ? (
       <PolicyGate error={detail.error} />
     ) : (
@@ -101,9 +102,12 @@ function ChallengeEditor() {
     );
   }
 
-  const read = detail.data ?? null;
-  const state = saved?.state ?? read?.state ?? "visible";
-  const name = saved?.name ?? read?.name ?? "New challenge";
+  const data = detail.data ?? null;
+  const read = data?.challenge ?? null;
+  // The write-back is newer than the read; fall through to the read, then to nothing for a new one.
+  const current = saved ?? read;
+  const state = current?.state ?? "visible";
+  const name = current?.name ?? "New challenge";
 
   return (
     <div className="ff-stack">
@@ -128,7 +132,7 @@ function ChallengeEditor() {
           {
             id: "details",
             label: "Details",
-            content: <DetailsTab id={id} read={read} saved={saved} onSaved={setSaved} />,
+            content: <DetailsTab id={id} current={current} onSaved={setSaved} />,
           },
           {
             id: "requirements",
@@ -136,14 +140,14 @@ function ChallengeEditor() {
             disabled: id === null,
             content:
               id === null ? null : (
-                <RequirementsTab challengeId={id} saved={saved} onSaved={setSaved} />
+                <RequirementsTab challengeId={id} current={current} onSaved={setSaved} />
               ),
           },
           {
             id: "flags",
             label: "Flags",
             disabled: id === null,
-            content: id === null ? null : <FlagsTab challengeId={id} />,
+            content: id === null ? null : <FlagsTab challengeId={id} flags={data?.flags ?? []} />,
           },
           {
             id: "pool",
@@ -151,63 +155,30 @@ function ChallengeEditor() {
             disabled: id === null,
             content:
               id === null ? null : (
-                <PoolTab challengeId={id} read={read} saved={saved} onSaved={setSaved} />
+                <PoolTab challengeId={id} current={current} onSaved={setSaved} />
               ),
           },
           {
             id: "tags",
             label: "Tags",
             disabled: id === null,
-            content: id === null ? null : <TagsTab challengeId={id} read={read} />,
+            content: id === null ? null : <TagsTab challengeId={id} tags={data?.tags ?? []} />,
           },
           {
             id: "hints",
             label: "Hints",
             disabled: id === null,
-            content: id === null || read === null ? null : <HintsTab challengeId={id} read={read} />,
+            content: id === null ? null : <HintsTab challengeId={id} hints={data?.hints ?? []} />,
           },
           {
             id: "files",
             label: "Files",
             disabled: id === null,
-            content: id === null || read === null ? null : <FilesTab read={read} />,
+            content: id === null ? null : <FilesTab challengeId={id} files={data?.files ?? []} />,
           },
         ]}
       />
     </div>
-  );
-}
-
-function UnreadableChallenge({
-  id,
-  onPublished,
-}: {
-  id: number;
-  onPublished: (ch: AdminChallenge) => void;
-}) {
-  const setState = useSetChallengeState();
-  const toast = useToast();
-
-  const publish = async () => {
-    try {
-      const ch = await setState.mutateAsync({ id, state: "visible" });
-      onPublished(ch);
-      toast.success("Published", ch.name);
-    } catch (e) {
-      toast.error("Could not publish", messageOf(e));
-    }
-  };
-
-  return (
-    <Alert tone="warn" title="Nothing to read here">
-      <p>
-        Challenge {id} is either hidden or gone. The API only reads out visible challenges, so a
-        hidden one cannot be loaded — publishing it brings it back.
-      </p>
-      <Button variant="primary" loading={setState.isPending} onClick={() => void publish()}>
-        Publish challenge {id}
-      </Button>
-    </Alert>
   );
 }
 
@@ -221,8 +192,8 @@ interface FormState {
   connection_info: string;
   state: "visible" | "hidden";
   function: "static" | "linear" | "logarithmic";
-  logic: "any" | "all" | "";
-  first_blood: "none" | "announce" | "bonus" | "";
+  logic: "any" | "all";
+  first_blood: "none" | "announce" | "bonus";
   first_blood_bonus: string;
   // The suggested-next challenge id, or "" for none. PATCH-only, so it is only offered while
   // editing an existing challenge.
@@ -255,59 +226,39 @@ const BLANK: FormState = {
   position: "",
 };
 
-// The read the console has is the player's: it carries no logic, no position and no decay
-// parameters. They seed blank, stay blank until the operator types one, and a field the operator
-// never touched is omitted from the PATCH — which is exactly the server's "omit keeps" rule.
-function seedOf(ch: AdminChallenge | null, read: ChallengeDetail | null): FormState {
-  if (ch) {
-    return {
-      name: ch.name,
-      category: ch.category,
-      description: ch.description ?? "",
-      attribution: ch.attribution ?? "",
-      connection_info: ch.connection_info ?? "",
-      state: ch.state as FormState["state"],
-      function: ch.function as FormState["function"],
-      logic: ch.logic as FormState["logic"],
-      first_blood: ch.first_blood as FormState["first_blood"],
-      first_blood_bonus: optNum(ch.first_blood_bonus),
-      next_id: ch.next_id != null ? String(ch.next_id) : "",
-      value: String(ch.value),
-      initial: optNum(ch.initial),
-      minimum: optNum(ch.minimum),
-      decay: optNum(ch.decay),
-      max_attempts: String(ch.max_attempts),
-      position: String(ch.position),
-    };
-  }
-  if (read) {
-    return {
-      ...BLANK,
-      name: read.name,
-      category: read.category,
-      description: read.description ?? "",
-      attribution: read.attribution ?? "",
-      connection_info: read.connection_info ?? "",
-      state: read.state as FormState["state"],
-      function: read.function as FormState["function"],
-      logic: "",
-      first_blood: "",
-      value: String(read.value),
-      max_attempts: String(read.max_attempts),
-    };
-  }
-  return BLANK;
+// The admin read carries the whole row — logic, position, the decay parameters — so every field
+// seeds from it directly. A field the operator never touches is omitted from the PATCH, which is
+// exactly the server's "omit keeps" rule.
+function seedOf(ch: AdminChallenge | null): FormState {
+  if (!ch) return BLANK;
+  return {
+    name: ch.name,
+    category: ch.category,
+    description: ch.description ?? "",
+    attribution: ch.attribution ?? "",
+    connection_info: ch.connection_info ?? "",
+    state: ch.state as FormState["state"],
+    function: ch.function as FormState["function"],
+    logic: ch.logic as FormState["logic"],
+    first_blood: ch.first_blood as FormState["first_blood"],
+    first_blood_bonus: optNum(ch.first_blood_bonus),
+    next_id: ch.next_id != null ? String(ch.next_id) : "",
+    value: String(ch.value),
+    initial: optNum(ch.initial),
+    minimum: optNum(ch.minimum),
+    decay: optNum(ch.decay),
+    max_attempts: String(ch.max_attempts),
+    position: String(ch.position),
+  };
 }
 
 function DetailsTab({
   id,
-  read,
-  saved,
+  current,
   onSaved,
 }: {
   id: number | null;
-  read: ChallengeDetail | null;
-  saved: AdminChallenge | null;
+  current: AdminChallenge | null;
   onSaved: (ch: AdminChallenge) => void;
 }) {
   const navigate = useNavigate();
@@ -317,9 +268,9 @@ function DetailsTab({
   const setState = useSetChallengeState();
   // Other challenges to suggest as the next one. Self is filtered out client-side; the CHECK is the
   // real arbiter. Only needed once the challenge exists, since next_id is PATCH-only.
-  const board = useQuery({ ...editorBoardQuery, enabled: id !== null });
+  const board = useQuery({ ...adminChallengesQuery, enabled: id !== null });
 
-  const [base, setBase] = useState<FormState>(() => seedOf(saved, read));
+  const [base, setBase] = useState<FormState>(() => seedOf(current));
   const [form, setForm] = useState<FormState>(base);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -328,7 +279,7 @@ function DetailsTab({
     setForm((f) => ({ ...f, [key]: value }));
 
   const accept = (ch: AdminChallenge) => {
-    const next = seedOf(ch, null);
+    const next = seedOf(ch);
     setBase(next);
     setForm(next);
     onSaved(ch);
@@ -351,8 +302,8 @@ function DetailsTab({
           state: form.state,
           value: Number(form.value),
           function: form.function,
-          logic: form.logic === "" ? "any" : form.logic,
-          first_blood: form.first_blood === "" ? "none" : form.first_blood,
+          logic: form.logic,
+          first_blood: form.first_blood,
           ...(form.first_blood === "bonus"
             ? { first_blood_bonus: Number(form.first_blood_bonus) }
             : {}),
@@ -383,7 +334,7 @@ function DetailsTab({
         return;
       }
 
-      let ch = saved;
+      let ch = current;
       if (Object.keys(patch).length > 0) ch = await update.mutateAsync({ id, body: patch });
       // State is its own operation, so the last write back is the one that carries the truth.
       if (stateChanged) ch = await setState.mutateAsync({ id, state: form.state });
@@ -524,7 +475,6 @@ function DetailsTab({
             value={form.first_blood}
             onChange={(e) => set("first_blood", e.target.value as FormState["first_blood"])}
             options={[
-              ...(form.first_blood === "" ? [{ value: "", label: "unchanged" }] : []),
               { value: "none", label: "none — first solve is just a solve" },
               { value: "announce", label: "announce — the first solver is broadcast" },
               { value: "bonus", label: "bonus — announced and paid extra points" },
@@ -580,7 +530,6 @@ function DetailsTab({
             value={form.logic}
             onChange={(e) => set("logic", e.target.value as FormState["logic"])}
             options={[
-              ...(form.logic === "" ? [{ value: "", label: "unchanged" }] : []),
               { value: "any", label: "any" },
               { value: "all", label: "all" },
             ]}
@@ -627,8 +576,8 @@ function patchOf(form: FormState, base: FormState): ChallengePatch {
   if (form.value !== base.value) patch.value = Number(form.value);
   if (form.function !== base.function) patch.function = form.function;
   if (form.max_attempts !== base.max_attempts) patch.max_attempts = Number(form.max_attempts || 0);
-  if (form.logic !== base.logic && form.logic !== "") patch.logic = form.logic;
-  if (form.first_blood !== base.first_blood && form.first_blood !== "") {
+  if (form.logic !== base.logic) patch.logic = form.logic;
+  if (form.first_blood !== base.first_blood) {
     patch.first_blood = form.first_blood;
     // The bonus must switch in the same PATCH: bonus mode carries its value, any other mode
     // clears it with an explicit null — a half-switched row is refused by the server.
@@ -650,31 +599,22 @@ function patchOf(form: FormState, base: FormState): ChallengePatch {
 
 /* ----------------------------------------------------------- requirements */
 
-type BoardRow = { id: number; name: string; category: string };
-
-// Same key and projection as the admin board screen, so the two share one cache entry.
-const editorBoardQuery = queryOptions({
-  queryKey: [...qk.challenges(), "admin"] as const,
-  queryFn: () => request<{ challenges: BoardRow[] }>("GET", "/challenges?view=admin"),
-  staleTime: ADMIN_STALE_TIME,
-});
-
 type ReqVisibility = "hidden" | "masked" | "preview";
 
 function RequirementsTab({
   challengeId,
-  saved,
+  current,
   onSaved,
 }: {
   challengeId: number;
-  saved: AdminChallenge | null;
+  current: AdminChallenge | null;
   onSaved: (ch: AdminChallenge) => void;
 }) {
-  const board = useQuery(editorBoardQuery);
+  const board = useQuery(adminChallengesQuery);
   const save = useSetChallengeRequirements();
   const toast = useToast();
 
-  const stored = saved?.requirements ?? null;
+  const stored = current?.requirements ?? null;
   const [selected, setSelected] = useState<number[]>(stored?.prerequisites ?? []);
   const [visibility, setVisibility] = useState<ReqVisibility>(
     (stored?.visibility as ReqVisibility | undefined) ?? "hidden",
@@ -705,13 +645,6 @@ function RequirementsTab({
 
   return (
     <div className="ff-stack">
-      {stored === null && (
-        <Alert tone="info" title="Saving replaces the stored set">
-          The stored prerequisites have not been read back in this session — the API only echoes
-          them on a write. Saving replaces the whole set with what is selected below.
-        </Alert>
-      )}
-
       {warnings.map((w) => (
         <Alert key={w} tone="warn" title="Saved, with a warning">
           {w}
@@ -778,13 +711,13 @@ function RequirementsTab({
 
 /* ------------------------------------------------------------------- tags */
 
-function TagsTab({ challengeId, read }: { challengeId: number; read: ChallengeDetail | null }) {
+function TagsTab({ challengeId, tags: initial }: { challengeId: number; tags: string[] }) {
   const toast = useToast();
   const attach = useAttachTag();
   const detach = useDetachTag();
 
-  // Seeded from the player detail — the surface tags exist for — then kept in step locally.
-  const [tags, setTags] = useState<string[]>(read?.tags ?? []);
+  // Seeded from the read, then kept in step locally so attach/detach show immediately.
+  const [tags, setTags] = useState<string[]>(initial);
   const [value, setValue] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -814,13 +747,6 @@ function TagsTab({ challengeId, read }: { challengeId: number; read: ChallengeDe
 
   return (
     <div className="ff-stack">
-      {read === null && (
-        <Alert tone="info" title="Stored tags not loaded">
-          Tags are read off the player detail, which a hidden challenge does not publish. The list
-          below starts from this session's writes; attach and detach still hit the stored rows.
-        </Alert>
-      )}
-
       {failure !== null && (
         <Alert tone="danger" title="Could not attach the tag" onDismiss={() => setFailure(null)}>
           {failure}
@@ -879,15 +805,11 @@ function TagsTab({ challengeId, read }: { challengeId: number; read: ChallengeDe
 
 /* ------------------------------------------------------------------ flags */
 
-function FlagsTab({ challengeId }: { challengeId: number }) {
+function FlagsTab({ challengeId, flags }: { challengeId: number; flags: AdminFlag[] }) {
   const toast = useToast();
   const add = useAddFlag();
   const update = useUpdateFlag();
   const remove = useDeleteFlag();
-
-  // There is no read operation for flags anywhere on the API, so this is the only honest list:
-  // the bodies the server wrote back to us. Reloading the page starts it empty again.
-  const [flags, setFlags] = useState<AdminFlag[]>([]);
 
   const [type, setType] = useState<FlagType>("static");
   const [content, setContent] = useState("");
@@ -905,11 +827,10 @@ function FlagsTab({ challengeId }: { challengeId: number }) {
     if (bad !== null) return;
 
     try {
-      const flag = await add.mutateAsync({
+      await add.mutateAsync({
         challengeId,
         body: { type, content, case_insensitive: insensitive },
       });
-      setFlags((list) => [...list, flag]);
       setContent("");
       setInsensitive(false);
       toast.success("Flag added");
@@ -927,7 +848,6 @@ function FlagsTab({ challengeId }: { challengeId: number }) {
     if (!target) return;
     try {
       await remove.mutateAsync({ challengeId, flagId: target.id });
-      setFlags((list) => list.filter((f) => f.id !== target.id));
       setTarget(null);
       toast.success("Flag deleted");
     } catch (e) {
@@ -963,12 +883,6 @@ function FlagsTab({ challengeId }: { challengeId: number }) {
 
   return (
     <div className="ff-stack">
-      <Alert tone="info" title="Flags are write-only">
-        The API publishes no way to read a challenge's flags back — a stored flag is only ever
-        compared, never returned. This table lists the flags added or changed in this session; the
-        ones already on the challenge are still there, and still judging.
-      </Alert>
-
       <Card title="Add a flag">
         <Form
           errors={errors}
@@ -1019,13 +933,13 @@ function FlagsTab({ challengeId }: { challengeId: number }) {
 
       <Card flush>
         <DataTable
-          caption="Flags added in this session"
+          caption="Flags on this challenge"
           columns={columns}
           rows={flags}
           rowKey={(f) => f.id}
           empty={
             <EmptyState
-              title="No flags written yet"
+              title="No flags yet"
               description="Add a flag above. A challenge with no flag can never be solved."
             />
           }
@@ -1039,8 +953,7 @@ function FlagsTab({ challengeId }: { challengeId: number }) {
           onClose={() => setEditing(null)}
           onSave={async (body) => {
             try {
-              const flag = await update.mutateAsync({ challengeId, flagId: editing.id, body });
-              setFlags((list) => list.map((f) => (f.id === flag.id ? flag : f)));
+              await update.mutateAsync({ challengeId, flagId: editing.id, body });
               setEditing(null);
               toast.success("Flag saved");
               return null;
@@ -1153,9 +1066,7 @@ function flagProblem(type: FlagType, content: string): string | null {
 
 /* ------------------------------------------------------------------ hints */
 
-type ReadHint = NonNullable<ChallengeDetail["hints"]>[number];
-
-function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeDetail }) {
+function HintsTab({ challengeId, hints }: { challengeId: number; hints: AdminHint[] }) {
   const toast = useToast();
   const add = useAddHint();
   const update = useUpdateHint();
@@ -1168,10 +1079,9 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
 
-  const [editing, setEditing] = useState<ReadHint | null>(null);
-  const [target, setTarget] = useState<ReadHint | null>(null);
+  const [editing, setEditing] = useState<AdminHint | null>(null);
+  const [target, setTarget] = useState<AdminHint | null>(null);
 
-  const hints = read.hints ?? [];
   const reordering = update.isPending;
 
   const togglePrereq = (id: number) =>
@@ -1211,9 +1121,8 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
     }
   };
 
-  // Position is the prerequisite chain: hint n is buyable only once n-1 is. Nothing reads the
-  // stored positions back, so every hint is renumbered against its new index rather than trusting
-  // two swapped rows to stay contiguous with the rest.
+  // Position is the prerequisite chain: hint n is buyable only once n-1 is. Every hint is renumbered
+  // against its new index rather than trusting two swapped rows to stay contiguous with the rest.
   const move = async (from: number, to: number) => {
     if (to < 0 || to >= hints.length) return;
     const next = [...hints];
@@ -1240,7 +1149,7 @@ function HintsTab({ challengeId, read }: { challengeId: number; read: ChallengeD
     }
   };
 
-  const columns: readonly Column<ReadHint>[] = [
+  const columns: readonly Column<AdminHint>[] = [
     {
       key: "order",
       header: "Order",
@@ -1399,19 +1308,19 @@ function EditHintDialog({
   onClose,
   onSave,
 }: {
-  hint: ReadHint;
-  others: ReadHint[];
+  hint: AdminHint;
+  others: AdminHint[];
   busy: boolean;
   onClose: () => void;
   onSave: (body: HintEdit) => Promise<string | null>;
 }) {
   const [title, setTitle] = useState(hint.title ?? "");
-  const [content, setContent] = useState("");
+  const [content, setContent] = useState(hint.content);
   const [cost, setCost] = useState(String(hint.cost));
-  // The stored set is never read back, so the control is three-state like the body: untouched is
-  // omitted (keeps), and any touch replaces the whole set with the selection — empty clears.
+  // The stored set is three-state like the body: untouched is omitted (keeps), and any touch
+  // replaces the whole set with the selection — empty clears.
   const [prereqTouched, setPrereqTouched] = useState(false);
-  const [prereqIds, setPrereqIds] = useState<number[]>([]);
+  const [prereqIds, setPrereqIds] = useState<number[]>(hint.prerequisites ?? []);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -1459,11 +1368,7 @@ function EditHintDialog({
         <Field name="title" label="Title">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
-        <Field
-          name="content"
-          label="Body"
-          hint="A hint's body is never read back. Leave it blank to keep what is stored."
-        >
+        <Field name="content" label="Body">
           <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={4} />
         </Field>
         <Field name="cost" label="Cost">
@@ -1473,7 +1378,7 @@ function EditHintDialog({
           <Field
             name="prerequisites"
             label="Unlock after"
-            hint="The stored set is never read back. Untouched keeps it; any change replaces it with the selection — selecting nothing clears it."
+            hint="Every selected hint must be unlocked before this one can be bought."
           >
             <div className="ff-stack">
               {others.map((h) => (
@@ -1494,9 +1399,9 @@ function EditHintDialog({
 
 /* ------------------------------------------------------------------ files */
 
-type ReadFile = NonNullable<ChallengeDetail["files"]>[number];
+type ReadFile = NonNullable<AdminChallengeDetail["files"]>[number];
 
-function FilesTab({ read }: { read: ChallengeDetail }) {
+function FilesTab({ challengeId, files }: { challengeId: number; files: ReadFile[] }) {
   const toast = useToast();
   const upload = useUploadFile();
   const remove = useDeleteFile();
@@ -1509,7 +1414,7 @@ function FilesTab({ read }: { read: ChallengeDetail }) {
     if (!picked) return;
     setFailure(null);
     try {
-      const file = await upload.mutateAsync({ challengeId: read.id, file: picked });
+      const file = await upload.mutateAsync({ challengeId, file: picked });
       setPicked(null);
       toast.success("File uploaded", file.name);
     } catch (e) {
@@ -1581,7 +1486,7 @@ function FilesTab({ read }: { read: ChallengeDetail }) {
         <DataTable
           caption="Files attached to this challenge"
           columns={columns}
-          rows={read.files ?? []}
+          rows={files}
           rowKey={(f) => f.id}
           empty={
             <EmptyState
@@ -1606,23 +1511,17 @@ function FilesTab({ read }: { read: ChallengeDetail }) {
 
 /* ------------------------------------------------------------------- pool */
 
-function currentFlagMode(
-  saved: AdminChallenge | null,
-  read: ChallengeDetail | null,
-): "static" | "unique" {
-  const mode = saved?.flag_mode ?? read?.flag_mode ?? "static";
-  return mode === "unique" ? "unique" : "static";
+function currentFlagMode(current: AdminChallenge | null): "static" | "unique" {
+  return current?.flag_mode === "unique" ? "unique" : "static";
 }
 
 function PoolTab({
   challengeId,
-  read,
-  saved,
+  current,
   onSaved,
 }: {
   challengeId: number;
-  read: ChallengeDetail | null;
-  saved: AdminChallenge | null;
+  current: AdminChallenge | null;
   onSaved: (ch: AdminChallenge) => void;
 }) {
   const toast = useToast();
@@ -1630,7 +1529,7 @@ function PoolTab({
   const upload = useUploadInstances();
   const instances = useQuery(challengeInstancesQuery(challengeId, { per_page: 100 }));
 
-  const mode = currentFlagMode(saved, read);
+  const mode = currentFlagMode(current);
   const [flagsText, setFlagsText] = useState("");
   const [result, setResult] = useState<{
     generation: number;

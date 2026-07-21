@@ -13,6 +13,8 @@ const P = "/admin";
 export type AdminConfig = Schemas["AdminConfigOutputBody"];
 export type AdminConfigPatch = Body<Schemas["AdminConfigInputBody"]>;
 export type AdminChallenge = Schemas["AdminChallengeBody"];
+export type AdminChallengeListItem = Schemas["AdminChallengeListItem"];
+export type AdminChallengeDetail = Schemas["AdminChallengeDetailOutputBody"];
 export type AdminRequirements = Schemas["AdminRequirementsBody"];
 export type AdminSetRequirementsResult = Schemas["AdminSetRequirementsOutputBody"];
 export type AdminChallengeTag = Schemas["AdminChallengeTagBody"];
@@ -87,7 +89,14 @@ export const adminApi = {
   updateConfig: (body: AdminConfigPatch) =>
     request<AdminConfig>("PATCH", `${P}/config`, body),
 
-  // Challenges
+  // Challenges. The admin board and detail are their own reads — hidden challenges included, and
+  // the detail returns flags, which no player-reachable route ever does.
+  listChallenges: () =>
+    request<Schemas["AdminListChallengesOutputBody"]>("GET", `${P}/challenges`),
+
+  getChallenge: (id: number) =>
+    request<AdminChallengeDetail>("GET", `${P}/challenges/${id}`),
+
   createChallenge: (body: Body<Schemas["AdminCreateChallengeInputBody"]>) =>
     request<AdminChallenge>("POST", `${P}/challenges`, body),
 

@@ -118,9 +118,22 @@ type Querier interface {
 	// (at, id) tiebreak keeps the order total when many rows share a timestamp, so pages never overlap.
 	// COUNT(*) OVER () rides along so the page and its total agree in one round trip.
 	AdminListAudit(ctx context.Context, arg AdminListAuditParams) ([]AdminListAuditRow, error)
+	// Every flag on a challenge, plaintext content included. This is the one read that returns a flag's
+	// content, and it is reachable only behind the admin gate — the player detail redacts flags entirely.
+	AdminListChallengeFlags(ctx context.Context, challengeID int64) ([]Flag, error)
+	// Every hint on a challenge in unlock order, body included — unlike the player list, which withholds
+	// the content until it is bought.
+	AdminListChallengeHints(ctx context.Context, challengeID int64) ([]Hint, error)
 	// The whole prerequisite graph, for the cycle warning on requirement writes. Boards are small; one
 	// read beats a traversal query nothing else needs.
 	AdminListChallengeRequirements(ctx context.Context) ([]AdminListChallengeRequirementsRow, error)
+	// Admin reads for the challenge authoring console. These are plain reads — no audit transaction —
+	// and they deliberately ignore the visible/hidden state and the anonymize gate that the player
+	// catalog applies: an operator authors every challenge, hidden ones included, and reads back the
+	// flags a player is never shown.
+	// The operator's board: every challenge in board order regardless of state, each row carrying the
+	// counts the console shows (solves, flags, hints) so the list renders them without a per-row read.
+	AdminListChallenges(ctx context.Context) ([]AdminListChallengesRow, error)
 	// Every field, in the order a form would render them: user fields then team fields, each by their
 	// authored position, id as the stable tie-break.
 	AdminListFields(ctx context.Context) ([]Field, error)

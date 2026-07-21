@@ -201,7 +201,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List every challenge, hidden ones included, with flag and hint counts */
+        get: operations["admin-list-challenges"];
         put?: never;
         /** Create a challenge */
         post: operations["admin-create-challenge"];
@@ -235,7 +236,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get one challenge with its flags, hints, tags and files */
+        get: operations["admin-get-challenge"];
         put?: never;
         post?: never;
         /** Delete a challenge (refused while it has solves) */
@@ -1365,6 +1367,19 @@ export interface components {
             /** Format: int32 */
             value: number;
         };
+        AdminChallengeDetailOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminChallengeDetailOutputBody.json
+             */
+            readonly $schema?: string;
+            challenge: components["schemas"]["AdminChallengeBody"];
+            files: components["schemas"]["ChallengeFile"][] | null;
+            flags: components["schemas"]["AdminFlagBody"][] | null;
+            hints: components["schemas"]["AdminHintBody"][] | null;
+            tags: string[] | null;
+        };
         AdminChallengeFlagModeInputBody: {
             /**
              * Format: uri
@@ -1374,6 +1389,22 @@ export interface components {
             readonly $schema?: string;
             /** @enum {string} */
             flag_mode: "static" | "unique";
+        };
+        AdminChallengeListItem: {
+            category: string;
+            /** Format: int64 */
+            flag_count: number;
+            function: string;
+            /** Format: int64 */
+            hint_count: number;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            solve_count: number;
+            state: string;
+            /** Format: int32 */
+            value: number;
         };
         AdminChallengeStateInputBody: {
             /**
@@ -1754,6 +1785,15 @@ export interface components {
              */
             readonly $schema?: string;
             brackets: components["schemas"]["AdminBracketBody"][] | null;
+        };
+        AdminListChallengesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminListChallengesOutputBody.json
+             */
+            readonly $schema?: string;
+            challenges: components["schemas"]["AdminChallengeListItem"][] | null;
         };
         AdminListFieldsOutputBody: {
             /**
@@ -2329,6 +2369,13 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             verified: number;
+        };
+        ChallengeFile: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            size_bytes: number;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -2940,6 +2987,35 @@ export interface operations {
             };
         };
     };
+    "admin-list-challenges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListChallengesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "admin-create-challenge": {
         parameters: {
             query?: never;
@@ -2993,6 +3069,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminReorderOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-get-challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChallengeDetailOutputBody"];
                 };
             };
             /** @description Error */
@@ -3084,11 +3191,9 @@ export interface operations {
                 "multipart/form-data": {
                     /**
                      * Format: binary
-                     * @description filename of the file being uploaded
+                     * @description the file to attach to the challenge
                      */
-                    filename?: string;
-                    /** @description general purpose name for multipart form value */
-                    name?: string;
+                    file?: string;
                 };
             };
         };

@@ -20,6 +20,10 @@ export const qk = {
   challenges: () => ["challenges"] as const,
   challenge: (id: number) => ["challenges", id] as const,
   challengeSolves: (id: number, cursor?: string) => ["challenges", id, "solves", cursor ?? ""] as const,
+  // The operator's board and detail live under the same prefix, so a challenge write invalidates
+  // them alongside the player's views without naming them one by one.
+  adminChallenges: () => ["challenges", "admin"] as const,
+  adminChallenge: (id: number) => ["challenges", id, "admin"] as const,
 
   scoreboard: (params?: ScoreboardParams) =>
     (params === undefined ? ["scoreboard"] : ["scoreboard", params]) as

@@ -1,8 +1,26 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "../../api/admin";
-import { qk } from "../keys";
+import { ADMIN_STALE_TIME, qk } from "../keys";
 
-// Every admin write to a challenge also changes what players see, so both boards are dropped.
+// The operator's board: every challenge, hidden included, with the flag/hint counts a player is
+// never told. Keyed under the challenges prefix so a challenge write invalidates it by prefix.
+export const adminChallengesQuery = queryOptions({
+  queryKey: qk.adminChallenges(),
+  queryFn: () => adminApi.listChallenges(),
+  staleTime: ADMIN_STALE_TIME,
+});
+
+// One challenge with its flags, hints, tags and files — the editor's read. Also under the
+// challenges prefix, so the same write hooks below drop it.
+export const adminChallengeQuery = (id: number) =>
+  queryOptions({
+    queryKey: qk.adminChallenge(id),
+    queryFn: () => adminApi.getChallenge(id),
+    staleTime: ADMIN_STALE_TIME,
+  });
+
+// Every admin write to a challenge also changes what players see and what the editor reads, so the
+// whole challenges subtree — both boards and every detail — is dropped.
 function useChallengeWrite<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const qc = useQueryClient();
   return useMutation({

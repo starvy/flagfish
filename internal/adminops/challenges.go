@@ -77,6 +77,56 @@ func challengeType(function string) string {
 	return "dynamic"
 }
 
+// ChallengeDetail is one challenge with everything the authoring console edits: the row itself, its
+// flags (content and all), its hints, its tags and its files. Unlike the player detail it is
+// state-blind and never redacts a flag — it exists behind the admin gate precisely so an operator
+// can read back what a player must not.
+type ChallengeDetail struct {
+	Challenge db.Challenge
+	Flags     []db.Flag
+	Hints     []db.Hint
+	Tags      []string
+	Files     []db.ListChallengeFilesRow
+}
+
+// ListChallenges returns every challenge for the operator's board, hidden ones included. A plain
+// read, so it runs outside the audited transaction the mutations use.
+func (s *Service) ListChallenges(ctx context.Context) ([]db.AdminListChallengesRow, error) {
+	rows, err := s.q.AdminListChallenges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("adminops: list challenges: %w", err)
+	}
+	return rows, nil
+}
+
+// ChallengeDetail returns one challenge with its flags, hints, tags and files, for the editor. It
+// reads the challenge in any state; a genuinely missing id is ErrChallengeNotFound.
+func (s *Service) ChallengeDetail(ctx context.Context, challengeID int64) (ChallengeDetail, error) {
+	ch, err := s.q.AdminGetChallenge(ctx, challengeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ChallengeDetail{}, fmt.Errorf("%w: id=%d", ErrChallengeNotFound, challengeID)
+	} else if err != nil {
+		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: %w", challengeID, err)
+	}
+	flagRows, err := s.q.AdminListChallengeFlags(ctx, challengeID)
+	if err != nil {
+		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: flags: %w", challengeID, err)
+	}
+	hints, err := s.q.AdminListChallengeHints(ctx, challengeID)
+	if err != nil {
+		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: hints: %w", challengeID, err)
+	}
+	tags, err := s.q.ListChallengeTags(ctx, challengeID)
+	if err != nil {
+		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: tags: %w", challengeID, err)
+	}
+	files, err := s.q.ListChallengeFiles(ctx, &challengeID)
+	if err != nil {
+		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: files: %w", challengeID, err)
+	}
+	return ChallengeDetail{Challenge: ch, Flags: flagRows, Hints: hints, Tags: tags, Files: files}, nil
+}
+
 //nolint:gocritic // hugeParam: the create input is a value; a pointer here would invite a caller to mutate it mid-call.
 func (s *Service) CreateChallenge(ctx context.Context, actor audit.Actor, in NewChallenge) (db.Challenge, error) {
 	var out db.Challenge

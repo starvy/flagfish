@@ -122,6 +122,40 @@ type adminChallengeOutput struct {
 	Body adminChallengeBody
 }
 
+// adminChallengeListItem is one row of the operator's board. Unlike the player's ChallengeListItem
+// it carries the state and the flag/hint counts the console renders, and it never omits a count:
+// an operator is looking at the truth, not a redaction.
+type adminChallengeListItem struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Category   string `json:"category"`
+	Value      int32  `json:"value"`
+	Function   string `json:"function"`
+	State      string `json:"state"`
+	SolveCount int64  `json:"solve_count"`
+	FlagCount  int64  `json:"flag_count"`
+	HintCount  int64  `json:"hint_count"`
+}
+
+type adminListChallengesOutput struct {
+	Body struct {
+		Challenges []adminChallengeListItem `json:"challenges"`
+	}
+}
+
+// adminChallengeDetailOutput is the whole challenge as the editor loads it: the row, its flags
+// (content included), its hints, its tags and its files. Flags appear here and nowhere on the
+// player surface.
+type adminChallengeDetailOutput struct {
+	Body struct {
+		Challenge adminChallengeBody `json:"challenge"`
+		Flags     []adminFlagBody    `json:"flags"`
+		Hints     []adminHintBody    `json:"hints"`
+		Tags      []string           `json:"tags"`
+		Files     []challengeFile    `json:"files"`
+	}
+}
+
 func (s *Server) adminChallenge(c *db.Challenge) (*adminChallengeOutput, error) {
 	reqs, err := prereq.Parse(c.Requirements)
 	if err != nil {
@@ -350,6 +384,16 @@ type adminHintPathInput struct {
 
 func (s *Server) registerAdminChallenges() {
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-list-challenges", Method: http.MethodGet, Path: "/challenges",
+		Summary: "List every challenge, hidden ones included, with flag and hint counts", Tags: []string{"admin/challenges"},
+	}, s.adminListChallenges)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-get-challenge", Method: http.MethodGet, Path: "/challenges/{id}",
+		Summary: "Get one challenge with its flags, hints, tags and files", Tags: []string{"admin/challenges"},
+	}, s.adminGetChallenge)
+
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-create-challenge", Method: http.MethodPost, Path: "/challenges",
 		DefaultStatus: http.StatusCreated,
 		Summary:       "Create a challenge", Tags: []string{"admin/challenges"},
@@ -419,6 +463,58 @@ func (s *Server) registerAdminChallenges() {
 		DefaultStatus: http.StatusNoContent,
 		Summary:       "Delete a hint", Tags: []string{"admin/hints"},
 	}, s.adminDeleteHint)
+}
+
+func (s *Server) adminListChallenges(ctx context.Context, _ *struct{}) (*adminListChallengesOutput, error) {
+	rows, err := s.opts.AdminOps.ListChallenges(ctx)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "list challenges")
+	}
+	out := &adminListChallengesOutput{}
+	out.Body.Challenges = make([]adminChallengeListItem, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		out.Body.Challenges[i] = adminChallengeListItem{
+			ID: r.ID, Name: r.Name, Category: r.Category, Value: r.Value, Function: r.Function,
+			State: r.State, SolveCount: r.SolveCount, FlagCount: r.FlagCount, HintCount: r.HintCount,
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) adminGetChallenge(ctx context.Context, in *challengeIDInput) (*adminChallengeDetailOutput, error) {
+	d, err := s.opts.AdminOps.ChallengeDetail(ctx, in.ID)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "get challenge")
+	}
+	ch, err := s.adminChallenge(&d.Challenge)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "get challenge")
+	}
+
+	out := &adminChallengeDetailOutput{}
+	out.Body.Challenge = ch.Body
+	out.Body.Flags = make([]adminFlagBody, len(d.Flags))
+	for i, f := range d.Flags {
+		out.Body.Flags[i] = adminFlag(f).Body
+	}
+	out.Body.Hints = make([]adminHintBody, len(d.Hints))
+	for i := range d.Hints {
+		h, herr := adminHint(&d.Hints[i])
+		if herr != nil {
+			return nil, s.adminOpsError(ctx, herr, "get challenge")
+		}
+		out.Body.Hints[i] = h.Body
+	}
+	out.Body.Tags = d.Tags
+	if out.Body.Tags == nil {
+		out.Body.Tags = []string{}
+	}
+	out.Body.Files = make([]challengeFile, len(d.Files))
+	for i, f := range d.Files {
+		out.Body.Files[i] = challengeFile{ID: f.ID, Name: f.Name, SizeBytes: f.SizeBytes}
+	}
+	return out, nil
 }
 
 func (s *Server) adminCreateChallenge(ctx context.Context, in *adminCreateChallengeInput) (*adminChallengeOutput, error) {

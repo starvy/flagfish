@@ -59,6 +59,8 @@ export { tokensQuery, useCreateToken, useDeleteToken } from "./queries/tokens";
 export { adminConfigQuery, useUpdateConfig } from "./queries/admin/config";
 
 export {
+  adminChallengesQuery,
+  adminChallengeQuery,
   useCreateChallenge,
   useUpdateChallenge,
   useSetChallengeState,

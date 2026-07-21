@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { queryOptions, useQuery } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
-import { isApiError, request, type ChallengeListItem } from "../../../api/client";
+import { useQuery } from "@tanstack/react-query";
+import { Link, Outlet, createFileRoute, useChildMatches } from "@tanstack/react-router";
+import { isApiError } from "../../../api/client";
+import type { AdminChallengeListItem } from "../../../api/admin";
 import {
-  ADMIN_STALE_TIME,
-  qk,
+  adminChallengesQuery,
   useDeleteChallenge,
   useReorderChallenges,
   useSetChallengeState,
@@ -23,29 +23,24 @@ import {
 } from "../../../ui";
 
 export const Route = createFileRoute("/_auth/admin/challenges")({
-  component: AdminChallengesPage,
+  component: ChallengesRoute,
 });
+
+// The editor nests under this route in the file tree, but it is a page of its own, not a panel
+// inside the board. When a child matches, the board steps out of its way.
+function ChallengesRoute() {
+  const children = useChildMatches();
+  return children.length > 0 ? <Outlet /> : <AdminChallengesPage />;
+}
 
 /**
- * The board as an operator sees it. `view=admin` is what widens the policy layer's projection:
- * hidden challenges appear, and the row carries the counts a player is never told. A server that
- * has not widened it yet answers with the player's board, so every widened field is optional here
- * and an absent count renders as "—" — never as 0.
+ * The board as an operator sees it: every challenge, hidden ones included, each row carrying the
+ * state and the flag/hint counts a player is never told.
  */
-type AdminRow = ChallengeListItem & {
-  state?: "visible" | "hidden";
-  flag_count?: number | null;
-  hint_count?: number | null;
-};
-
-const adminBoardQuery = queryOptions({
-  queryKey: [...qk.challenges(), "admin"] as const,
-  queryFn: () => request<{ challenges: AdminRow[] }>("GET", "/challenges?view=admin"),
-  staleTime: ADMIN_STALE_TIME,
-});
+type AdminRow = AdminChallengeListItem;
 
 function AdminChallengesPage() {
-  const board = useQuery(adminBoardQuery);
+  const board = useQuery(adminChallengesQuery);
   const toast = useToast();
 
   const reorder = useReorderChallenges();
@@ -180,9 +175,9 @@ function AdminChallengesPage() {
       header: "Scoring",
       cell: (row) => <span className="ff-muted">{row.function}</span>,
     },
-    { key: "flags", header: "Flags", align: "right", cell: (row) => count(row.flag_count) },
-    { key: "hints", header: "Hints", align: "right", cell: (row) => count(row.hint_count) },
-    { key: "solves", header: "Solves", align: "right", cell: (row) => count(row.solve_count) },
+    { key: "flags", header: "Flags", align: "right", cell: (row) => row.flag_count },
+    { key: "hints", header: "Hints", align: "right", cell: (row) => row.hint_count },
+    { key: "solves", header: "Solves", align: "right", cell: (row) => row.solve_count },
     {
       key: "state",
       header: "State",
@@ -303,12 +298,7 @@ function AdminChallengesPage() {
 }
 
 function stateOf(row: AdminRow): "visible" | "hidden" {
-  return row.state ?? "visible";
-}
-
-// A count the server withheld is not zero, and must never be drawn as one.
-function count(n: number | null | undefined) {
-  return n === null || n === undefined ? <span className="ff-muted">—</span> : n;
+  return row.state === "hidden" ? "hidden" : "visible";
 }
 
 function messageOf(e: unknown): string {
