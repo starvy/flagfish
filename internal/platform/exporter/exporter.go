@@ -159,17 +159,18 @@ var excludedTables = []string{
 	"api_tokens", "sessions", "email_tokens", "rate_limits", "tasks",
 }
 
-// querier is the read surface Export needs — satisfied by *pgxpool.Pool.
+// querier is the read surface Export needs — satisfied by *pgxpool.Pool and by pgx.Tx.
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // Progress reports coarse advancement of an export or restore, 0..100, with a short human detail.
-// The reporter MUST write on a connection separate from the operation itself — a restore is one
-// transaction, so a progress write inside it is invisible until commit. A nil Progress disables
-// reporting. It is deliberately fallible-free: a progress-write hiccup must never fail a good
-// restore, so the caller logs and swallows on its own side.
+// The reporter MUST write on a connection separate from the operation itself — both an export and a
+// restore are one transaction, so a progress write inside it is invisible until commit, and the
+// export's transaction is read-only besides. A nil Progress disables reporting. It is deliberately
+// fallible-free: a progress-write hiccup must never fail a good restore, so the caller logs and
+// swallows on its own side.
 type Progress func(ctx context.Context, detail string, percent int)
 
 func (p Progress) report(ctx context.Context, detail string, percent int) {
@@ -193,11 +194,22 @@ func ExportWithProgress(ctx context.Context, pool *pgxpool.Pool, store storage.S
 		return nil, fmt.Errorf("export: invalid profile %q", profile)
 	}
 
-	userMode, err := scanString(ctx, pool, `SELECT user_mode FROM instance WHERE id = true`)
+	// Every read below runs on this one transaction. At READ COMMITTED each table would be read at a
+	// different instant, so a row written mid-export lands in the archive without the parent row it
+	// references — an archive that will not restore. REPEATABLE READ pins the whole dump to a single
+	// snapshot; read-only takes no row locks, so an export never blocks gameplay.
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, fmt.Errorf("export: begin snapshot: %w", err)
+	}
+	// Nothing to commit; rolling back on every path releases the snapshot.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	userMode, err := scanString(ctx, tx, `SELECT user_mode FROM instance WHERE id = true`)
 	if err != nil {
 		return nil, fmt.Errorf("export: read instance: %w", err)
 	}
-	schemaVersion, err := scanInt64(ctx, pool, `SELECT COALESCE(max(version_id), 0) FROM goose_db_version WHERE is_applied`)
+	schemaVersion, err := scanInt64(ctx, tx, `SELECT COALESCE(max(version_id), 0) FROM goose_db_version WHERE is_applied`)
 	if err != nil {
 		return nil, fmt.Errorf("export: read schema version: %w", err)
 	}
@@ -224,7 +236,7 @@ func ExportWithProgress(ctx context.Context, pool *pgxpool.Pool, store storage.S
 			manifest.Omitted = append(manifest.Omitted, t.name)
 			continue
 		}
-		rows, rerr := readTable(ctx, pool, t)
+		rows, rerr := readTable(ctx, tx, t)
 		if rerr != nil {
 			return nil, fmt.Errorf("export: read %s: %w", t.name, rerr)
 		}
@@ -262,6 +274,14 @@ func ExportWithProgress(ctx context.Context, pool *pgxpool.Pool, store storage.S
 	}
 	sort.Strings(manifest.Omitted)
 	manifest.Omitted = dedupe(manifest.Omitted)
+
+	// The blob tree is content-addressed and an object is stored before the files row that names it,
+	// so every row in the snapshot already has its object and no object is ever rewritten in place.
+	// The upload stream therefore needs no snapshot — end it here rather than hold a transaction open
+	// across what is usually the longest phase of the export.
+	if rerr := tx.Rollback(ctx); rerr != nil {
+		return nil, fmt.Errorf("export: end snapshot: %w", rerr)
+	}
 
 	progress.report(ctx, "exporting file blobs", 90)
 	uploadBytes, uploadSums, err := writeUploads(ctx, zw, store, filesRows, rep)
