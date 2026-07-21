@@ -186,6 +186,9 @@ func TestS28_CredentialLimitersFailClosed(t *testing.T) {
 // exists", which is the thing the login and reset responses go out of their way not to say.
 func TestS29_CredentialLimitingLeaksNoAccountExistence(t *testing.T) {
 	const budget = 4
+	// The two probes below have to land in the same window: a boundary between them refills the
+	// second one's counter and the comparison reads as an existence leak that is not there.
+	wholeWindow(t, 30*time.Second)
 	f := setup(t, withAuthLimit(budget), withTrustedProxy())
 	f.user("real", pw)
 

@@ -101,11 +101,13 @@ func (s *Server) registerRoutes() {
 	}
 }
 
-// In teams mode the playing account is the team; in users mode TeamID stays nil.
+// In teams mode the playing account is the team; in users mode TeamID stays nil. A teamless player
+// has no team either, and gets nil rather than a fabricated id 0: resolving an account still
+// refuses that, but a query handed team_id = 0 would quietly read nobody's rows instead.
 func (s *Server) actor(ctx context.Context) gameplay.Actor {
 	pr := AuthOf(ctx).Principal
 	var teamID *int64
-	if s.opts.Config.Current().Mode == account.ModeTeams {
+	if s.opts.Config.Current().Mode == account.ModeTeams && pr.AccountID != 0 {
 		id := int64(pr.AccountID)
 		teamID = &id
 	}

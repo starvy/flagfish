@@ -490,10 +490,9 @@ func (l limiters) credentialsWired() bool {
 	return l.target != nil && l.failure != nil && l.flood != nil
 }
 
-// rateLimit keys on the account when we know it, and on the client IP when we do
-// not — so an anonymous flood is limited per-source and an authenticated one
-// per-account, which is what you want when a single team is behind one NAT. The other half of the
-// key is the route (see bucketRoute), never the raw path.
+// rateLimit keys on the caller (see limiterKey) — so an anonymous flood is limited per-source and
+// an authenticated one per-account, which is what you want when a single team is behind one NAT.
+// The other half of the key is the route (see bucketRoute), never the raw path.
 //
 // The IP is the one realIP resolved, which is the client's only if a proxy in front of us is
 // trusted. Untrusted, every request behind that proxy keys on the proxy's own address and the
@@ -515,11 +514,7 @@ func rateLimit(routes chi.Routes, l limiters, log *slog.Logger) func(http.Handle
 				}
 			}
 
-			pr := AuthOf(r.Context()).Principal
-			key := "ip:" + clientKey(r)
-			if pr.Authed {
-				key = fmt.Sprintf("account:%d", pr.AccountID)
-			}
+			key := limiterKey(r, AuthOf(r.Context()).Principal)
 
 			ok, err := l.general.Allow(r.Context(), key+":"+bucketRoute(matched, rctx, r))
 			if err != nil {
@@ -534,6 +529,28 @@ func rateLimit(routes chi.Routes, l limiters, log *slog.Logger) func(http.Handle
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// limiterKey names the budget one caller spends from.
+//
+// An account is the right unit when there is one — teammates sharing a budget is deliberate. But a
+// teamless player in teams mode has no account, and keying them on it puts every one of them in the
+// same bucket: at kickoff the entire field is teamless at once and they rate-limit each other out of
+// the join/create-team calls that would give them an account. So they key on the user instead, which
+// an authenticated principal always has.
+//
+// The three namespaces are disjoint by prefix and must stay that way. A user id and an account id
+// are separate sequences — in teams mode an account id is a team id — so the same integer routinely
+// names both, and an unprefixed key would let one player spend another's budget.
+func limiterKey(r *http.Request, pr policy.Principal) string {
+	switch {
+	case pr.Authed && pr.AccountID != 0:
+		return "account:" + strconv.FormatInt(int64(pr.AccountID), 10)
+	case pr.Authed && pr.UserID != 0:
+		return "user:" + strconv.FormatInt(pr.UserID, 10)
+	default:
+		return "ip:" + clientKey(r)
 	}
 }
 
