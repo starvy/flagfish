@@ -198,6 +198,13 @@ export const TREATMENTS: Record<Reason, Treatment> = {
     transient: false,
     action: null,
   },
+  "bad-request": {
+    title: "That request was malformed",
+    message: "The server could not read the request body.",
+    tone: "warning",
+    transient: false,
+    action: null,
+  },
   "internal-error": {
     title: "Something broke",
     message: "The server hit an error handling that. It has been logged.",

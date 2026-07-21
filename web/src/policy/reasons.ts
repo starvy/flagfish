@@ -30,6 +30,7 @@ export const REASONS = [
   "unavailable",
   "invalid-credentials",
   "body-too-large",
+  "bad-request",
   "internal-error",
   "streaming-unsupported",
 ] as const;

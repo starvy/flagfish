@@ -83,6 +83,7 @@ const GOLDEN: ReadonlyArray<[Reason, { tone: string; transient: boolean; action:
   ["unavailable", { tone: "warning", transient: true, action: null }],
   ["invalid-credentials", { tone: "warning", transient: false, action: "/login" }],
   ["body-too-large", { tone: "warning", transient: false, action: null }],
+  ["bad-request", { tone: "warning", transient: false, action: null }],
   ["internal-error", { tone: "danger", transient: false, action: null }],
   ["streaming-unsupported", { tone: "warning", transient: false, action: null }],
 ];
