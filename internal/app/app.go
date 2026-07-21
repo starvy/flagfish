@@ -81,6 +81,8 @@ func ServeOptions(ctx context.Context, env *config.Env, log *slog.Logger, sc Ser
 		fx.Supply(sc.TrustedProxies),
 		fx.Supply(accounts.LimiterConfig{Limit: env.RateLimit, Window: env.RateWindow}),
 		fx.Supply(accounts.AuthLimiterConfig{Limit: env.AuthRateLimit, Window: env.RateWindow}),
+		fx.Supply(accounts.AuthFailureLimiterConfig{Limit: env.AuthIPFailureLimit, Window: env.RateWindow}),
+		fx.Supply(accounts.AuthIPLimiterConfig{Limit: env.AuthIPRateLimit, Window: env.RateWindow}),
 		fx.Provide(provideMode),
 		fx.Invoke(assertMode),
 		fx.Invoke(func(cfg *config.Manager) {

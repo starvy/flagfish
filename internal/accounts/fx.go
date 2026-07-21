@@ -19,12 +19,25 @@ type LimiterConfig struct {
 	Window time.Duration
 }
 
-// AuthLimiterConfig is the tighter budget for the credential routes. Same shape as LimiterConfig,
-// a distinct type so the graph supplies it independently of the general limit.
-type AuthLimiterConfig struct {
-	Limit  int
-	Window time.Duration
-}
+// The three credential-route budgets. Same shape as LimiterConfig, distinct types so the graph
+// supplies each independently of the general limit and of each other.
+type (
+	// AuthLimiterConfig budgets failed attempts against one credential target.
+	AuthLimiterConfig struct {
+		Limit  int
+		Window time.Duration
+	}
+	// AuthFailureLimiterConfig budgets failed credential attempts from one source address.
+	AuthFailureLimiterConfig struct {
+		Limit  int
+		Window time.Duration
+	}
+	// AuthIPLimiterConfig budgets all credential attempts from one source address.
+	AuthIPLimiterConfig struct {
+		Limit  int
+		Window time.Duration
+	}
+)
 
 // Module wires credentials into the graph: the Service as the auth.Authenticator, and the
 // Limiter as the auth.Limiter. Both are also exposed under their concrete types, because
@@ -40,6 +53,8 @@ var Module = fx.Module(
 		newLimiter,
 		func(l *Limiter) auth.Limiter { return l },
 		newAuthLimiter,
+		newAuthFailureLimiter,
+		newAuthIPLimiter,
 	),
 )
 
@@ -49,4 +64,12 @@ func newLimiter(pool *pgxpool.Pool, c LimiterConfig) *Limiter {
 
 func newAuthLimiter(pool *pgxpool.Pool, c AuthLimiterConfig) *AuthLimiter {
 	return NewAuthLimiter(pool, c.Limit, c.Window)
+}
+
+func newAuthFailureLimiter(pool *pgxpool.Pool, c AuthFailureLimiterConfig) *AuthFailureLimiter {
+	return NewAuthFailureLimiter(pool, c.Limit, c.Window)
+}
+
+func newAuthIPLimiter(pool *pgxpool.Pool, c AuthIPLimiterConfig) *AuthIPLimiter {
+	return NewAuthIPLimiter(pool, c.Limit, c.Window)
 }

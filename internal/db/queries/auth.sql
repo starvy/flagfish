@@ -223,5 +223,13 @@ ON CONFLICT (bucket, window_start) DO UPDATE
    SET n = rate_limits.n + 1
 RETURNING n;
 
+-- name: RefundRateLimit :exec
+-- Gives one bump back, atomically. The credential budgets are taken before the handler runs and
+-- returned when the attempt turns out to have been legitimate, so they count failures without ever
+-- reading-then-writing. GREATEST floors it: a refund whose bump landed in the previous window
+-- (the request straddled the boundary) must not drive a live counter negative.
+UPDATE rate_limits SET n = GREATEST(n - 1, 0)
+ WHERE bucket = @bucket AND window_start = @window_start;
+
 -- name: DeleteOldRateLimits :exec
 DELETE FROM rate_limits WHERE window_start < @before;

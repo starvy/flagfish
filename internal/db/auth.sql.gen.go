@@ -571,6 +571,25 @@ func (q *Queries) PromoteToAdmin(ctx context.Context, email string) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const refundRateLimit = `-- name: RefundRateLimit :exec
+UPDATE rate_limits SET n = GREATEST(n - 1, 0)
+ WHERE bucket = $1 AND window_start = $2
+`
+
+type RefundRateLimitParams struct {
+	Bucket      string
+	WindowStart pgtype.Timestamptz
+}
+
+// Gives one bump back, atomically. The credential budgets are taken before the handler runs and
+// returned when the attempt turns out to have been legitimate, so they count failures without ever
+// reading-then-writing. GREATEST floors it: a refund whose bump landed in the previous window
+// (the request straddled the boundary) must not drive a live counter negative.
+func (q *Queries) RefundRateLimit(ctx context.Context, arg RefundRateLimitParams) error {
+	_, err := q.db.Exec(ctx, refundRateLimit, arg.Bucket, arg.WindowStart)
+	return err
+}
+
 const setPendingEmail = `-- name: SetPendingEmail :execrows
 UPDATE users SET pending_email = $1 WHERE id = $2
 `

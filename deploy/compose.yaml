@@ -141,6 +141,11 @@ services:
       FLAGFISH_MAX_UPLOAD_BYTES: ${FLAGFISH_MAX_UPLOAD_BYTES:-33554432}
       FLAGFISH_RATE_LIMIT: ${FLAGFISH_RATE_LIMIT:-60}
       FLAGFISH_RATE_WINDOW: ${FLAGFISH_RATE_WINDOW:-1m}
+      # The credential-route budgets. --env-file only feeds compose's own substitution, so a
+      # variable that is not named here never reaches the container however carefully .env sets it.
+      FLAGFISH_AUTH_RATE_LIMIT: ${FLAGFISH_AUTH_RATE_LIMIT:-10}
+      FLAGFISH_AUTH_IP_FAILURE_LIMIT: ${FLAGFISH_AUTH_IP_FAILURE_LIMIT:-60}
+      FLAGFISH_AUTH_IP_RATE_LIMIT: ${FLAGFISH_AUTH_IP_RATE_LIMIT:-300}
       # Challenge file storage. Path-style + plaintext is what MinIO on the compose
       # network wants; a real S3/R2 bucket would flip USE_SSL on and PATH_STYLE off.
       FLAGFISH_S3_ENDPOINT: minio:9000

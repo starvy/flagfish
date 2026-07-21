@@ -48,6 +48,8 @@ type serverParams struct {
 	Auth           Authenticator
 	Limiter        Limiter
 	AuthLimiter    *accounts.AuthLimiter
+	AuthFailure    *accounts.AuthFailureLimiter
+	AuthIP         *accounts.AuthIPLimiter
 	Log            *slog.Logger
 	Accounts       *accounts.Service
 	Gameplay       *gameplay.Service
@@ -68,24 +70,26 @@ type serverParams struct {
 //nolint:gocritic // hugeParam: fx constructs this once at wiring time; the params struct is built to be passed by value.
 func newServer(p serverParams) *Server {
 	opts := Options{
-		Config:         p.Config,
-		Auth:           p.Auth,
-		Limiter:        p.Limiter,
-		AuthLimiter:    p.AuthLimiter,
-		Log:            p.Log,
-		Accounts:       p.Accounts,
-		Gameplay:       p.Gameplay,
-		Catalog:        p.Catalog,
-		Board:          p.Board,
-		AdminOps:       p.AdminOps,
-		Notify:         p.Notify,
-		Broadcaster:    p.Broadcaster,
-		Anticheat:      p.Anticheat,
-		Stats:          p.Stats,
-		Files:          p.Files,
-		Metrics:        p.Metrics,
-		Ops:            p.Ops,
-		TrustedProxies: p.TrustedProxies,
+		Config:             p.Config,
+		Auth:               p.Auth,
+		Limiter:            p.Limiter,
+		AuthLimiter:        p.AuthLimiter,
+		AuthFailureLimiter: p.AuthFailure,
+		AuthIPLimiter:      p.AuthIP,
+		Log:                p.Log,
+		Accounts:           p.Accounts,
+		Gameplay:           p.Gameplay,
+		Catalog:            p.Catalog,
+		Board:              p.Board,
+		AdminOps:           p.AdminOps,
+		Notify:             p.Notify,
+		Broadcaster:        p.Broadcaster,
+		Anticheat:          p.Anticheat,
+		Stats:              p.Stats,
+		Files:              p.Files,
+		Metrics:            p.Metrics,
+		Ops:                p.Ops,
+		TrustedProxies:     p.TrustedProxies,
 
 		// The env says "secure cookies"; the router takes the inverted flag so that its zero
 		// value — a caller that never thought about it — is the secure one.

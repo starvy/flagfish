@@ -14,6 +14,7 @@ package security
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -93,11 +94,26 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		limit = o.limit
 	}
 
-	// The tighter credential-route limiter is wired only when a test asks for it — the property
-	// under test is that it bites sooner than the general limiter, so it needs its own budget.
-	var authLimiter httpapi.Limiter
-	if o.authLimit > 0 {
-		authLimiter = accounts.NewAuthLimiter(pool, o.authLimit, time.Minute)
+	// The credential-route budgets are wired only when a test asks for one — absent them the
+	// credential routes ride the general limiter, which is the shape most of these tests want.
+	// A test that names one budget gets generous defaults for the other two, so the property it
+	// asserts is the one it configured and not a neighbour tripping first.
+	var authLimiter, authFailureLimiter, authIPLimiter httpapi.Limiter
+	if o.authLimit > 0 || o.authFailureLimit > 0 || o.authIPLimit > 0 || o.brokenSlot != "" {
+		authLimiter = accounts.NewAuthLimiter(pool, orDefault(o.authLimit, 1000), time.Minute)
+		authFailureLimiter = accounts.NewAuthFailureLimiter(pool, orDefault(o.authFailureLimit, 1000), time.Minute)
+		authIPLimiter = accounts.NewAuthIPLimiter(pool, orDefault(o.authIPLimit, 1000), time.Minute)
+
+		// One of the three budgets cannot reach its counter. Which one matters: they are spent in
+		// order, so a limiter that failed open would only be caught by breaking that exact slot.
+		switch o.brokenSlot {
+		case slotTarget:
+			authLimiter = brokenLimiter{}
+		case slotFailure:
+			authFailureLimiter = brokenLimiter{}
+		case slotFlood:
+			authIPLimiter = brokenLimiter{}
+		}
 	}
 
 	var authenticator httpapi.Authenticator = acct
@@ -110,10 +126,12 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 		Auth:   authenticator,
 		// The real auth routes, not just the seam: the session cookie a browser gets is minted by
 		// POST /login, so that is where its attributes have to be asserted.
-		Accounts:    acct,
-		Limiter:     accounts.NewLimiter(pool, limit, time.Minute),
-		AuthLimiter: authLimiter,
-		Log:         log,
+		Accounts:           acct,
+		Limiter:            accounts.NewLimiter(pool, limit, time.Minute),
+		AuthLimiter:        authLimiter,
+		AuthFailureLimiter: authFailureLimiter,
+		AuthIPLimiter:      authIPLimiter,
+		Log:                log,
 
 		// The write side the ban/hide tests drive, and the board their visibility is asserted on.
 		AdminOps: adminops.New(pool),
@@ -147,13 +165,16 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 // fixOpts tunes the fixture. The defaults are the shipped defaults; a test that changes one
 // says why.
 type fixOpts struct {
-	limit          int
-	authLimit      int
-	trustedProxies []*net.IPNet
-	maxUpload      int64
-	auth           httpapi.Authenticator
-	teams          bool
-	logTo          io.Writer
+	limit            int
+	authLimit        int
+	authFailureLimit int
+	authIPLimit      int
+	brokenSlot       string
+	trustedProxies   []*net.IPNet
+	maxUpload        int64
+	auth             httpapi.Authenticator
+	teams            bool
+	logTo            io.Writer
 }
 
 // withLogTo captures the server's structured log so a test can assert on what was written — the
@@ -162,9 +183,49 @@ func withLogTo(w io.Writer) func(*fixOpts) { return func(o *fixOpts) { o.logTo =
 
 func withLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.limit = n } }
 
-// withAuthLimit wires the tighter credential-route limiter with budget n. Absent it, the
+// withAuthLimit wires the credential-route budgets, with n as the strict per-target budget: how
+// many failed attempts one account or one token may absorb, from anywhere. Absent any of these the
 // credential routes ride the general limiter alone — the shape a test proves is not enough.
 func withAuthLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.authLimit = n } }
+
+// withAuthFailureLimit sets the strict per-source budget on FAILED credential attempts — the spray
+// guard, the one a successful attempt is refunded against.
+func withAuthFailureLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.authFailureLimit = n } }
+
+// withAuthIPLimit sets the generous per-source budget on ALL credential attempts.
+func withAuthIPLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.authIPLimit = n } }
+
+// The three credential budgets, named so a test can break exactly one of them.
+const (
+	slotTarget  = "target"
+	slotFailure = "failure"
+	slotFlood   = "flood"
+)
+
+// withBrokenCredentialLimiter stands in for the database being unreachable underneath one of the
+// credential budgets. A limiter that cannot answer must deny; there is no third option.
+func withBrokenCredentialLimiter(slot string) func(*fixOpts) {
+	return func(o *fixOpts) { o.brokenSlot = slot }
+}
+
+// brokenLimiter is a counter whose storage is gone.
+type brokenLimiter struct{}
+
+func (brokenLimiter) Allow(context.Context, string) (bool, error) {
+	return false, errors.New("rate_limits: connection refused")
+}
+
+func (brokenLimiter) Refund(context.Context, string) error {
+	return errors.New("rate_limits: connection refused")
+}
+
+// orDefault keeps an unset fixture budget out of the way of the one the test actually configured.
+func orDefault(n, fallback int) int {
+	if n > 0 {
+		return n
+	}
+	return fallback
+}
 
 // withTeamsMode boots the instance in teams mode — the mode the team-ban wall exists in.
 func withTeamsMode() func(*fixOpts) { return func(o *fixOpts) { o.teams = true } }

@@ -52,11 +52,27 @@ type Env struct {
 	RateLimit  int
 	RateWindow time.Duration
 
-	// AuthRateLimit is the tighter per-caller budget on the credential routes (login, register,
-	// password reset) within the same RateWindow. It is deliberately far below RateLimit: those
-	// routes are where brute force lives, and the general budget is too loose to blunt it. Like
-	// RateLimit it is process-level, not runtime config an attacker could turn down first.
-	AuthRateLimit int
+	// The credential routes (login, register, password reset, token confirmation) carry three
+	// budgets within the same RateWindow instead of the general one, because "how many credential
+	// requests may this source make" is not a brute-force question: a university NAT or a venue's
+	// wifi is one source for a whole room, and an attacker who wants a bigger budget rents another
+	// address. All three are process-level, not runtime config an attacker could turn down first.
+	//
+	// AuthRateLimit is the strict budget on FAILED attempts against one credential target — the
+	// account named by the submitted email, or the submitted token. This is the brute-force guard
+	// proper, and it holds however many addresses the guesses arrive from.
+	//
+	// AuthIPFailureLimit is the strict budget on failed credential attempts from one source
+	// address: the spray guard, the one that sees a single guess against each of a thousand
+	// accounts. A successful attempt is refunded, so a shared address full of players logging in
+	// normally never spends it.
+	//
+	// AuthIPRateLimit is the generous budget on ALL credential traffic from one source address,
+	// successful or not. It is a resource guard rather than a brute-force guard — verifying a
+	// password is deliberately expensive — and is sized so that a large NAT is never affected.
+	AuthRateLimit      int
+	AuthIPFailureLimit int
+	AuthIPRateLimit    int
 }
 
 // DefaultMaxUploadBytes bounds a multipart upload when none is configured. The multipart
@@ -175,32 +191,18 @@ func LoadEnv() (Env, error) {
 			env.DBMinConns, env.DBMaxConns))
 	}
 
-	env.RateLimit = 60
-	if raw := firstSet("FLAGFISH_RATE_LIMIT"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		switch {
-		case err != nil:
-			errs = append(errs, fmt.Sprintf("FLAGFISH_RATE_LIMIT=%q is not an integer", raw))
-		case n <= 0:
-			// Zero would mean "deny everything", which is never what an operator means by
-			// setting a rate limit; it is how you fat-finger the whole site offline.
-			errs = append(errs, fmt.Sprintf("FLAGFISH_RATE_LIMIT=%d must be positive", n))
-		default:
-			env.RateLimit = n
-		}
-	}
+	env.RateLimit = budgetEnv("FLAGFISH_RATE_LIMIT", 60, &errs)
+	env.AuthRateLimit = budgetEnv("FLAGFISH_AUTH_RATE_LIMIT", 10, &errs)
+	env.AuthIPFailureLimit = budgetEnv("FLAGFISH_AUTH_IP_FAILURE_LIMIT", 60, &errs)
+	env.AuthIPRateLimit = budgetEnv("FLAGFISH_AUTH_IP_RATE_LIMIT", 300, &errs)
 
-	env.AuthRateLimit = 10
-	if raw := firstSet("FLAGFISH_AUTH_RATE_LIMIT"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		switch {
-		case err != nil:
-			errs = append(errs, fmt.Sprintf("FLAGFISH_AUTH_RATE_LIMIT=%q is not an integer", raw))
-		case n <= 0:
-			errs = append(errs, fmt.Sprintf("FLAGFISH_AUTH_RATE_LIMIT=%d must be positive", n))
-		default:
-			env.AuthRateLimit = n
-		}
+	// A failure budget above the total budget can never bite, which silently removes the spray
+	// guard and leaves an operator believing they configured one.
+	if env.AuthIPFailureLimit > env.AuthIPRateLimit {
+		errs = append(errs, fmt.Sprintf(
+			"FLAGFISH_AUTH_IP_FAILURE_LIMIT=%d exceeds FLAGFISH_AUTH_IP_RATE_LIMIT=%d, so it can never apply",
+			env.AuthIPFailureLimit, env.AuthIPRateLimit,
+		))
 	}
 
 	env.RateWindow = time.Minute
@@ -289,6 +291,28 @@ func redactDSN(dsn string) string {
 		}
 	}
 	return u.String()
+}
+
+// budgetEnv reads one rate-limit budget, appending to errs rather than returning early so a
+// misconfigured deploy reports every bad value at once.
+//
+// Zero is rejected along with the negatives: it would mean "deny everything", which is never what
+// an operator means by setting a rate limit — it is how you fat-finger the whole site offline.
+func budgetEnv(key string, fallback int, errs *[]string) int {
+	raw := firstSet(key)
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	switch {
+	case err != nil:
+		*errs = append(*errs, fmt.Sprintf("%s=%q is not an integer", key, raw))
+	case n <= 0:
+		*errs = append(*errs, fmt.Sprintf("%s=%d must be positive", key, n))
+	default:
+		return n
+	}
+	return fallback
 }
 
 func firstSet(keys ...string) string {

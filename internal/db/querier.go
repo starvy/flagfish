@@ -848,6 +848,11 @@ type Querier interface {
 	// Replay on connect: newest first, capped, so a client that just opened the stream is caught up
 	// without paging. The caller emits them oldest-first.
 	RecentNotifications(ctx context.Context, lim int32) ([]Notification, error)
+	// Gives one bump back, atomically. The credential budgets are taken before the handler runs and
+	// returned when the attempt turns out to have been legitimate, so they count failures without ever
+	// reading-then-writing. GREATEST floors it: a refund whose bump landed in the previous window
+	// (the request straddled the boundary) must not drive a live counter negative.
+	RefundRateLimit(ctx context.Context, arg RefundRateLimitParams) error
 	// A revoke is a real DELETE, never a mutation of a ledger row: scoreboard time-travel replays the
 	// ledger, so a revoked adjustment must read as never-having-happened, not as a rewritten fact. The
 	// WHERE type='standard' inside the delete is the guard — a hint_unlock or first_blood award is a

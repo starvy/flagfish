@@ -65,6 +65,11 @@ type Limiter interface {
 	// Allow bumps the counter for key and reports whether the caller is still under the
 	// limit. It is expected to be atomic, and to fail closed.
 	Allow(ctx context.Context, key string) (bool, error)
+
+	// Refund returns one bump taken by Allow. The credential budgets spend before the handler
+	// runs and refund when the attempt proves legitimate, which is how they count failures
+	// without ever reading a counter they are about to write.
+	Refund(ctx context.Context, key string) error
 }
 
 // NoLimit allows everything. Fine in a dev loop; the router warns at boot when it is in
@@ -73,3 +78,5 @@ type Limiter interface {
 type NoLimit struct{}
 
 func (NoLimit) Allow(context.Context, string) (bool, error) { return true, nil }
+
+func (NoLimit) Refund(context.Context, string) error { return nil }

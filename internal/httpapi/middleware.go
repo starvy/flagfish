@@ -1,13 +1,16 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"mime"
 	"net"
@@ -470,6 +473,23 @@ func safeMethod(m string) bool {
 	return false
 }
 
+// limiters are the budgets the chain enforces. The general one covers every route; the other three
+// replace it on the credential routes, where per-source counting is the wrong control (see
+// credentialLimit). All four are nil-tolerant: a credential route falls back to the general limiter
+// when the credential set is not wired, so a partial wiring is tighter, never looser.
+type limiters struct {
+	general Limiter
+
+	// target, failure and flood are the credential budgets, in the order they are spent.
+	target  Limiter // failed attempts against one account or token
+	failure Limiter // failed attempts from one source address
+	flood   Limiter // all credential attempts from one source address
+}
+
+func (l limiters) credentialsWired() bool {
+	return l.target != nil && l.failure != nil && l.flood != nil
+}
+
 // rateLimit keys on the account when we know it, and on the client IP when we do
 // not — so an anonymous flood is limited per-source and an authenticated one
 // per-account, which is what you want when a single team is behind one NAT. The other half of the
@@ -479,17 +499,29 @@ func safeMethod(m string) bool {
 // trusted. Untrusted, every request behind that proxy keys on the proxy's own address and the
 // anonymous bucket becomes global — one stranger can then rate-limit /login for everyone. That
 // misconfiguration is warned about loudly at boot and on the first forwarded request.
-func rateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
+//
+// The credential routes are the exception and are handed to credentialLimit instead: an anonymous
+// per-source budget is exactly what they must not have.
+func rateLimit(routes chi.Routes, l limiters, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			pr := AuthOf(r.Context()).Principal
+			rctx := chi.NewRouteContext()
+			matched := routes.Match(rctx, r.Method, routedPath(r))
 
+			if matched && l.credentialsWired() {
+				if cred, ok := credentialRoutes[r.Method+" "+rctx.RoutePattern()]; ok {
+					credentialLimit(w, r, next, l, cred, r.Method+" "+rctx.RoutePattern(), log)
+					return
+				}
+			}
+
+			pr := AuthOf(r.Context()).Principal
 			key := "ip:" + clientKey(r)
 			if pr.Authed {
 				key = fmt.Sprintf("account:%d", pr.AccountID)
 			}
 
-			ok, err := l.Allow(r.Context(), key+":"+bucketRoute(routes, r))
+			ok, err := l.general.Allow(r.Context(), key+":"+bucketRoute(matched, rctx, r))
 			if err != nil {
 				// A limiter that cannot answer must not become an open door.
 				log.ErrorContext(r.Context(), "rate limiter failed", "error", err)
@@ -505,56 +537,172 @@ func rateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Handler
 	}
 }
 
-// credentialRoutes are the brute-force-sensitive routes: password guessing (login), account-spray
-// (register), and reset-token guessing. They earn a second, tighter budget on top of the general
-// limiter, so a guessing flood trips long before the general per-route budget would. Keyed by
-// "METHOD "+the matched route pattern — the same canonical route the general limiter buckets on,
-// never the raw path.
-var credentialRoutes = map[string]bool{
-	http.MethodPost + " /api/v1/login":           true,
-	http.MethodPost + " /api/v1/register":        true,
-	http.MethodPost + " /api/v1/reset-password":  true,
-	http.MethodPatch + " /api/v1/reset-password": true,
-	http.MethodPost + " /api/v1/verify/confirm":  true,
+// credentialRoute says how one brute-force-sensitive route is limited.
+type credentialRoute struct {
+	// field is the body field naming what the request is aimed at: an account ("email") or a
+	// secret ("token").
+	field string
+
+	// refundable says the response distinguishes a legitimate attempt from a failed one, so the
+	// two failure budgets can be spent up front and handed back on success. A route that answers
+	// the same thing either way must not be refundable — the refund would make it unmetered.
+	refundable bool
 }
 
-// authRateLimit imposes a tighter budget on the credential routes and passes everything else
-// straight through. It runs after the general rateLimit, not instead of it: the general limiter is
-// unchanged and still applies: this only adds a lower ceiling where brute force lives. The bucket
-// is namespaced ("auth:") so it never shares a row with the general limiter, and keyed on the
-// caller and the canonical route exactly as the general limiter is.
-func authRateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			path := r.URL.RawPath // match chi's own routing: it routes on RawPath when the path had escapes
-			if path == "" {
-				path = r.URL.Path
-			}
-			rctx := chi.NewRouteContext()
-			if !routes.Match(rctx, r.Method, path) || !credentialRoutes[r.Method+" "+rctx.RoutePattern()] {
-				next.ServeHTTP(w, r)
-				return
-			}
+// credentialRoutes are the brute-force-sensitive routes: password guessing (login), account spray
+// and address probing (register), reset-request flooding, and reset- or verification-token
+// guessing. Keyed by "METHOD "+the matched route pattern — the canonical route, never the raw path.
+//
+// POST /reset-password is the one non-refundable entry, and deliberately: it answers 200 to an
+// unknown address on purpose, so there is no failure to detect, and refunding every 200 would leave
+// nothing between a stranger and an unbounded run of reset emails to addresses they are guessing at.
+var credentialRoutes = map[string]credentialRoute{
+	http.MethodPost + " /api/v1/login":           {field: "email", refundable: true},
+	http.MethodPost + " /api/v1/register":        {field: "email", refundable: true},
+	http.MethodPost + " /api/v1/reset-password":  {field: "email"},
+	http.MethodPatch + " /api/v1/reset-password": {field: "token", refundable: true},
+	http.MethodPost + " /api/v1/verify/confirm":  {field: "token", refundable: true},
+}
 
-			pr := AuthOf(r.Context()).Principal
-			key := "ip:" + clientKey(r)
-			if pr.Authed {
-				key = fmt.Sprintf("account:%d", pr.AccountID)
-			}
-
-			ok, err := l.Allow(r.Context(), "auth:"+key+":"+r.Method+" "+rctx.RoutePattern())
-			if err != nil {
-				log.ErrorContext(r.Context(), "auth rate limiter failed", "error", err)
-				problem(w, http.StatusServiceUnavailable, "unavailable", "rate limiter unavailable")
-				return
-			}
-			if !ok {
-				problem(w, http.StatusTooManyRequests, "rate-limited", "too many requests")
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
+// credentialLimit enforces the credential budgets, which are keyed on three different axes because
+// no single one of them is a brute-force control.
+//
+// A per-source counter is the intuitive choice and the wrong one twice over. Teams share one public
+// address — a university NAT, a venue's wifi — so a budget tight enough to blunt guessing locks out
+// a whole room at the start of an event, and an attacker who wants more than that budget rents a
+// second address. So the strict budget is keyed on what is actually under attack: the account named
+// by the submitted email, or the submitted token. Guessing one account is then throttled no matter
+// how many addresses the guesses arrive from, and a hundred distinct players behind one address
+// never contend at all.
+//
+// The source address keeps two budgets anyway. A strict one on failures, which is the only thing
+// that sees a spray of one guess each against a thousand accounts, and which a room full of players
+// typing their own passwords correctly never touches because a success is refunded. And a generous
+// one on everything, because a password verification is deliberately expensive and the number of
+// times a stranger may make us perform one has to be bounded regardless.
+//
+// Every denial is the same 429 with the same body whatever the key was, and the key is a hash of
+// the submitted value rather than a lookup: nothing here can tell a caller whether an account
+// exists.
+func credentialLimit(
+	w http.ResponseWriter, r *http.Request, next http.Handler,
+	l limiters, cred credentialRoute, route string, log *slog.Logger,
+) {
+	body, err := readAndRestoreBody(r)
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			problem(w, http.StatusRequestEntityTooLarge, "body-too-large", "request body is too large")
+			return
+		}
+		log.WarnContext(r.Context(), "credential request body could not be read", "error", err)
+		problem(w, http.StatusBadRequest, "bad-request", "could not read the request body")
+		return
 	}
+
+	ip := clientKey(r)
+	// A request that names no target keys on its source instead, or omitting the field would be
+	// the bypass: one bucket per attacker rather than one shared by everybody who forgot it.
+	targetKey := "auth:target:ip:" + ip + ":" + route
+	if t, ok := credentialTarget(body, cred.field); ok {
+		targetKey = "auth:target:" + cred.field + ":" + t + ":" + route
+	}
+
+	spend := func(ctx context.Context, lim Limiter, key string) bool {
+		ok, aerr := lim.Allow(ctx, key)
+		switch {
+		case aerr != nil:
+			// A limiter that cannot answer must not become an open door.
+			log.ErrorContext(ctx, "credential rate limiter failed", "error", aerr)
+			problem(w, http.StatusServiceUnavailable, "unavailable", "rate limiter unavailable")
+		case !ok:
+			log.WarnContext(ctx, "credential request rate-limited", "route", route, "ip", ip)
+			problem(w, http.StatusTooManyRequests, "rate-limited", "too many requests")
+		}
+		return ok && aerr == nil
+	}
+
+	ctx := r.Context()
+	floodKey, failureKey := "auth:flood:ip:"+ip, "auth:fail:ip:"+ip
+	if !spend(ctx, l.flood, floodKey) {
+		return
+	}
+	if !spend(ctx, l.failure, failureKey) {
+		return
+	}
+	if !spend(ctx, l.target, targetKey) {
+		return
+	}
+
+	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	next.ServeHTTP(sw, r)
+
+	// The two failure budgets were spent before the outcome was known. A handler that did not
+	// reject the caller proves the attempt was legitimate, so give them back — this is what keeps
+	// a shared address free for players who log in successfully.
+	if !cred.refundable || sw.status >= http.StatusBadRequest {
+		return
+	}
+	for _, ref := range []struct {
+		l   Limiter
+		key string
+	}{{l.failure, failureKey}, {l.target, targetKey}} {
+		if rerr := ref.l.Refund(ctx, ref.key); rerr != nil {
+			// The response is already written and the caller was let through. A lost refund only
+			// costs them one unit of budget, so it is logged, not escalated.
+			log.ErrorContext(ctx, "credential rate limit refund failed", "error", rerr, "route", route)
+		}
+	}
+}
+
+// maxCredentialBodyBytes bounds what credentialLimit will buffer to find the target. The outer
+// limitBody cap is sized for uploads; a login body that needs more than this is not a login.
+const maxCredentialBodyBytes int64 = 64 << 10
+
+// readAndRestoreBody drains the body so the limiter can read the submitted email or token, then
+// puts it back for the handler that has not run yet.
+func readAndRestoreBody(r *http.Request) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxCredentialBodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("read credential body: %w", err)
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return body, nil
+}
+
+// credentialTarget hashes what the request is aimed at, so the strict budget can be keyed on it.
+//
+// The hash is not obfuscation — an operator reading the database can already read every address in
+// the users table. It is there so the rate-limit key is fixed-width and so one spelling of an
+// address cannot mint a fresh budget: the fold is lower-case, matching the fold the account lookup
+// and the uniqueness constraint use. A token is taken verbatim, being case-sensitive.
+func credentialTarget(body []byte, field string) (string, bool) {
+	var probe struct {
+		Email string `json:"email"`
+		Token string `json:"token"`
+	}
+	if json.Unmarshal(body, &probe) != nil {
+		return "", false
+	}
+
+	value := probe.Token
+	if field == "email" {
+		value = strings.ToLower(strings.TrimSpace(probe.Email))
+	}
+	if value == "" {
+		return "", false
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:16]), true
+}
+
+// routedPath is the path chi itself routes on: RawPath when the path carried escapes, Path
+// otherwise. Matching on anything else means bucketing a request against a route it did not take.
+func routedPath(r *http.Request) string {
+	if r.URL.RawPath != "" {
+		return r.URL.RawPath
+	}
+	return r.URL.Path
 }
 
 // bucketRoute names the route a request is limited against: the matched route pattern, plus its
@@ -567,19 +715,13 @@ func authRateLimit(routes chi.Routes, l Limiter, log *slog.Logger) func(http.Han
 // challenges the limiter is the only thing standing between a script and the flag.
 //
 // The pattern is not available from the request's own RouteContext here: this middleware runs on the
-// group, where chi has routed no further than the /api/v1/* mount. So the router is asked to resolve
-// the route itself, which is the same radix lookup it is about to do anyway.
+// group, where chi has routed no further than the /api/v1/* mount. So the caller resolves the route
+// itself, which is the same radix lookup chi is about to do anyway, and hands the result in.
 //
 // A path that matches no route shares one bucket per caller. Otherwise every request to a made-up
 // path mints a rate_limits row that nothing will ever read again.
-func bucketRoute(routes chi.Routes, r *http.Request) string {
-	path := r.URL.RawPath // chi routes on RawPath when the path had escapes; match it exactly
-	if path == "" {
-		path = r.URL.Path
-	}
-
-	rctx := chi.NewRouteContext()
-	if !routes.Match(rctx, r.Method, path) {
+func bucketRoute(matched bool, rctx *chi.Context, r *http.Request) string {
+	if !matched {
 		return r.Method + ":<unrouted>"
 	}
 
