@@ -25,6 +25,11 @@ SELECT u.id, u.name, u.website, u.affiliation, u.country, u.created_at,
 -- Only visible challenges are listed: the total score sums the whole ledger (matching the board), but
 -- naming a hidden challenge here would leak its existence, so the itemised history hides it just as
 -- the per-challenge solve list does.
+--
+-- Bounded to the most recent page: this is embedded in a public profile document, not a paged feed,
+-- and the headline score is summed separately over the whole ledger — so the cap trims only the tail
+-- of the history view, never the total. Without it a heavy solver's page is a slow query and a
+-- one-request scrape at a large event.
 SELECT c.id AS challenge_id, c.name AS challenge_name, c.category,
        s.value::int AS value, s.date
   FROM solves s
@@ -32,4 +37,5 @@ SELECT c.id AS challenge_id, c.name AS challenge_name, c.category,
  WHERE s.user_id = @user_id
    AND c.state = 'visible'
    AND (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
- ORDER BY s.date DESC, s.id DESC;
+ ORDER BY s.date DESC, s.id DESC
+ LIMIT 100;

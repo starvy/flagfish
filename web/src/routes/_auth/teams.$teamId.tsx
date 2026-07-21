@@ -72,6 +72,10 @@ function TeamProfilePage() {
   const history = useQuery(scoreHistoryQuery(teamId));
   const members = team.data?.members ?? [];
   const solves = solvesOf(team.data);
+  // A null score is the server withholding it: score_visibility hides the figures while the roster
+  // (who is on the team) stays visible. Each member's points/solve_count come back null too, and the
+  // score-over-time endpoint is gated the same way, so there is nothing to chart.
+  const scoresHidden = team.data?.score === null;
 
   const columns: Column<Member>[] = [
     {
@@ -90,7 +94,7 @@ function TeamProfilePage() {
       header: "solves",
       align: "right",
       width: "7rem",
-      cell: (m) => m.solve_count,
+      cell: (m) => m.solve_count ?? "—",
     },
     {
       key: "points",
@@ -98,7 +102,7 @@ function TeamProfilePage() {
       align: "right",
       width: "8rem",
       className: "ff-board__score",
-      cell: (m) => m.points,
+      cell: (m) => m.points ?? "—",
     },
   ];
 
@@ -118,7 +122,9 @@ function TeamProfilePage() {
           <>
             <div className="ff-team-head">
               <h2>{team.data.name}</h2>
-              <span className="ff-team-score">{team.data.score} pts</span>
+              <span className="ff-team-score">
+                {scoresHidden ? <Badge tone="neutral">scores hidden</Badge> : `${team.data.score} pts`}
+              </span>
             </div>
 
             <div className="ff-team-meta">
@@ -135,9 +141,18 @@ function TeamProfilePage() {
             </div>
 
             <div className="ff-stack">
-              <Card title="Score over time">
-                <ScoreChart points={history.data?.points ?? []} subject={team.data.name} />
-              </Card>
+              {scoresHidden ? (
+                <Card title="Score">
+                  <EmptyState
+                    title="Scores are hidden"
+                    description="This instance is not publishing scores right now. The roster is below."
+                  />
+                </Card>
+              ) : (
+                <Card title="Score over time">
+                  <ScoreChart points={history.data?.points ?? []} subject={team.data.name} />
+                </Card>
+              )}
 
               <DataTable
                 columns={columns}

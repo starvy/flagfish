@@ -255,7 +255,9 @@ function MemberView({ team, userId }: { team: Team; userId: number | undefined }
   const [disbanding, setDisbanding] = useState(false);
 
   const members = team.members ?? [];
-  const solves = members.reduce((n, m) => n + m.solve_count, 0);
+  // The own-team view is never score-redacted — a team always sees its own figures — so the nullable
+  // wire fields are non-null here; the fallbacks only satisfy the shared type.
+  const solves = members.reduce((n, m) => n + (m.solve_count ?? 0), 0);
   // Points are attributed to the account at solve time, so leaving cannot rewrite history —
   // which is exactly why the server refuses to let a scored team shed a member or be disbanded.
   const locked = solves > 0;
@@ -273,8 +275,8 @@ function MemberView({ team, userId }: { team: Team; userId: number | undefined }
         </span>
       ),
     },
-    { key: "solves", header: "Solves", align: "right", width: "8rem", cell: (m) => m.solve_count },
-    { key: "points", header: "Points", align: "right", width: "8rem", cell: (m) => m.points },
+    { key: "solves", header: "Solves", align: "right", width: "8rem", cell: (m) => m.solve_count ?? 0 },
+    { key: "points", header: "Points", align: "right", width: "8rem", cell: (m) => m.points ?? 0 },
     // The captain gets per-member controls. The buttons are a convenience: every one of these
     // writes is refused server-side for anyone but the captain, so nothing here is a security gate.
     ...(isCaptain
@@ -311,7 +313,7 @@ function MemberView({ team, userId }: { team: Team; userId: number | undefined }
       <div className="page-head">
         <h1>{team.name}</h1>
         <span className="muted">
-          {team.score} points · created <RelativeTime value={team.created_at} />
+          {team.score ?? 0} points · created <RelativeTime value={team.created_at} />
         </span>
       </div>
 

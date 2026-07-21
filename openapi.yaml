@@ -1195,7 +1195,9 @@ components:
           type: string
         score:
           format: int64
-          type: integer
+          type:
+            - integer
+            - "null"
         website:
           type: string
       required:
@@ -1214,10 +1216,14 @@ components:
           type: string
         points:
           format: int64
-          type: integer
+          type:
+            - integer
+            - "null"
         solve_count:
           format: int64
-          type: integer
+          type:
+            - integer
+            - "null"
         user_id:
           format: int64
           type: integer
@@ -1382,7 +1388,9 @@ components:
           type: string
         score:
           format: int64
-          type: integer
+          type:
+            - integer
+            - "null"
         solves:
           items:
             $ref: "#/components/schemas/ProfileSolveBody"

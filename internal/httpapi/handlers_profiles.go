@@ -27,16 +27,18 @@ type profileSolveBody struct {
 // userProfileBody is a user's public page. It carries no contact address and no moderation state:
 // the query that fills it never selects them.
 type userProfileBody struct {
-	ID          int64              `json:"id"`
-	Name        string             `json:"name"`
-	Website     *string            `json:"website,omitempty"`
-	Affiliation *string            `json:"affiliation,omitempty"`
-	Country     *string            `json:"country,omitempty"`
-	BracketID   *int64             `json:"bracket_id,omitempty"`
-	BracketName *string            `json:"bracket_name,omitempty"`
-	Score       int64              `json:"score"`
-	CreatedAt   time.Time          `json:"created_at"`
-	Solves      []profileSolveBody `json:"solves"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Website     *string `json:"website,omitempty"`
+	Affiliation *string `json:"affiliation,omitempty"`
+	Country     *string `json:"country,omitempty"`
+	BracketID   *int64  `json:"bracket_id,omitempty"`
+	BracketName *string `json:"bracket_name,omitempty"`
+	// Score is null — not absent, not 0 — when scores are hidden from this viewer. The account
+	// still resolves (name, affiliation); only the figure is withheld.
+	Score     *int64             `json:"score"`
+	CreatedAt time.Time          `json:"created_at"`
+	Solves    []profileSolveBody `json:"solves"`
 }
 
 type userProfileOutput struct {
@@ -54,8 +56,9 @@ func (s *Server) registerProfiles() {
 // exactly as the board and the team page do. The admin flag only widens the row to a hidden or banned
 // account — it is the sole difference between a 404 and a 200 for one of those.
 func (s *Server) userDetail(ctx context.Context, in *userIDInput) (*userProfileOutput, error) {
+	pol := PolicyOf(ctx)
 	admin := AuthOf(ctx).Principal.IsAdmin
-	p, err := s.opts.Accounts.UserProfile(ctx, in.ID, admin, freezeCutoff(PolicyOf(ctx)))
+	p, err := s.opts.Accounts.UserProfile(ctx, in.ID, admin, freezeCutoff(pol))
 	switch {
 	case errors.Is(err, accounts.ErrUserNotFound):
 		return nil, huma.Error404NotFound("user not found")
@@ -64,11 +67,28 @@ func (s *Server) userDetail(ctx context.Context, in *userIDInput) (*userProfileO
 		return nil, huma.Error500InternalServerError("could not load the profile")
 	}
 
-	solves := make([]profileSolveBody, 0, len(p.Solves))
-	for _, sv := range p.Solves {
-		solves = append(solves, profileSolveBody{
+	// score_visibility governs the figures, not the existence of the page — the account-visibility
+	// gate above already decided the latter. So the score and the solve history are redacted here
+	// rather than hidden by a route gate, which would turn "scores are hidden" into a 404.
+	red := policy.NewRedactor(pol)
+
+	score := p.Score
+	af := policy.AccountFields{Score: &score}
+	red.Account(&af)
+
+	entries := make([]policy.ProfileSolveEntry, len(p.Solves))
+	for i, sv := range p.Solves {
+		entries[i] = policy.ProfileSolveEntry{
 			ChallengeID: sv.ChallengeID, ChallengeName: sv.ChallengeName,
 			Category: sv.Category, Value: sv.Value, Date: sv.Date,
+		}
+	}
+	shown := red.ProfileSolveList(entries)
+	solves := make([]profileSolveBody, 0, len(shown))
+	for _, e := range shown {
+		solves = append(solves, profileSolveBody{
+			ChallengeID: e.ChallengeID, ChallengeName: e.ChallengeName,
+			Category: e.Category, Value: e.Value, Date: e.Date,
 		})
 	}
 
@@ -76,7 +96,7 @@ func (s *Server) userDetail(ctx context.Context, in *userIDInput) (*userProfileO
 		ID: p.ID, Name: p.Name,
 		Website: p.Website, Affiliation: p.Affiliation, Country: p.Country,
 		BracketID: p.BracketID, BracketName: p.BracketName,
-		Score: p.Score, CreatedAt: p.CreatedAt, Solves: solves,
+		Score: af.Score, CreatedAt: p.CreatedAt, Solves: solves,
 	}}
 	return out, nil
 }

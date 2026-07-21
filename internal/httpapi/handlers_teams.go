@@ -44,11 +44,13 @@ type teamIDInput struct {
 }
 
 type teamMember struct {
-	UserID     int64  `json:"user_id"`
-	Name       string `json:"name"`
-	Captain    bool   `json:"captain"`
-	SolveCount int64  `json:"solve_count"`
-	Points     int64  `json:"points"`
+	UserID  int64  `json:"user_id"`
+	Name    string `json:"name"`
+	Captain bool   `json:"captain"`
+	// SolveCount and Points are null — not absent, not 0 — when scores are hidden from this viewer.
+	// The member still appears; only their contribution to the team's total is withheld.
+	SolveCount *int64 `json:"solve_count"`
+	Points     *int64 `json:"points"`
 }
 
 // teamBody is flat on purpose: Huma does not promote anonymously embedded struct fields, so a
@@ -58,14 +60,16 @@ type teamBody struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	// Email appears only on the own-team view; the public profile query never selects it.
-	Email       *string      `json:"email,omitempty"`
-	Website     *string      `json:"website,omitempty"`
-	Affiliation *string      `json:"affiliation,omitempty"`
-	Country     *string      `json:"country,omitempty"`
-	Score       int64        `json:"score"`
-	CreatedAt   time.Time    `json:"created_at"`
-	IsCaptain   bool         `json:"is_captain,omitempty"`
-	Members     []teamMember `json:"members"`
+	Email       *string `json:"email,omitempty"`
+	Website     *string `json:"website,omitempty"`
+	Affiliation *string `json:"affiliation,omitempty"`
+	Country     *string `json:"country,omitempty"`
+	// Score is null — not absent, not 0 — when scores are hidden from this viewer. The own-team
+	// view never redacts, so it is always present there.
+	Score     *int64       `json:"score"`
+	CreatedAt time.Time    `json:"created_at"`
+	IsCaptain bool         `json:"is_captain,omitempty"`
+	Members   []teamMember `json:"members"`
 }
 
 type teamOutput struct {
@@ -136,18 +140,38 @@ func (s *Server) callerActor(ctx context.Context) audit.Actor {
 	return audit.Actor{ID: AuthOf(ctx).Principal.UserID, IP: clientIPOf(ctx)}
 }
 
+// teamBodyOf builds the full, unredacted body — every figure present. The public route redacts on
+// top of it (redactTeamScores); the own-team views serve it as is, because a team always sees its
+// own totals.
 func teamBodyOf(t accounts.Team) teamBody {
 	members := make([]teamMember, 0, len(t.Members))
 	for _, m := range t.Members {
+		solveCount, points := m.SolveCount, m.Points
 		members = append(members, teamMember{
 			UserID: m.UserID, Name: m.Name, Captain: m.Captain,
-			SolveCount: m.SolveCount, Points: m.Points,
+			SolveCount: &solveCount, Points: &points,
 		})
 	}
+	score := t.Score
 	return teamBody{
 		ID: t.ID, Name: t.Name, Email: t.Email,
 		Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,
-		Score: t.Score, CreatedAt: t.CreatedAt, IsCaptain: t.IsCaptain, Members: members,
+		Score: &score, CreatedAt: t.CreatedAt, IsCaptain: t.IsCaptain, Members: members,
+	}
+}
+
+// redactTeamScores withholds the team total and every member's contribution when scores are hidden
+// from this viewer, leaving the roster identity intact. It mirrors the user profile: a score-hide
+// withholds figures, it does not hide the team's existence — that is the account-visibility gate's job.
+func redactTeamScores(red policy.Redactor, body *teamBody) {
+	af := policy.AccountFields{Score: body.Score}
+	red.Account(&af)
+	body.Score = af.Score
+
+	for i := range body.Members {
+		mc := policy.MemberContribution{Points: body.Members[i].Points, SolveCount: body.Members[i].SolveCount}
+		red.TeamMember(&mc)
+		body.Members[i].Points, body.Members[i].SolveCount = mc.Points, mc.SolveCount
 	}
 }
 
@@ -223,7 +247,8 @@ func (s *Server) joinTeam(ctx context.Context, in *joinTeamInput) (*teamOutput, 
 // teamDetail is a public scoreboard row with a roster attached, so it clamps to the freeze exactly
 // as the board does. myTeam below does not: an account's own live score is the deliberate exception.
 func (s *Server) teamDetail(ctx context.Context, in *teamIDInput) (*teamOutput, error) {
-	t, err := s.opts.Accounts.TeamProfile(ctx, in.ID, freezeCutoff(PolicyOf(ctx)))
+	pol := PolicyOf(ctx)
+	t, err := s.opts.Accounts.TeamProfile(ctx, in.ID, freezeCutoff(pol))
 	switch {
 	case errors.Is(err, accounts.ErrTeamNotFound):
 		return nil, huma.Error404NotFound("team not found")
@@ -231,7 +256,9 @@ func (s *Server) teamDetail(ctx context.Context, in *teamIDInput) (*teamOutput, 
 		s.opts.Log.ErrorContext(ctx, "team profile failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load the team")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	body := teamBodyOf(t)
+	redactTeamScores(policy.NewRedactor(pol), &body)
+	return &teamOutput{Body: body}, nil
 }
 
 func (s *Server) myTeam(ctx context.Context, _ *struct{}) (*teamOutput, error) {

@@ -51,8 +51,10 @@ func visible(v Vis, pr Principal) bool {
 // A scoreboard that reports a redacted score as 0 is not redacted, it is wrong,
 // and it is wrong in a way that looks plausible. This is the exact failure class
 // sqlc was chosen to avoid, and the pointer is what makes it unrepresentable.
+//
+// Score is int64 because a total is a bigint everywhere it is summed.
 type AccountFields struct {
-	Score *int
+	Score *int64
 	Place *int
 }
 
@@ -101,4 +103,44 @@ func (r Redactor) ChallengeSolveList(solves []SolveEntry) []SolveEntry {
 		return solves
 	}
 	return nil
+}
+
+// A ProfileSolveEntry is one row of an account's own solved-challenge history: which challenge, for
+// how much, when.
+type ProfileSolveEntry struct {
+	ChallengeID   int64
+	ChallengeName string
+	Category      string
+	Value         int32
+	Date          time.Time
+}
+
+// ProfileSolveList withholds an account's solve history when scores are not visible to the viewer.
+//
+// The conjunction ChallengeSolveList applies is not needed here: a profile only reaches this point
+// once the account-visibility gate has let the viewer through, so accounts are visible by
+// construction and the one open question is whether scores are. Withholding is omission for the
+// same reason it is there — the length of the list is a solve count, so anonymised or timestamped
+// rows beside a nulled score would hand that number back by difference.
+func (r Redactor) ProfileSolveList(solves []ProfileSolveEntry) []ProfileSolveEntry {
+	if r.ScoresVisible {
+		return solves
+	}
+	return nil
+}
+
+// A MemberContribution is a team member's scoring line on the public roster: the points they earned
+// and the solves they landed. Both are nullable on the wire — a withheld figure is null, never 0.
+type MemberContribution struct {
+	Points     *int64
+	SolveCount *int64
+}
+
+// TeamMember nulls a member's scoring line when scores are not visible. Who is on the team is roster
+// identity, governed by account visibility and left intact; the per-member figures are the team's
+// total broken down, so they ride score visibility exactly as the team's own total does.
+func (r Redactor) TeamMember(c *MemberContribution) {
+	if !r.ScoresVisible {
+		c.Points, c.SolveCount = nil, nil
+	}
 }

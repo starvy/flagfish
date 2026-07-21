@@ -351,7 +351,7 @@ func TestOwnScoreLiveUnderFreezeAndHiddenScores(t *testing.T) {
 		t.Fatal("score_visibility=hidden means scores are not visible, even to build the redactor")
 	}
 
-	score, place := 1337, 4
+	score, place := int64(1337), 4
 	f := policy.AccountFields{Score: &score, Place: &place}
 	r.Self(&f)
 

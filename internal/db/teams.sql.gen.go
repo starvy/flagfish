@@ -267,6 +267,10 @@ SELECT u.id, u.name,
  WHERE u.team_id = $2
    AND ($3::boolean OR (u.hidden = false AND u.banned = false))
  ORDER BY u.id
+ -- Defence in depth: a roster is already bounded by the team_size cap at enrollment, so this trims
+ -- nothing a real team can reach. It exists so the query is bounded by its own text, not by trust in
+ -- a config value, on a route any player can hit.
+ LIMIT 1000
 `
 
 type ListTeamMembersParams struct {

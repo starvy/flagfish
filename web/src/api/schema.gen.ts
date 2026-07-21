@@ -1234,16 +1234,16 @@ export interface components {
             members: components["schemas"]["TeamMember"][] | null;
             name: string;
             /** Format: int64 */
-            score: number;
+            score: number | null;
             website?: string;
         };
         TeamMember: {
             captain: boolean;
             name: string;
             /** Format: int64 */
-            points: number;
+            points: number | null;
             /** Format: int64 */
-            solve_count: number;
+            solve_count: number | null;
             /** Format: int64 */
             user_id: number;
         };
@@ -1324,7 +1324,7 @@ export interface components {
             id: number;
             name: string;
             /** Format: int64 */
-            score: number;
+            score: number | null;
             solves: components["schemas"]["ProfileSolveBody"][] | null;
             website?: string;
         };

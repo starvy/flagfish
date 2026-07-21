@@ -778,6 +778,11 @@ type Querier interface {
 	// Only visible challenges are listed: the total score sums the whole ledger (matching the board), but
 	// naming a hidden challenge here would leak its existence, so the itemised history hides it just as
 	// the per-challenge solve list does.
+	//
+	// Bounded to the most recent page: this is embedded in a public profile document, not a paged feed,
+	// and the headline score is summed separately over the whole ledger — so the cap trims only the tail
+	// of the history view, never the total. Without it a heavy solver's page is a slow query and a
+	// one-request scrape at a large event.
 	ListUserSolves(ctx context.Context, arg ListUserSolvesParams) ([]ListUserSolvesRow, error)
 	// Authentication: sessions, API tokens, and the one query that resolves a caller to a Principal.
 	// THE authentication query. Sessions and API tokens both converge here before any

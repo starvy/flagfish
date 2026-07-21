@@ -27,6 +27,10 @@ function UserProfilePage() {
   const history = useQuery(scoreHistoryQuery(userId));
   const solves = profile.data?.solves ?? [];
   const isSelf = me.user_id === userId;
+  // A null score is the server withholding it: score_visibility hides the figures while leaving the
+  // account itself visible. The score-over-time endpoint is gated the same way and simply 404s, so
+  // there is nothing to chart either.
+  const scoresHidden = profile.data?.score === null;
 
   return (
     <>
@@ -49,7 +53,9 @@ function UserProfilePage() {
                   {isSelf && <Badge tone="accent">you</Badge>}
                 </span>
               </h2>
-              <span className="ff-team-score">{profile.data.score} pts</span>
+              <span className="ff-team-score">
+                {scoresHidden ? <Badge tone="neutral">scores hidden</Badge> : `${profile.data.score} pts`}
+              </span>
             </div>
 
             <div className="ff-team-meta">
@@ -68,34 +74,45 @@ function UserProfilePage() {
               </span>
             </div>
 
-            <Card title="Score over time">
-              <ScoreChart points={history.data?.points ?? []} subject={profile.data.name} />
-            </Card>
-
-            <Card title="Solves">
-              {solves.length === 0 ? (
+            {scoresHidden ? (
+              <Card title="Score">
                 <EmptyState
-                  title="No solves yet"
-                  description="The first flag this player lands shows up here."
+                  title="Scores are hidden"
+                  description="This instance is not publishing scores or solve history right now."
                 />
-              ) : (
-                <ol className="ff-timeline">
-                  {solves.map((s) => (
-                    <li key={`${s.challenge_id}-${s.date}`} className="ff-timeline__item">
-                      <Link
-                        to="/challenges/$challengeId"
-                        params={{ challengeId: s.challenge_id }}
-                        className="ff-timeline__name"
-                      >
-                        {s.challenge_name}
-                      </Link>
-                      <span className="ff-timeline__value muted">{s.value} pts</span>
-                      <RelativeTime value={s.date} className="ff-timeline__when" />
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </Card>
+              </Card>
+            ) : (
+              <>
+                <Card title="Score over time">
+                  <ScoreChart points={history.data?.points ?? []} subject={profile.data.name} />
+                </Card>
+
+                <Card title="Solves">
+                  {solves.length === 0 ? (
+                    <EmptyState
+                      title="No solves yet"
+                      description="The first flag this player lands shows up here."
+                    />
+                  ) : (
+                    <ol className="ff-timeline">
+                      {solves.map((s) => (
+                        <li key={`${s.challenge_id}-${s.date}`} className="ff-timeline__item">
+                          <Link
+                            to="/challenges/$challengeId"
+                            params={{ challengeId: s.challenge_id }}
+                            className="ff-timeline__name"
+                          >
+                            {s.challenge_name}
+                          </Link>
+                          <span className="ff-timeline__value muted">{s.value} pts</span>
+                          <RelativeTime value={s.date} className="ff-timeline__when" />
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </Card>
+              </>
+            )}
           </>
         )}
       </ScreenGate>
