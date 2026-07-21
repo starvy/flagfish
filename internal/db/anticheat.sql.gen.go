@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const accountName = `-- name: AccountName :one
+SELECT coalesce(u.name, t.name, '')::text AS name
+  FROM instance i
+  LEFT JOIN users u ON i.user_mode = 'users' AND u.id = $1::bigint
+  LEFT JOIN teams t ON i.user_mode = 'teams' AND t.id = $1::bigint
+`
+
+// The display name of one scoring account, resolved by mode. Empty string when the id matches no
+// account: the report is analytics over the submissions log, not an account lookup, so a name here
+// is a courtesy for the header and its absence is not an error. instance is a singleton, so this is
+// always exactly one row.
+func (q *Queries) AccountName(ctx context.Context, accountID int64) (string, error) {
+	row := q.db.QueryRow(ctx, accountName, accountID)
+	var name string
+	err := row.Scan(&name)
+	return name, err
+}
+
 const countFlagSharingPairs = `-- name: CountFlagSharingPairs :one
 SELECT count(*) FROM (
     SELECT sub.attributed_account_id,
@@ -150,7 +168,8 @@ SELECT direction, counterparty,
        count(*)                                   AS submission_count,
        array_agg(DISTINCT challenge_id)::bigint[] AS challenge_ids,
        min(date)::timestamptz                     AS first_seen,
-       max(date)::timestamptz                     AS last_seen
+       max(date)::timestamptz                     AS last_seen,
+       max(coalesce(cu.name, ct.name, ''))::text     AS counterparty_name
   FROM (
     SELECT
         (CASE WHEN sub.attributed_account_id = $1::bigint
@@ -168,17 +187,21 @@ SELECT direction, counterparty,
        AND (sub.attributed_account_id = $1::bigint
             OR (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) = $1::bigint)
   ) e
+  CROSS JOIN instance i
+  LEFT JOIN users cu ON i.user_mode = 'users' AND cu.id = e.counterparty
+  LEFT JOIN teams ct ON i.user_mode = 'teams' AND ct.id = e.counterparty
  GROUP BY direction, counterparty
  ORDER BY submission_count DESC
 `
 
 type FindFlagSharingForAccountRow struct {
-	Direction       string
-	Counterparty    int64
-	SubmissionCount int64
-	ChallengeIds    []int64
-	FirstSeen       pgtype.Timestamptz
-	LastSeen        pgtype.Timestamptz
+	Direction        string
+	Counterparty     int64
+	SubmissionCount  int64
+	ChallengeIds     []int64
+	FirstSeen        pgtype.Timestamptz
+	LastSeen         pgtype.Timestamptz
+	CounterpartyName string
 }
 
 // One account's sharing evidence, both directions: flags issued to it that another account submitted
@@ -200,6 +223,7 @@ func (q *Queries) FindFlagSharingForAccount(ctx context.Context, accountID int64
 			&i.ChallengeIds,
 			&i.FirstSeen,
 			&i.LastSeen,
+			&i.CounterpartyName,
 		); err != nil {
 			return nil, err
 		}
@@ -218,9 +242,15 @@ SELECT sub.attributed_account_id::bigint AS issued_to,
        count(DISTINCT sub.challenge_id)                  AS challenge_count,
        array_agg(DISTINCT sub.challenge_id)::bigint[]    AS challenge_ids,
        min(sub.date)::timestamptz                        AS first_seen,
-       max(sub.date)::timestamptz                        AS last_seen
+       max(sub.date)::timestamptz                        AS last_seen,
+       max(coalesce(iu.name, it.name, ''))::text                AS issued_to_name,
+       max(coalesce(su.name, st.name, ''))::text                AS submitter_name
   FROM submissions sub
   CROSS JOIN instance i
+  LEFT JOIN users iu ON i.user_mode = 'users' AND iu.id = sub.attributed_account_id
+  LEFT JOIN teams it ON i.user_mode = 'teams' AND it.id = sub.attributed_account_id
+  LEFT JOIN users su ON i.user_mode = 'users' AND su.id = sub.user_id
+  LEFT JOIN teams st ON i.user_mode = 'teams' AND st.id = sub.team_id
  WHERE sub.type = 'correct'
    AND sub.attributed_account_id IS NOT NULL
    AND sub.attributed_account_id IS DISTINCT FROM
@@ -244,12 +274,18 @@ type FindFlagSharingPairsRow struct {
 	ChallengeIds    []int64
 	FirstSeen       pgtype.Timestamptz
 	LastSeen        pgtype.Timestamptz
+	IssuedToName    string
+	SubmitterName   string
 }
 
 // Flag sharing, folded to one row per offender pair: account `submitter` submitted correct flags that
 // were issued to account `issued_to`. Same predicate as FindFlagSharing — submissions alone, so it
 // survives instance rotation — but grouped, counted, and with the challenge span, so a pair that
 // shared twenty flags is one row of evidence, not twenty. Served by submissions_sharing_idx.
+//
+// Both account names come along resolved by mode — a name for the offender pair is the whole point
+// of the review screen. The name joins are 1:1 on the account primary key, so they do not touch the
+// counts. max() over the group is just "the one name this account has"; it never varies within a pair.
 func (q *Queries) FindFlagSharingPairs(ctx context.Context, arg FindFlagSharingPairsParams) ([]FindFlagSharingPairsRow, error) {
 	rows, err := q.db.Query(ctx, findFlagSharingPairs, arg.Off, arg.Lim)
 	if err != nil {
@@ -267,6 +303,8 @@ func (q *Queries) FindFlagSharingPairs(ctx context.Context, arg FindFlagSharingP
 			&i.ChallengeIds,
 			&i.FirstSeen,
 			&i.LastSeen,
+			&i.IssuedToName,
+			&i.SubmitterName,
 		); err != nil {
 			return nil, err
 		}
@@ -290,10 +328,13 @@ SELECT sub.ip,
        (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END)::bigint AS other_account_id,
        count(*)                   AS submission_count,
        min(sub.date)::timestamptz AS first_seen,
-       max(sub.date)::timestamptz AS last_seen
+       max(sub.date)::timestamptz AS last_seen,
+       max(coalesce(ou.name, ot.name, ''))::text AS other_account_name
   FROM submissions sub
   CROSS JOIN instance i
   JOIN mine ON mine.ip = sub.ip
+  LEFT JOIN users ou ON i.user_mode = 'users' AND ou.id = sub.user_id
+  LEFT JOIN teams ot ON i.user_mode = 'teams' AND ot.id = sub.team_id
  WHERE (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END)
            IS DISTINCT FROM $1::bigint
    AND (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) IS NOT NULL
@@ -308,11 +349,12 @@ type FindIPOverlapForAccountParams struct {
 }
 
 type FindIPOverlapForAccountRow struct {
-	Ip              *netip.Addr
-	OtherAccountID  int64
-	SubmissionCount int64
-	FirstSeen       pgtype.Timestamptz
-	LastSeen        pgtype.Timestamptz
+	Ip               *netip.Addr
+	OtherAccountID   int64
+	SubmissionCount  int64
+	FirstSeen        pgtype.Timestamptz
+	LastSeen         pgtype.Timestamptz
+	OtherAccountName string
 }
 
 // The other accounts that shared an address with @account_id, one row per (address, other account).
@@ -333,6 +375,7 @@ func (q *Queries) FindIPOverlapForAccount(ctx context.Context, arg FindIPOverlap
 			&i.SubmissionCount,
 			&i.FirstSeen,
 			&i.LastSeen,
+			&i.OtherAccountName,
 		); err != nil {
 			return nil, err
 		}
@@ -345,21 +388,33 @@ func (q *Queries) FindIPOverlapForAccount(ctx context.Context, arg FindIPOverlap
 }
 
 const findIPOverlaps = `-- name: FindIPOverlaps :many
-SELECT sub.ip,
-       count(DISTINCT (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END))
-                                                         AS account_count,
-       array_agg(DISTINCT (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END))::bigint[]
-                                                         AS account_ids,
-       min(sub.date)::timestamptz                        AS first_seen,
-       max(sub.date)::timestamptz                        AS last_seen
-  FROM submissions sub
-  CROSS JOIN instance i
- WHERE sub.ip IS NOT NULL
-   AND (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) IS NOT NULL
- GROUP BY sub.ip
-HAVING count(DISTINCT (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END))
-       >= $1::int
- ORDER BY account_count DESC, sub.ip
+WITH seen AS (
+    SELECT sub.ip,
+           (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) AS account,
+           coalesce(u.name, t.name, '')                                            AS name,
+           sub.date
+      FROM submissions sub
+      CROSS JOIN instance i
+      LEFT JOIN users u ON i.user_mode = 'users' AND u.id = sub.user_id
+      LEFT JOIN teams t ON i.user_mode = 'teams' AND t.id = sub.team_id
+     WHERE sub.ip IS NOT NULL
+       AND (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) IS NOT NULL
+),
+per_account AS (
+    SELECT ip, account, min(name) AS name, min(date) AS first_seen, max(date) AS last_seen
+      FROM seen
+     GROUP BY ip, account
+)
+SELECT ip,
+       count(*)                                      AS account_count,
+       array_agg(account ORDER BY account)::bigint[] AS account_ids,
+       array_agg(name ORDER BY account)::text[]      AS account_names,
+       min(first_seen)::timestamptz                  AS first_seen,
+       max(last_seen)::timestamptz                   AS last_seen
+  FROM per_account
+ GROUP BY ip
+HAVING count(*) >= $1::int
+ ORDER BY account_count DESC, ip
  LIMIT $3::int OFFSET $2::int
 `
 
@@ -373,6 +428,7 @@ type FindIPOverlapsRow struct {
 	Ip           *netip.Addr
 	AccountCount int64
 	AccountIds   []int64
+	AccountNames []string
 	FirstSeen    pgtype.Timestamptz
 	LastSeen     pgtype.Timestamptz
 }
@@ -382,6 +438,11 @@ type FindIPOverlapsRow struct {
 // cluster is evidence for a human to weigh, never grounds to act on alone. @min_accounts tunes how
 // many distinct accounts on one address is worth surfacing. In teams mode the account is the team, so
 // teammates behind one router do not trip it. Served by submissions_ip_idx.
+//
+// account_ids and account_names are two arrays built under the SAME `ORDER BY account`, so element i
+// of one lines up with element i of the other — names are deliberately not unique, so a second name
+// array distinct-aggregated on its own would not align. The per-account fold happens first, in a CTE,
+// so the outer count is a plain COUNT of accounts rather than a COUNT(DISTINCT) repeated three times.
 func (q *Queries) FindIPOverlaps(ctx context.Context, arg FindIPOverlapsParams) ([]FindIPOverlapsRow, error) {
 	rows, err := q.db.Query(ctx, findIPOverlaps, arg.MinAccounts, arg.Off, arg.Lim)
 	if err != nil {
@@ -395,6 +456,7 @@ func (q *Queries) FindIPOverlaps(ctx context.Context, arg FindIPOverlapsParams) 
 			&i.Ip,
 			&i.AccountCount,
 			&i.AccountIds,
+			&i.AccountNames,
 			&i.FirstSeen,
 			&i.LastSeen,
 		); err != nil {
@@ -411,10 +473,14 @@ func (q *Queries) FindIPOverlaps(ctx context.Context, arg FindIPOverlapsParams) 
 const findUnissuedSolves = `-- name: FindUnissuedSolves :many
 SELECT s.id AS solve_id, s.challenge_id, c.name AS challenge_name,
        (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)::bigint AS account_id,
-       s.user_id, s.team_id, s.date, s.value
+       s.user_id, s.team_id, s.date, s.value,
+       su.name AS user_name,
+       st.name AS team_name
   FROM solves s
   JOIN challenges c ON c.id = s.challenge_id
   CROSS JOIN instance i
+  LEFT JOIN users su ON su.id = s.user_id
+  LEFT JOIN teams st ON st.id = s.team_id
  WHERE c.flag_mode = 'unique'
    AND NOT EXISTS (
        SELECT 1
@@ -440,6 +506,8 @@ type FindUnissuedSolvesRow struct {
 	TeamID        *int64
 	Date          pgtype.Timestamptz
 	Value         int32
+	UserName      *string
+	TeamName      *string
 }
 
 // The provable detector, not a statistical signal.
@@ -448,6 +516,10 @@ type FindUnissuedSolvesRow struct {
 // no honest way to hold a valid flag for a challenge whose artifact you never fetched: assignment is
 // lazy, so a flag_issues row exists for every account that so much as opened the challenge. No such
 // row means the flag came from somewhere else. Full stop.
+//
+// The user and team names ride along so the review screen names who to talk to: in teams mode the
+// account is the team, but a solve is still one human's act, so both the submitter and their team
+// are worth showing.
 //
 // Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
 func (q *Queries) FindUnissuedSolves(ctx context.Context, arg FindUnissuedSolvesParams) ([]FindUnissuedSolvesRow, error) {
@@ -468,6 +540,8 @@ func (q *Queries) FindUnissuedSolves(ctx context.Context, arg FindUnissuedSolves
 			&i.TeamID,
 			&i.Date,
 			&i.Value,
+			&i.UserName,
+			&i.TeamName,
 		); err != nil {
 			return nil, err
 		}

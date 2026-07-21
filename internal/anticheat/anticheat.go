@@ -34,7 +34,9 @@ const accountEvidenceLimit = 500
 // account IssuedTo. The counts and challenge span fold repeated sharing into a single row.
 type SharingPair struct {
 	IssuedTo        int64
+	IssuedToName    string
 	Submitter       int64
+	SubmitterName   string
 	SubmissionCount int64
 	ChallengeCount  int64
 	ChallengeIDs    []int64
@@ -48,11 +50,13 @@ type SharingPage struct {
 	Total int64
 }
 
-// IPCluster is one address several distinct accounts submitted from.
+// IPCluster is one address several distinct accounts submitted from. AccountIDs and AccountNames are
+// index-aligned: AccountNames[i] is the display name of AccountIDs[i].
 type IPCluster struct {
 	IP           netip.Addr
 	AccountCount int64
 	AccountIDs   []int64
+	AccountNames []string
 	FirstSeen    time.Time
 	LastSeen     time.Time
 }
@@ -73,7 +77,9 @@ type UnissuedSolve struct {
 	ChallengeName string
 	AccountID     int64
 	UserID        int64
+	UserName      string
 	TeamID        *int64
+	TeamName      *string
 	Date          time.Time
 	Value         int32
 }
@@ -88,28 +94,31 @@ type UnissuedSolvePage struct {
 // when the subject account was issued the flag and someone else submitted it, and "submitted" when
 // the subject submitted a flag issued to the counterparty.
 type SharingEdge struct {
-	Direction       string
-	Counterparty    int64
-	SubmissionCount int64
-	ChallengeIDs    []int64
-	FirstSeen       time.Time
-	LastSeen        time.Time
+	Direction        string
+	Counterparty     int64
+	CounterpartyName string
+	SubmissionCount  int64
+	ChallengeIDs     []int64
+	FirstSeen        time.Time
+	LastSeen         time.Time
 }
 
 // IPNeighbor is one other account that shared an address with the subject account.
 type IPNeighbor struct {
-	IP              netip.Addr
-	OtherAccountID  int64
-	SubmissionCount int64
-	FirstSeen       time.Time
-	LastSeen        time.Time
+	IP               netip.Addr
+	OtherAccountID   int64
+	OtherAccountName string
+	SubmissionCount  int64
+	FirstSeen        time.Time
+	LastSeen         time.Time
 }
 
 // AccountReport is the sharing and IP-overlap evidence touching one account.
 type AccountReport struct {
-	AccountID int64
-	Sharing   []SharingEdge
-	IPOverlap []IPNeighbor
+	AccountID   int64
+	AccountName string
+	Sharing     []SharingEdge
+	IPOverlap   []IPNeighbor
 }
 
 // FlagSharing returns cross-account flag submissions grouped by offender pair, one page at a time.
@@ -126,9 +135,11 @@ func (s *Service) FlagSharing(ctx context.Context, page, perPage int) (SharingPa
 		return SharingPage{}, fmt.Errorf("anticheat: flag-sharing pairs: %w", err)
 	}
 	out := SharingPage{Total: total, Pairs: make([]SharingPair, len(rows))}
-	for i, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		out.Pairs[i] = SharingPair{
-			IssuedTo: r.IssuedTo, Submitter: r.Submitter,
+			IssuedTo: r.IssuedTo, IssuedToName: r.IssuedToName,
+			Submitter: r.Submitter, SubmitterName: r.SubmitterName,
 			SubmissionCount: r.SubmissionCount, ChallengeCount: r.ChallengeCount,
 			ChallengeIDs: r.ChallengeIds,
 			FirstSeen:    r.FirstSeen.Time, LastSeen: r.LastSeen.Time,
@@ -152,9 +163,11 @@ func (s *Service) IPOverlap(ctx context.Context, minAccounts, page, perPage int)
 		return IPOverlapPage{}, fmt.Errorf("anticheat: ip overlaps: %w", err)
 	}
 	out := IPOverlapPage{Total: total, Clusters: make([]IPCluster, len(rows))}
-	for i, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		out.Clusters[i] = IPCluster{
-			IP: derefAddr(r.Ip), AccountCount: r.AccountCount, AccountIDs: r.AccountIds,
+			IP: derefAddr(r.Ip), AccountCount: r.AccountCount,
+			AccountIDs: r.AccountIds, AccountNames: r.AccountNames,
 			FirstSeen: r.FirstSeen.Time, LastSeen: r.LastSeen.Time,
 		}
 	}
@@ -177,10 +190,12 @@ func (s *Service) UnissuedSolves(ctx context.Context, page, perPage int) (Unissu
 		return UnissuedSolvePage{}, fmt.Errorf("anticheat: unissued solves: %w", err)
 	}
 	out := UnissuedSolvePage{Total: total, Solves: make([]UnissuedSolve, len(rows))}
-	for i, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		out.Solves[i] = UnissuedSolve{
 			SolveID: r.SolveID, ChallengeID: r.ChallengeID, ChallengeName: r.ChallengeName,
-			AccountID: r.AccountID, UserID: r.UserID, TeamID: r.TeamID,
+			AccountID: r.AccountID, UserID: r.UserID, UserName: deref(r.UserName),
+			TeamID: r.TeamID, TeamName: r.TeamName,
 			Date: r.Date.Time, Value: r.Value,
 		}
 	}
@@ -201,25 +216,41 @@ func (s *Service) AccountReport(ctx context.Context, accountID int64) (AccountRe
 	if err != nil {
 		return AccountReport{}, fmt.Errorf("anticheat: account %d ip overlap: %w", accountID, err)
 	}
-	rep := AccountReport{
-		AccountID: accountID,
-		Sharing:   make([]SharingEdge, len(shares)),
-		IPOverlap: make([]IPNeighbor, len(neighbors)),
+	name, err := s.q.AccountName(ctx, accountID)
+	if err != nil {
+		return AccountReport{}, fmt.Errorf("anticheat: account %d name: %w", accountID, err)
 	}
-	for i, r := range shares {
+	rep := AccountReport{
+		AccountID:   accountID,
+		AccountName: name,
+		Sharing:     make([]SharingEdge, len(shares)),
+		IPOverlap:   make([]IPNeighbor, len(neighbors)),
+	}
+	for i := range shares {
+		r := &shares[i]
 		rep.Sharing[i] = SharingEdge{
-			Direction: r.Direction, Counterparty: r.Counterparty,
+			Direction: r.Direction, Counterparty: r.Counterparty, CounterpartyName: r.CounterpartyName,
 			SubmissionCount: r.SubmissionCount, ChallengeIDs: r.ChallengeIds,
 			FirstSeen: r.FirstSeen.Time, LastSeen: r.LastSeen.Time,
 		}
 	}
-	for i, r := range neighbors {
+	for i := range neighbors {
+		r := &neighbors[i]
 		rep.IPOverlap[i] = IPNeighbor{
-			IP: derefAddr(r.Ip), OtherAccountID: r.OtherAccountID,
+			IP: derefAddr(r.Ip), OtherAccountID: r.OtherAccountID, OtherAccountName: r.OtherAccountName,
 			SubmissionCount: r.SubmissionCount, FirstSeen: r.FirstSeen.Time, LastSeen: r.LastSeen.Time,
 		}
 	}
 	return rep, nil
+}
+
+// deref unwraps a nullable text column to its value, or "" when the join found no name. An empty
+// name is a clean "unresolved" the admin UI renders as the bare id, not an error to fail on.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // derefAddr unwraps the nullable address column. The queries filter ip IS NOT NULL, so a nil here

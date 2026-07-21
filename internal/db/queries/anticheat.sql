@@ -49,13 +49,21 @@ SELECT count(*)
 -- lazy, so a flag_issues row exists for every account that so much as opened the challenge. No such
 -- row means the flag came from somewhere else. Full stop.
 --
+-- The user and team names ride along so the review screen names who to talk to: in teams mode the
+-- account is the team, but a solve is still one human's act, so both the submitter and their team
+-- are worth showing.
+--
 -- Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
 SELECT s.id AS solve_id, s.challenge_id, c.name AS challenge_name,
        (CASE WHEN i.user_mode = 'teams' THEN s.team_id ELSE s.user_id END)::bigint AS account_id,
-       s.user_id, s.team_id, s.date, s.value
+       s.user_id, s.team_id, s.date, s.value,
+       su.name AS user_name,
+       st.name AS team_name
   FROM solves s
   JOIN challenges c ON c.id = s.challenge_id
   CROSS JOIN instance i
+  LEFT JOIN users su ON su.id = s.user_id
+  LEFT JOIN teams st ON st.id = s.team_id
  WHERE c.flag_mode = 'unique'
    AND NOT EXISTS (
        SELECT 1
@@ -85,15 +93,25 @@ SELECT count(*) FROM (
 -- were issued to account `issued_to`. Same predicate as FindFlagSharing — submissions alone, so it
 -- survives instance rotation — but grouped, counted, and with the challenge span, so a pair that
 -- shared twenty flags is one row of evidence, not twenty. Served by submissions_sharing_idx.
+--
+-- Both account names come along resolved by mode — a name for the offender pair is the whole point
+-- of the review screen. The name joins are 1:1 on the account primary key, so they do not touch the
+-- counts. max() over the group is just "the one name this account has"; it never varies within a pair.
 SELECT sub.attributed_account_id::bigint AS issued_to,
        (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END)::bigint AS submitter,
        count(*)                                          AS submission_count,
        count(DISTINCT sub.challenge_id)                  AS challenge_count,
        array_agg(DISTINCT sub.challenge_id)::bigint[]    AS challenge_ids,
        min(sub.date)::timestamptz                        AS first_seen,
-       max(sub.date)::timestamptz                        AS last_seen
+       max(sub.date)::timestamptz                        AS last_seen,
+       max(coalesce(iu.name, it.name, ''))::text                AS issued_to_name,
+       max(coalesce(su.name, st.name, ''))::text                AS submitter_name
   FROM submissions sub
   CROSS JOIN instance i
+  LEFT JOIN users iu ON i.user_mode = 'users' AND iu.id = sub.attributed_account_id
+  LEFT JOIN teams it ON i.user_mode = 'teams' AND it.id = sub.attributed_account_id
+  LEFT JOIN users su ON i.user_mode = 'users' AND su.id = sub.user_id
+  LEFT JOIN teams st ON i.user_mode = 'teams' AND st.id = sub.team_id
  WHERE sub.type = 'correct'
    AND sub.attributed_account_id IS NOT NULL
    AND sub.attributed_account_id IS DISTINCT FROM
@@ -122,21 +140,38 @@ SELECT count(*) FROM (
 -- cluster is evidence for a human to weigh, never grounds to act on alone. @min_accounts tunes how
 -- many distinct accounts on one address is worth surfacing. In teams mode the account is the team, so
 -- teammates behind one router do not trip it. Served by submissions_ip_idx.
-SELECT sub.ip,
-       count(DISTINCT (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END))
-                                                         AS account_count,
-       array_agg(DISTINCT (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END))::bigint[]
-                                                         AS account_ids,
-       min(sub.date)::timestamptz                        AS first_seen,
-       max(sub.date)::timestamptz                        AS last_seen
-  FROM submissions sub
-  CROSS JOIN instance i
- WHERE sub.ip IS NOT NULL
-   AND (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) IS NOT NULL
- GROUP BY sub.ip
-HAVING count(DISTINCT (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END))
-       >= sqlc.arg(min_accounts)::int
- ORDER BY account_count DESC, sub.ip
+--
+-- account_ids and account_names are two arrays built under the SAME `ORDER BY account`, so element i
+-- of one lines up with element i of the other — names are deliberately not unique, so a second name
+-- array distinct-aggregated on its own would not align. The per-account fold happens first, in a CTE,
+-- so the outer count is a plain COUNT of accounts rather than a COUNT(DISTINCT) repeated three times.
+WITH seen AS (
+    SELECT sub.ip,
+           (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) AS account,
+           coalesce(u.name, t.name, '')                                            AS name,
+           sub.date
+      FROM submissions sub
+      CROSS JOIN instance i
+      LEFT JOIN users u ON i.user_mode = 'users' AND u.id = sub.user_id
+      LEFT JOIN teams t ON i.user_mode = 'teams' AND t.id = sub.team_id
+     WHERE sub.ip IS NOT NULL
+       AND (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) IS NOT NULL
+),
+per_account AS (
+    SELECT ip, account, min(name) AS name, min(date) AS first_seen, max(date) AS last_seen
+      FROM seen
+     GROUP BY ip, account
+)
+SELECT ip,
+       count(*)                                      AS account_count,
+       array_agg(account ORDER BY account)::bigint[] AS account_ids,
+       array_agg(name ORDER BY account)::text[]      AS account_names,
+       min(first_seen)::timestamptz                  AS first_seen,
+       max(last_seen)::timestamptz                   AS last_seen
+  FROM per_account
+ GROUP BY ip
+HAVING count(*) >= sqlc.arg(min_accounts)::int
+ ORDER BY account_count DESC, ip
  LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
 
 -- name: FindFlagSharingForAccount :many
@@ -147,7 +182,8 @@ SELECT direction, counterparty,
        count(*)                                   AS submission_count,
        array_agg(DISTINCT challenge_id)::bigint[] AS challenge_ids,
        min(date)::timestamptz                     AS first_seen,
-       max(date)::timestamptz                     AS last_seen
+       max(date)::timestamptz                     AS last_seen,
+       max(coalesce(cu.name, ct.name, ''))::text     AS counterparty_name
   FROM (
     SELECT
         (CASE WHEN sub.attributed_account_id = sqlc.arg(account_id)::bigint
@@ -165,6 +201,9 @@ SELECT direction, counterparty,
        AND (sub.attributed_account_id = sqlc.arg(account_id)::bigint
             OR (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) = sqlc.arg(account_id)::bigint)
   ) e
+  CROSS JOIN instance i
+  LEFT JOIN users cu ON i.user_mode = 'users' AND cu.id = e.counterparty
+  LEFT JOIN teams ct ON i.user_mode = 'teams' AND ct.id = e.counterparty
  GROUP BY direction, counterparty
  ORDER BY submission_count DESC;
 
@@ -183,13 +222,26 @@ SELECT sub.ip,
        (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END)::bigint AS other_account_id,
        count(*)                   AS submission_count,
        min(sub.date)::timestamptz AS first_seen,
-       max(sub.date)::timestamptz AS last_seen
+       max(sub.date)::timestamptz AS last_seen,
+       max(coalesce(ou.name, ot.name, ''))::text AS other_account_name
   FROM submissions sub
   CROSS JOIN instance i
   JOIN mine ON mine.ip = sub.ip
+  LEFT JOIN users ou ON i.user_mode = 'users' AND ou.id = sub.user_id
+  LEFT JOIN teams ot ON i.user_mode = 'teams' AND ot.id = sub.team_id
  WHERE (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END)
            IS DISTINCT FROM sqlc.arg(account_id)::bigint
    AND (CASE WHEN i.user_mode = 'teams' THEN sub.team_id ELSE sub.user_id END) IS NOT NULL
  GROUP BY sub.ip, other_account_id
  ORDER BY sub.ip, submission_count DESC
  LIMIT sqlc.arg(lim)::int;
+
+-- name: AccountName :one
+-- The display name of one scoring account, resolved by mode. Empty string when the id matches no
+-- account: the report is analytics over the submissions log, not an account lookup, so a name here
+-- is a courtesy for the header and its absence is not an error. instance is a singleton, so this is
+-- always exactly one row.
+SELECT coalesce(u.name, t.name, '')::text AS name
+  FROM instance i
+  LEFT JOIN users u ON i.user_mode = 'users' AND u.id = sqlc.arg(account_id)::bigint
+  LEFT JOIN teams t ON i.user_mode = 'teams' AND t.id = sqlc.arg(account_id)::bigint;

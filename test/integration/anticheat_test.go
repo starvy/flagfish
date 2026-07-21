@@ -95,25 +95,51 @@ func (f *apiFix) seedSubmission(challengeID, userID int64, kind, ip string, attr
 type acReport struct {
 	Pairs []struct {
 		IssuedTo        int64   `json:"issued_to"`
+		IssuedToName    string  `json:"issued_to_name"`
 		Submitter       int64   `json:"submitter"`
+		SubmitterName   string  `json:"submitter_name"`
 		SubmissionCount int64   `json:"submission_count"`
 		ChallengeCount  int64   `json:"challenge_count"`
 		ChallengeIDs    []int64 `json:"challenge_ids"`
 	} `json:"pairs"`
 	Clusters []struct {
-		IP           string  `json:"ip"`
-		AccountCount int64   `json:"account_count"`
-		AccountIDs   []int64 `json:"account_ids"`
+		IP           string   `json:"ip"`
+		AccountCount int64    `json:"account_count"`
+		AccountIDs   []int64  `json:"account_ids"`
+		AccountNames []string `json:"account_names"`
 	} `json:"clusters"`
-	Sharing []struct {
-		Direction    string `json:"direction"`
-		Counterparty int64  `json:"counterparty"`
+	AccountName string `json:"account_name"`
+	Sharing     []struct {
+		Direction        string `json:"direction"`
+		Counterparty     int64  `json:"counterparty"`
+		CounterpartyName string `json:"counterparty_name"`
 	} `json:"sharing"`
 	IPOverlap []struct {
-		IP             string `json:"ip"`
-		OtherAccountID int64  `json:"other_account_id"`
+		IP               string `json:"ip"`
+		OtherAccountID   int64  `json:"other_account_id"`
+		OtherAccountName string `json:"other_account_name"`
 	} `json:"ip_overlap"`
+	Solves []struct {
+		AccountID int64  `json:"account_id"`
+		UserID    int64  `json:"user_id"`
+		UserName  string `json:"user_name"`
+		TeamID    *int64 `json:"team_id"`
+		TeamName  string `json:"team_name"`
+	} `json:"solves"`
 	Total int64 `json:"total"`
+}
+
+// clusterName resolves an account's display name from the IP-overlap clusters in r, relying on
+// account_ids and account_names being index-aligned.
+func clusterName(r *acReport, id int64) string {
+	for _, c := range r.Clusters {
+		for i, aid := range c.AccountIDs {
+			if aid == id && i < len(c.AccountNames) {
+				return c.AccountNames[i]
+			}
+		}
+	}
+	return ""
 }
 
 func decodeAC(t *testing.T, body []byte) acReport {
@@ -172,6 +198,10 @@ func TestAnticheatDetectors(t *testing.T) {
 		if p.IssuedTo != alice || p.Submitter != bob {
 			t.Errorf("pair mismatch: issued_to=%d submitter=%d, want %d/%d", p.IssuedTo, p.Submitter, alice, bob)
 		}
+		// The whole point of this screen: a human reads a name, not a bare id.
+		if p.IssuedToName != "alice" || p.SubmitterName != "bob" {
+			t.Errorf("pair names: issued_to_name=%q submitter_name=%q, want alice/bob", p.IssuedToName, p.SubmitterName)
+		}
 		if p.SubmissionCount != 2 || p.ChallengeCount != 2 {
 			t.Errorf("counts: submissions=%d challenges=%d, want 2/2", p.SubmissionCount, p.ChallengeCount)
 		}
@@ -205,6 +235,15 @@ func TestAnticheatDetectors(t *testing.T) {
 		if !containsAll(c.AccountIDs, alice, bob, carol) {
 			t.Errorf("account_ids %v missing one of %d/%d/%d", c.AccountIDs, alice, bob, carol)
 		}
+		if len(c.AccountNames) != len(c.AccountIDs) {
+			t.Fatalf("account_names %v not aligned with account_ids %v", c.AccountNames, c.AccountIDs)
+		}
+		// Names must be index-aligned with ids, and each must resolve to the real display name.
+		for id, want := range map[int64]string{alice: "alice", bob: "bob", carol: "carol"} {
+			if got := clusterName(&r, id); got != want {
+				t.Errorf("cluster name for %d: %q, want %q (names %v ids %v)", id, got, want, c.AccountNames, c.AccountIDs)
+			}
+		}
 		for _, id := range c.AccountIDs {
 			if id == dave {
 				t.Error("clean account dave appeared in the IP cluster")
@@ -230,18 +269,30 @@ func TestAnticheatDetectors(t *testing.T) {
 			t.Fatalf("account report: got %d (%s)", res.StatusCode, body)
 		}
 		r := decodeAC(t, body)
+		if r.AccountName != "bob" {
+			t.Errorf("report subject name: %q, want bob (%s)", r.AccountName, body)
+		}
 		var submitted bool
 		for _, e := range r.Sharing {
 			if e.Direction == "submitted" && e.Counterparty == alice {
 				submitted = true
+				if e.CounterpartyName != "alice" {
+					t.Errorf("counterparty name: %q, want alice", e.CounterpartyName)
+				}
 			}
 		}
 		if !submitted {
 			t.Errorf("bob's report missing the submitted->alice edge (%s)", body)
 		}
 		// Bob shared the 192.0.2.50 address with alice and carol.
-		if !neighborsInclude(r, carol) || !neighborsInclude(r, alice) {
+		if !neighborsInclude(&r, carol) || !neighborsInclude(&r, alice) {
 			t.Errorf("bob's ip_overlap %v missing alice/carol", r.IPOverlap)
+		}
+		for _, n := range r.IPOverlap {
+			if (n.OtherAccountID == alice && n.OtherAccountName != "alice") ||
+				(n.OtherAccountID == carol && n.OtherAccountName != "carol") {
+				t.Errorf("ip neighbour %d name %q not resolved", n.OtherAccountID, n.OtherAccountName)
+			}
 		}
 	})
 
@@ -359,6 +410,10 @@ func TestAnticheatTeamsMode(t *testing.T) {
 		if len(r.Pairs) != 1 || r.Pairs[0].IssuedTo != t1 || r.Pairs[0].Submitter != t2 {
 			t.Fatalf("want one pair t2->t1, got %+v (%s)", r.Pairs, body)
 		}
+		// In teams mode the account is the team, so the name shown is the team name.
+		if r.Pairs[0].IssuedToName != "red" || r.Pairs[0].SubmitterName != "blue" {
+			t.Errorf("team names: issued_to=%q submitter=%q, want red/blue", r.Pairs[0].IssuedToName, r.Pairs[0].SubmitterName)
+		}
 	})
 
 	t.Run("overlap-is-teams-not-members", func(t *testing.T) {
@@ -373,6 +428,10 @@ func TestAnticheatTeamsMode(t *testing.T) {
 		// Two distinct teams, not three users: intra-team submissions collapse to one account.
 		if r.Clusters[0].AccountCount != 2 || !containsAll(r.Clusters[0].AccountIDs, t1, t2) {
 			t.Errorf("cluster should be the two teams, got count=%d ids=%v", r.Clusters[0].AccountCount, r.Clusters[0].AccountIDs)
+		}
+		if clusterName(&r, t1) != "red" || clusterName(&r, t2) != "blue" {
+			t.Errorf("cluster names: t1=%q t2=%q, want red/blue (names %v ids %v)",
+				clusterName(&r, t1), clusterName(&r, t2), r.Clusters[0].AccountNames, r.Clusters[0].AccountIDs)
 		}
 	})
 }
@@ -390,7 +449,7 @@ func containsAll(ids []int64, want ...int64) bool {
 	return true
 }
 
-func neighborsInclude(r acReport, id int64) bool {
+func neighborsInclude(r *acReport, id int64) bool {
 	for _, n := range r.IPOverlap {
 		if n.OtherAccountID == id {
 			return true

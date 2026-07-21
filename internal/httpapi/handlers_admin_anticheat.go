@@ -20,7 +20,9 @@ func (s *Server) anticheatError(ctx context.Context, err error, action string) e
 
 type acSharingPairBody struct {
 	IssuedTo        int64     `json:"issued_to"`
+	IssuedToName    string    `json:"issued_to_name"`
 	Submitter       int64     `json:"submitter"`
+	SubmitterName   string    `json:"submitter_name"`
 	SubmissionCount int64     `json:"submission_count"`
 	ChallengeCount  int64     `json:"challenge_count"`
 	ChallengeIDs    []int64   `json:"challenge_ids"`
@@ -42,10 +44,12 @@ type acFlagSharingOutput struct {
 	}
 }
 
+// acIPClusterBody keeps AccountIDs and AccountNames index-aligned: AccountNames[i] names AccountIDs[i].
 type acIPClusterBody struct {
 	IP           string    `json:"ip"`
 	AccountCount int64     `json:"account_count"`
 	AccountIDs   []int64   `json:"account_ids"`
+	AccountNames []string  `json:"account_names"`
 	FirstSeen    time.Time `json:"first_seen"`
 	LastSeen     time.Time `json:"last_seen"`
 }
@@ -77,7 +81,9 @@ type acUnissuedSolveBody struct {
 	ChallengeName string    `json:"challenge_name"`
 	AccountID     int64     `json:"account_id"`
 	UserID        int64     `json:"user_id"`
+	UserName      string    `json:"user_name"`
 	TeamID        *int64    `json:"team_id,omitempty"`
+	TeamName      *string   `json:"team_name,omitempty"`
 	Date          time.Time `json:"date"`
 	Value         int32     `json:"value"`
 }
@@ -97,20 +103,22 @@ type acUnissuedSolvesOutput struct {
 }
 
 type acSharingEdgeBody struct {
-	Direction       string    `json:"direction"`
-	Counterparty    int64     `json:"counterparty"`
-	SubmissionCount int64     `json:"submission_count"`
-	ChallengeIDs    []int64   `json:"challenge_ids"`
-	FirstSeen       time.Time `json:"first_seen"`
-	LastSeen        time.Time `json:"last_seen"`
+	Direction        string    `json:"direction"`
+	Counterparty     int64     `json:"counterparty"`
+	CounterpartyName string    `json:"counterparty_name"`
+	SubmissionCount  int64     `json:"submission_count"`
+	ChallengeIDs     []int64   `json:"challenge_ids"`
+	FirstSeen        time.Time `json:"first_seen"`
+	LastSeen         time.Time `json:"last_seen"`
 }
 
 type acIPNeighborBody struct {
-	IP              string    `json:"ip"`
-	OtherAccountID  int64     `json:"other_account_id"`
-	SubmissionCount int64     `json:"submission_count"`
-	FirstSeen       time.Time `json:"first_seen"`
-	LastSeen        time.Time `json:"last_seen"`
+	IP               string    `json:"ip"`
+	OtherAccountID   int64     `json:"other_account_id"`
+	OtherAccountName string    `json:"other_account_name"`
+	SubmissionCount  int64     `json:"submission_count"`
+	FirstSeen        time.Time `json:"first_seen"`
+	LastSeen         time.Time `json:"last_seen"`
 }
 
 type acAccountInput struct {
@@ -119,9 +127,10 @@ type acAccountInput struct {
 
 type acAccountReportOutput struct {
 	Body struct {
-		AccountID int64               `json:"account_id"`
-		Sharing   []acSharingEdgeBody `json:"sharing"`
-		IPOverlap []acIPNeighborBody  `json:"ip_overlap"`
+		AccountID   int64               `json:"account_id"`
+		AccountName string              `json:"account_name"`
+		Sharing     []acSharingEdgeBody `json:"sharing"`
+		IPOverlap   []acIPNeighborBody  `json:"ip_overlap"`
 	}
 }
 
@@ -158,10 +167,12 @@ func (s *Server) adminAnticheatUnissuedSolves(ctx context.Context, in *acUnissue
 	out.Body.Page = in.Page
 	out.Body.PerPage = in.PerPage
 	out.Body.Solves = make([]acUnissuedSolveBody, len(page.Solves))
-	for i, u := range page.Solves {
+	for i := range page.Solves {
+		u := &page.Solves[i]
 		out.Body.Solves[i] = acUnissuedSolveBody{
 			SolveID: u.SolveID, ChallengeID: u.ChallengeID, ChallengeName: u.ChallengeName,
-			AccountID: u.AccountID, UserID: u.UserID, TeamID: u.TeamID,
+			AccountID: u.AccountID, UserID: u.UserID, UserName: u.UserName,
+			TeamID: u.TeamID, TeamName: u.TeamName,
 			Date: u.Date, Value: u.Value,
 		}
 	}
@@ -178,9 +189,11 @@ func (s *Server) adminAnticheatFlagSharing(ctx context.Context, in *acFlagSharin
 	out.Body.Page = in.Page
 	out.Body.PerPage = in.PerPage
 	out.Body.Pairs = make([]acSharingPairBody, len(page.Pairs))
-	for i, p := range page.Pairs {
+	for i := range page.Pairs {
+		p := &page.Pairs[i]
 		out.Body.Pairs[i] = acSharingPairBody{
-			IssuedTo: p.IssuedTo, Submitter: p.Submitter,
+			IssuedTo: p.IssuedTo, IssuedToName: p.IssuedToName,
+			Submitter: p.Submitter, SubmitterName: p.SubmitterName,
 			SubmissionCount: p.SubmissionCount, ChallengeCount: p.ChallengeCount,
 			ChallengeIDs: p.ChallengeIDs, FirstSeen: p.FirstSeen, LastSeen: p.LastSeen,
 		}
@@ -199,9 +212,11 @@ func (s *Server) adminAnticheatIPOverlap(ctx context.Context, in *acIPOverlapInp
 	out.Body.Page = in.Page
 	out.Body.PerPage = in.PerPage
 	out.Body.Clusters = make([]acIPClusterBody, len(page.Clusters))
-	for i, c := range page.Clusters {
+	for i := range page.Clusters {
+		c := &page.Clusters[i]
 		out.Body.Clusters[i] = acIPClusterBody{
-			IP: c.IP.String(), AccountCount: c.AccountCount, AccountIDs: c.AccountIDs,
+			IP: c.IP.String(), AccountCount: c.AccountCount,
+			AccountIDs: c.AccountIDs, AccountNames: c.AccountNames,
 			FirstSeen: c.FirstSeen, LastSeen: c.LastSeen,
 		}
 	}
@@ -215,18 +230,21 @@ func (s *Server) adminAnticheatAccount(ctx context.Context, in *acAccountInput) 
 	}
 	out := &acAccountReportOutput{}
 	out.Body.AccountID = rep.AccountID
+	out.Body.AccountName = rep.AccountName
 	out.Body.Sharing = make([]acSharingEdgeBody, len(rep.Sharing))
-	for i, e := range rep.Sharing {
+	for i := range rep.Sharing {
+		e := &rep.Sharing[i]
 		out.Body.Sharing[i] = acSharingEdgeBody{
-			Direction: e.Direction, Counterparty: e.Counterparty,
+			Direction: e.Direction, Counterparty: e.Counterparty, CounterpartyName: e.CounterpartyName,
 			SubmissionCount: e.SubmissionCount, ChallengeIDs: e.ChallengeIDs,
 			FirstSeen: e.FirstSeen, LastSeen: e.LastSeen,
 		}
 	}
 	out.Body.IPOverlap = make([]acIPNeighborBody, len(rep.IPOverlap))
-	for i, n := range rep.IPOverlap {
+	for i := range rep.IPOverlap {
+		n := &rep.IPOverlap[i]
 		out.Body.IPOverlap[i] = acIPNeighborBody{
-			IP: n.IP.String(), OtherAccountID: n.OtherAccountID,
+			IP: n.IP.String(), OtherAccountID: n.OtherAccountID, OtherAccountName: n.OtherAccountName,
 			SubmissionCount: n.SubmissionCount, FirstSeen: n.FirstSeen, LastSeen: n.LastSeen,
 		}
 	}

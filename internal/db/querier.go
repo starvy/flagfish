@@ -9,6 +9,11 @@ import (
 )
 
 type Querier interface {
+	// The display name of one scoring account, resolved by mode. Empty string when the id matches no
+	// account: the report is analytics over the submissions log, not an account lookup, so a name here
+	// is a courtesy for the header and its absence is not an error. instance is a singleton, so this is
+	// always exactly one row.
+	AccountName(ctx context.Context, accountID int64) (string, error)
 	// ── tags ──────────────────────────────────────────────────────────────────────────
 	//
 	// A tag is a (challenge_id, value) row; the same value on many challenges is one tag with several
@@ -446,6 +451,10 @@ type Querier interface {
 	// were issued to account `issued_to`. Same predicate as FindFlagSharing — submissions alone, so it
 	// survives instance rotation — but grouped, counted, and with the challenge span, so a pair that
 	// shared twenty flags is one row of evidence, not twenty. Served by submissions_sharing_idx.
+	//
+	// Both account names come along resolved by mode — a name for the offender pair is the whole point
+	// of the review screen. The name joins are 1:1 on the account primary key, so they do not touch the
+	// counts. max() over the group is just "the one name this account has"; it never varies within a pair.
 	FindFlagSharingPairs(ctx context.Context, arg FindFlagSharingPairsParams) ([]FindFlagSharingPairsRow, error)
 	// The other accounts that shared an address with @account_id, one row per (address, other account).
 	// Same signal caveat as FindIPOverlaps: shared egress is common and this only points a human at a
@@ -456,6 +465,11 @@ type Querier interface {
 	// cluster is evidence for a human to weigh, never grounds to act on alone. @min_accounts tunes how
 	// many distinct accounts on one address is worth surfacing. In teams mode the account is the team, so
 	// teammates behind one router do not trip it. Served by submissions_ip_idx.
+	//
+	// account_ids and account_names are two arrays built under the SAME `ORDER BY account`, so element i
+	// of one lines up with element i of the other — names are deliberately not unique, so a second name
+	// array distinct-aggregated on its own would not align. The per-account fold happens first, in a CTE,
+	// so the outer count is a plain COUNT of accounts rather than a COUNT(DISTINCT) repeated three times.
 	FindIPOverlaps(ctx context.Context, arg FindIPOverlapsParams) ([]FindIPOverlapsRow, error)
 	// The provable detector, not a statistical signal.
 	//
@@ -463,6 +477,10 @@ type Querier interface {
 	// no honest way to hold a valid flag for a challenge whose artifact you never fetched: assignment is
 	// lazy, so a flag_issues row exists for every account that so much as opened the challenge. No such
 	// row means the flag came from somewhere else. Full stop.
+	//
+	// The user and team names ride along so the review screen names who to talk to: in teams mode the
+	// account is the team, but a solve is still one human's act, so both the submitter and their team
+	// are worth showing.
 	//
 	// Anti-join over solves_challenge_firstblood_idx × the flag_issues PK. No new index.
 	FindUnissuedSolves(ctx context.Context, arg FindUnissuedSolvesParams) ([]FindUnissuedSolvesRow, error)

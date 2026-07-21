@@ -13,6 +13,8 @@ components:
         account_id:
           format: int64
           type: integer
+        account_name:
+          type: string
         ip_overlap:
           items:
             $ref: "#/components/schemas/AcIPNeighborBody"
@@ -27,6 +29,7 @@ components:
             - "null"
       required:
         - account_id
+        - account_name
         - sharing
         - ip_overlap
       type: object
@@ -74,6 +77,12 @@ components:
           type:
             - array
             - "null"
+        account_names:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         first_seen:
           format: date-time
           type: string
@@ -86,6 +95,7 @@ components:
         - ip
         - account_count
         - account_ids
+        - account_names
         - first_seen
         - last_seen
       type: object
@@ -103,12 +113,15 @@ components:
         other_account_id:
           format: int64
           type: integer
+        other_account_name:
+          type: string
         submission_count:
           format: int64
           type: integer
       required:
         - ip
         - other_account_id
+        - other_account_name
         - submission_count
         - first_seen
         - last_seen
@@ -161,6 +174,8 @@ components:
         counterparty:
           format: int64
           type: integer
+        counterparty_name:
+          type: string
         direction:
           type: string
         first_seen:
@@ -175,6 +190,7 @@ components:
       required:
         - direction
         - counterparty
+        - counterparty_name
         - submission_count
         - challenge_ids
         - first_seen
@@ -199,6 +215,8 @@ components:
         issued_to:
           format: int64
           type: integer
+        issued_to_name:
+          type: string
         last_seen:
           format: date-time
           type: string
@@ -208,9 +226,13 @@ components:
         submitter:
           format: int64
           type: integer
+        submitter_name:
+          type: string
       required:
         - issued_to
+        - issued_to_name
         - submitter
+        - submitter_name
         - submission_count
         - challenge_count
         - challenge_ids
@@ -237,9 +259,13 @@ components:
         team_id:
           format: int64
           type: integer
+        team_name:
+          type: string
         user_id:
           format: int64
           type: integer
+        user_name:
+          type: string
         value:
           format: int32
           type: integer
@@ -249,6 +275,7 @@ components:
         - challenge_name
         - account_id
         - user_id
+        - user_name
         - date
         - value
       type: object

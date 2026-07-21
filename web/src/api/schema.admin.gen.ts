@@ -1072,6 +1072,7 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             account_id: number;
+            account_name: string;
             ip_overlap: components["schemas"]["AcIPNeighborBody"][] | null;
             sharing: components["schemas"]["AcSharingEdgeBody"][] | null;
         };
@@ -1094,6 +1095,7 @@ export interface components {
             /** Format: int64 */
             account_count: number;
             account_ids: number[] | null;
+            account_names: string[] | null;
             /** Format: date-time */
             first_seen: string;
             ip: string;
@@ -1108,6 +1110,7 @@ export interface components {
             last_seen: string;
             /** Format: int64 */
             other_account_id: number;
+            other_account_name: string;
             /** Format: int64 */
             submission_count: number;
         };
@@ -1132,6 +1135,7 @@ export interface components {
             challenge_ids: number[] | null;
             /** Format: int64 */
             counterparty: number;
+            counterparty_name: string;
             direction: string;
             /** Format: date-time */
             first_seen: string;
@@ -1148,12 +1152,14 @@ export interface components {
             first_seen: string;
             /** Format: int64 */
             issued_to: number;
+            issued_to_name: string;
             /** Format: date-time */
             last_seen: string;
             /** Format: int64 */
             submission_count: number;
             /** Format: int64 */
             submitter: number;
+            submitter_name: string;
         };
         AcUnissuedSolveBody: {
             /** Format: int64 */
@@ -1167,8 +1173,10 @@ export interface components {
             solve_id: number;
             /** Format: int64 */
             team_id?: number;
+            team_name?: string;
             /** Format: int64 */
             user_id: number;
+            user_name: string;
             /** Format: int32 */
             value: number;
         };

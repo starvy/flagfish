@@ -9,6 +9,7 @@ import {
 } from "../../../queries";
 import { ApiError } from "../../../api/errors";
 import { denialOf, PolicyGate } from "../../../policy";
+import { useInstanceState } from "../../../shell/instance";
 import {
   Alert,
   Badge,
@@ -28,7 +29,9 @@ export const Route = createFileRoute("/_auth/admin/anticheat")({
 
 interface SharingPair {
   issued_to: number;
+  issued_to_name: string;
   submitter: number;
+  submitter_name: string;
   submission_count: number;
   challenge_count: number;
   challenge_ids: number[];
@@ -40,6 +43,8 @@ interface IPCluster {
   ip: string;
   account_count: number;
   account_ids: number[];
+  // Index-aligned with account_ids: account_names[i] names account_ids[i].
+  account_names: string[];
   first_seen: string;
   last_seen: string;
 }
@@ -47,6 +52,7 @@ interface IPCluster {
 interface SharingEdge {
   direction: string;
   counterparty: number;
+  counterparty_name: string;
   submission_count: number;
   challenge_ids: number[];
   first_seen: string;
@@ -56,6 +62,7 @@ interface SharingEdge {
 interface IPEdge {
   ip: string;
   other_account_id: number;
+  other_account_name: string;
   submission_count: number;
   first_seen: string;
   last_seen: string;
@@ -118,14 +125,14 @@ function SharingTab({ onInspect }: { onInspect: (id: number) => void }) {
     {
       key: "issued_to",
       header: "issued to",
-      width: "8rem",
-      cell: (p) => <AccountRef id={p.issued_to} onInspect={onInspect} />,
+      width: "12rem",
+      cell: (p) => <AccountRef id={p.issued_to} name={p.issued_to_name} onInspect={onInspect} />,
     },
     {
       key: "submitter",
       header: "submitted by",
-      width: "8rem",
-      cell: (p) => <AccountRef id={p.submitter} onInspect={onInspect} />,
+      width: "12rem",
+      cell: (p) => <AccountRef id={p.submitter} name={p.submitter_name} onInspect={onInspect} />,
     },
     {
       key: "submissions",
@@ -200,6 +207,9 @@ function SharingTab({ onInspect }: { onInspect: (id: number) => void }) {
 interface UnissuedSolve {
   account_id: number;
   user_id: number;
+  user_name: string;
+  team_id?: number;
+  team_name?: string;
   challenge_id: number;
   challenge_name: string;
   date: string;
@@ -208,6 +218,7 @@ interface UnissuedSolve {
 function UnissuedTab({ onInspect }: { onInspect: (id: number) => void }) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
+  const { teamsMode } = useInstanceState();
 
   const q = useQuery(unissuedSolvesQuery({ page, per_page: perPage }));
   const denial = q.error === null ? null : denialOf(q.error);
@@ -216,9 +227,24 @@ function UnissuedTab({ onInspect }: { onInspect: (id: number) => void }) {
   const columns: Column<UnissuedSolve>[] = [
     {
       key: "account",
-      header: "account",
-      width: "8rem",
-      cell: (s) => <AccountRef id={s.account_id} onInspect={onInspect} />,
+      header: teamsMode ? "team / who" : "account",
+      width: "14rem",
+      // In teams mode the account is the team, but a solve is one human's act: the AccountRef points
+      // at the scoring team, and the submitting user rides underneath so an admin knows who to talk to.
+      cell: (s) => (
+        <span className="ff-stack" style={{ gap: "0.15rem" }}>
+          <AccountRef
+            id={s.account_id}
+            name={teamsMode ? s.team_name : s.user_name}
+            onInspect={onInspect}
+          />
+          {teamsMode && s.user_name !== "" && (
+            <span className="muted" style={{ paddingLeft: "0.6rem" }}>
+              by {s.user_name}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "challenge",
@@ -309,8 +335,8 @@ function OverlapTab({ onInspect }: { onInspect: (id: number) => void }) {
       header: "who",
       cell: (c) => (
         <span className="ff-row" style={{ flexWrap: "wrap" }}>
-          {c.account_ids.map((id) => (
-            <AccountRef key={id} id={id} onInspect={onInspect} />
+          {c.account_ids.map((id, idx) => (
+            <AccountRef key={id} id={id} name={c.account_names?.[idx]} onInspect={onInspect} />
           ))}
         </span>
       ),
@@ -414,6 +440,10 @@ function AccountTab({
 
   const sharing = (q.data?.sharing ?? []) as unknown as SharingEdge[];
   const overlap = (q.data?.ip_overlap ?? []) as unknown as IPEdge[];
+  const accountName = ((q.data as { account_name?: string } | undefined)?.account_name ?? "").trim();
+  // Name first when we have one, id in tow — a header an operator can read at a glance.
+  const subject =
+    account === null ? "" : accountName !== "" ? `${accountName} · #${account}` : `#${account}`;
 
   const sharingColumns: Column<SharingEdge>[] = [
     {
@@ -425,8 +455,10 @@ function AccountTab({
     {
       key: "counterparty",
       header: "counterparty",
-      width: "8rem",
-      cell: (e) => <AccountRef id={e.counterparty} onInspect={(id) => onAccount(id)} />,
+      width: "12rem",
+      cell: (e) => (
+        <AccountRef id={e.counterparty} name={e.counterparty_name} onInspect={(id) => onAccount(id)} />
+      ),
     },
     {
       key: "subs",
@@ -459,8 +491,14 @@ function AccountTab({
     {
       key: "other",
       header: "shared with",
-      width: "8rem",
-      cell: (e) => <AccountRef id={e.other_account_id} onInspect={(id) => onAccount(id)} />,
+      width: "12rem",
+      cell: (e) => (
+        <AccountRef
+          id={e.other_account_id}
+          name={e.other_account_name}
+          onInspect={(id) => onAccount(id)}
+        />
+      ),
     },
     {
       key: "subs",
@@ -511,7 +549,7 @@ function AccountTab({
         <ErrorPanel error={q.error} onRetry={() => void q.refetch()} />
       ) : (
         <>
-          <Card title={`Shared flags — account #${account}`} flush>
+          <Card title={`Shared flags — account ${subject}`} flush>
             <DataTable
               caption={`Flag-sharing edges for account ${account}`}
               columns={sharingColumns}
@@ -528,7 +566,7 @@ function AccountTab({
             />
           </Card>
 
-          <Card title={`Shared addresses — account #${account}`} flush>
+          <Card title={`Shared addresses — account ${subject}`} flush>
             <DataTable
               caption={`IP-overlap edges for account ${account}`}
               columns={overlapColumns}
@@ -550,10 +588,35 @@ function AccountTab({
   );
 }
 
-function AccountRef({ id, onInspect }: { id: number; onInspect: (id: number) => void }) {
+// AccountRef shows the account's display name with the id kept as a subtitle: this is the one screen
+// where an operator is triaging an accusation and most needs to read *who*, but the id stays visible
+// because it is the stable key an admin may still need to quote. An empty name — a deleted account
+// the detectors still have evidence for — falls back to the bare id.
+function AccountRef({
+  id,
+  name,
+  onInspect,
+}: {
+  id: number;
+  name?: string;
+  onInspect: (id: number) => void;
+}) {
+  const named = name !== undefined && name !== "";
   return (
-    <Button variant="ghost" size="sm" className="ff-mono" onClick={() => onInspect(id)}>
-      #{id}
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => onInspect(id)}
+      title={named ? `${name} · account #${id}` : `account #${id}`}
+    >
+      {named ? (
+        <span className="ff-row" style={{ gap: "0.4rem" }}>
+          <span className="ff-truncate">{name}</span>
+          <span className="ff-mono muted">#{id}</span>
+        </span>
+      ) : (
+        <span className="ff-mono">#{id}</span>
+      )}
     </Button>
   );
 }
