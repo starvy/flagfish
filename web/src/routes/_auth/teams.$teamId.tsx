@@ -29,40 +29,6 @@ const authRoute = getRouteApi("/_auth");
 
 type Member = NonNullable<Team["members"]>[number];
 
-/**
- * A team's solve log, if the instance publishes one.
- *
- * The public team body does not carry solves today, so this reads structurally and the section
- * stays hidden when the field is absent. Absent is not the same as empty: a team that has scored
- * but whose log is not published must not be shown an empty timeline claiming it never solved
- * anything.
- */
-interface TeamSolve {
-  challenge_id: number;
-  challenge_name: string;
-  value: number;
-  first_blood: boolean;
-  date: string;
-}
-
-function isSolve(row: unknown): row is TeamSolve {
-  if (typeof row !== "object" || row === null) return false;
-  const s = row as Record<string, unknown>;
-  return (
-    typeof s.challenge_id === "number" &&
-    typeof s.challenge_name === "string" &&
-    typeof s.value === "number" &&
-    typeof s.first_blood === "boolean" &&
-    typeof s.date === "string"
-  );
-}
-
-function solvesOf(team: Team | undefined): readonly TeamSolve[] | null {
-  const wire = (team ?? {}) as { solves?: unknown };
-  if (!Array.isArray(wire.solves)) return null;
-  return wire.solves.every(isSolve) ? (wire.solves as TeamSolve[]) : null;
-}
-
 function TeamProfilePage() {
   const { teamId } = Route.useParams();
   const { me: cachedMe } = authRoute.useRouteContext();
@@ -71,7 +37,9 @@ function TeamProfilePage() {
   const team = useQuery(teamQuery(teamId));
   const history = useQuery(scoreHistoryQuery(teamId));
   const members = team.data?.members ?? [];
-  const solves = solvesOf(team.data);
+  // The server withholds solves under score_visibility exactly as it withholds the score, handing
+  // back an empty list rather than a partial one — so the solve card rides the same gate as the score.
+  const solves = team.data?.solves ?? [];
   // A null score is the server withholding it: score_visibility hides the figures while the roster
   // (who is on the team) stays visible. Each member's points/solve_count come back null too, and the
   // score-over-time endpoint is gated the same way, so there is nothing to chart.
@@ -171,7 +139,7 @@ function TeamProfilePage() {
                 }
               />
 
-              {solves !== null && (
+              {!scoresHidden && (
                 <Card title="Solves">
                   {solves.length === 0 ? (
                     <EmptyState
@@ -181,10 +149,7 @@ function TeamProfilePage() {
                   ) : (
                     <ol className="ff-timeline">
                       {solves.map((s) => (
-                        <li
-                          key={`${s.challenge_id}-${s.date}`}
-                          className={`ff-timeline__item${s.first_blood ? " ff-timeline__item--blood" : ""}`}
-                        >
+                        <li key={`${s.challenge_id}-${s.date}`} className="ff-timeline__item">
                           <Link
                             to="/challenges/$challengeId"
                             params={{ challengeId: s.challenge_id }}
@@ -192,7 +157,6 @@ function TeamProfilePage() {
                           >
                             {s.challenge_name}
                           </Link>
-                          {s.first_blood && <Badge tone="blood">first blood</Badge>}
                           <span className="ff-timeline__value muted">{s.value} pts</span>
                           <RelativeTime value={s.date} className="ff-timeline__when" />
                         </li>

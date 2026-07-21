@@ -24,6 +24,16 @@ type profileSolveBody struct {
 	Date          time.Time `json:"date"`
 }
 
+// publicFieldBody is one public, answered custom field on a user's public profile. Only fields the
+// admin flagged public reach the wire — the query behind it never projects a private answer. The
+// value is a string for a text field or a bool for a checkbox, typed by field_type.
+type publicFieldBody struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	FieldType string    `json:"field_type"`
+	Value     jsonValue `json:"value"`
+}
+
 // userProfileBody is a user's public page. It carries no contact address and no moderation state:
 // the query that fills it never selects them.
 type userProfileBody struct {
@@ -39,6 +49,10 @@ type userProfileBody struct {
 	Score     *int64             `json:"score"`
 	CreatedAt time.Time          `json:"created_at"`
 	Solves    []profileSolveBody `json:"solves"`
+	// Fields carries only the public, answered custom fields. It rides the account-visibility gate
+	// that already decided this page renders — not score_visibility — so a public answer shows even
+	// when scores are withheld, and a private answer never appears at all.
+	Fields []publicFieldBody `json:"fields"`
 	// Points is the user's OWN cumulative score curve, keyed on their stamped ledger — in teams mode
 	// their personal share, never the team's. It rides score_visibility exactly as Score and Solves do
 	// and comes back empty when scores are withheld, so the chart shares the page's one visibility gate.
@@ -106,11 +120,20 @@ func (s *Server) userDetail(ctx context.Context, in *userIDInput) (*userProfileO
 		points = append(points, scorePointBody{Date: pt.Date, Delta: pt.Delta, Score: pt.Score})
 	}
 
+	// Public custom fields are not score-gated: the account-visibility gate already let this page
+	// render, and a field the admin marked public is public regardless of score_visibility.
+	fields := make([]publicFieldBody, 0, len(p.Fields))
+	for _, fld := range p.Fields {
+		fields = append(fields, publicFieldBody{
+			ID: fld.ID, Name: fld.Name, FieldType: fld.FieldType, Value: jsonValue{Raw: fld.Value},
+		})
+	}
+
 	out := &userProfileOutput{Body: userProfileBody{
 		ID: p.ID, Name: p.Name,
 		Website: p.Website, Affiliation: p.Affiliation, Country: p.Country,
 		BracketID: p.BracketID, BracketName: p.BracketName,
-		Score: af.Score, CreatedAt: p.CreatedAt, Solves: solves, Points: points,
+		Score: af.Score, CreatedAt: p.CreatedAt, Solves: solves, Points: points, Fields: fields,
 	}}
 	return out, nil
 }

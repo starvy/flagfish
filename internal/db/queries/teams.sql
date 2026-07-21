@@ -89,6 +89,26 @@ SELECT t.id, t.name, t.email, t.website, t.affiliation, t.country, t.created_at,
   JOIN users u ON u.team_id = t.id
  WHERE u.id = @user_id;
 
+-- name: ListTeamSolves :many
+-- The team's solved challenges, newest first, under the same freeze horizon as the score above
+-- (cutoff strict `<`, NULL = live). Only visible challenges are listed: the headline score sums the
+-- whole ledger, but naming a hidden challenge here would leak its existence, so the itemised history
+-- hides it exactly as the per-challenge solve list and the user profile's history do.
+--
+-- Bounded to the most recent page, matching ListUserSolves: this rides inside a public profile
+-- document, not a paged feed, and the total is summed separately over the whole ledger — so the cap
+-- trims only the tail of the view, never the score. Without it a heavy team's page is a slow query
+-- and a one-request scrape at a large event.
+SELECT c.id AS challenge_id, c.name AS challenge_name, c.category,
+       s.value::int AS value, s.date
+  FROM solves s
+  JOIN challenges c ON c.id = s.challenge_id
+ WHERE s.team_id = @team_id
+   AND c.state = 'visible'
+   AND (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
+ ORDER BY s.date DESC, s.id DESC
+ LIMIT 100;
+
 -- name: KickMember :execrows
 -- Removal is the captain's alone, over a current teammate who is not the captain, and only while
 -- the team has never scored. All three live in the WHERE, so a demoted captain, a stale target, or

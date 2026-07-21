@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaPath, fractionsOfMax, linePath, niceMax, project, proportions } from "./chart";
+import { areaPath, axisTicks, fractionsOfMax, linePath, niceMax, project, proportions } from "./chart";
 
 describe("niceMax", () => {
   it.each([
@@ -17,6 +17,26 @@ describe("niceMax", () => {
 
   it("never returns less than the input", () => {
     for (const v of [11, 23, 60, 305, 1234]) expect(niceMax(v)).toBeGreaterThanOrEqual(v);
+  });
+});
+
+describe("axisTicks", () => {
+  it("labels zero, the midpoint and the max", () => {
+    expect(axisTicks(500)).toEqual([0, 250, 500]);
+    expect(axisTicks(1000)).toEqual([0, 500, 1000]);
+  });
+
+  it("collapses a tiny axis to whole numbers instead of a fractional midpoint", () => {
+    expect(axisTicks(1)).toEqual([0, 1]);
+    expect(axisTicks(2)).toEqual([0, 1, 2]);
+  });
+
+  it("always spans from zero to the max", () => {
+    for (const yMax of [1, 50, 200, 999]) {
+      const ticks = axisTicks(yMax);
+      expect(ticks[0]).toBe(0);
+      expect(ticks[ticks.length - 1]).toBe(Math.round(yMax));
+    }
   });
 });
 

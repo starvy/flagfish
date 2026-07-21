@@ -70,6 +70,9 @@ type teamBody struct {
 	CreatedAt time.Time    `json:"created_at"`
 	IsCaptain bool         `json:"is_captain,omitempty"`
 	Members   []teamMember `json:"members"`
+	// Solves is the team's solved-challenge history, newest first. It rides score_visibility exactly
+	// as Score does and comes back empty when scores are withheld, so it shares the page's one gate.
+	Solves []profileSolveBody `json:"solves"`
 }
 
 type teamOutput struct {
@@ -143,7 +146,7 @@ func (s *Server) callerActor(ctx context.Context) audit.Actor {
 // teamBodyOf builds the full, unredacted body — every figure present. The public route redacts on
 // top of it (redactTeamScores); the own-team views serve it as is, because a team always sees its
 // own totals.
-func teamBodyOf(t accounts.Team) teamBody {
+func teamBodyOf(t *accounts.Team) teamBody {
 	members := make([]teamMember, 0, len(t.Members))
 	for _, m := range t.Members {
 		solveCount, points := m.SolveCount, m.Points
@@ -152,11 +155,19 @@ func teamBodyOf(t accounts.Team) teamBody {
 			SolveCount: &solveCount, Points: &points,
 		})
 	}
+	solves := make([]profileSolveBody, 0, len(t.Solves))
+	for _, sv := range t.Solves {
+		solves = append(solves, profileSolveBody{
+			ChallengeID: sv.ChallengeID, ChallengeName: sv.ChallengeName,
+			Category: sv.Category, Value: sv.Value, Date: sv.Date,
+		})
+	}
 	score := t.Score
 	return teamBody{
 		ID: t.ID, Name: t.Name, Email: t.Email,
 		Website: t.Website, Affiliation: t.Affiliation, Country: t.Country,
-		Score: &score, CreatedAt: t.CreatedAt, IsCaptain: t.IsCaptain, Members: members,
+		Score: &score, CreatedAt: t.CreatedAt, IsCaptain: t.IsCaptain,
+		Members: members, Solves: solves,
 	}
 }
 
@@ -173,6 +184,25 @@ func redactTeamScores(red policy.Redactor, body *teamBody) {
 		red.TeamMember(&mc)
 		body.Members[i].Points, body.Members[i].SolveCount = mc.Points, mc.SolveCount
 	}
+
+	// The solve history is the score itemised, so it rides score_visibility exactly as the profile's
+	// does — withheld as omission, not a nulled figure, because the list's length is itself a count.
+	entries := make([]policy.ProfileSolveEntry, len(body.Solves))
+	for i, sv := range body.Solves {
+		entries[i] = policy.ProfileSolveEntry{
+			ChallengeID: sv.ChallengeID, ChallengeName: sv.ChallengeName,
+			Category: sv.Category, Value: sv.Value, Date: sv.Date,
+		}
+	}
+	shown := red.ProfileSolveList(entries)
+	solves := make([]profileSolveBody, 0, len(shown))
+	for _, e := range shown {
+		solves = append(solves, profileSolveBody{
+			ChallengeID: e.ChallengeID, ChallengeName: e.ChallengeName,
+			Category: e.Category, Value: e.Value, Date: e.Date,
+		})
+	}
+	body.Solves = solves
 }
 
 // updateMyTeamInput is the captain-editable slice of the team, tri-state per field.
@@ -203,7 +233,7 @@ func (s *Server) createTeam(ctx context.Context, in *createTeamInput) (*teamOutp
 		s.opts.Log.ErrorContext(ctx, "create team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not create the team")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	return &teamOutput{Body: teamBodyOf(&t)}, nil
 }
 
 // setTeamJoinSecret rotates the join password. It is also how a team whose secret predates the
@@ -241,7 +271,7 @@ func (s *Server) joinTeam(ctx context.Context, in *joinTeamInput) (*teamOutput, 
 		s.opts.Log.ErrorContext(ctx, "join team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not join the team")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	return &teamOutput{Body: teamBodyOf(&t)}, nil
 }
 
 // teamDetail is a public scoreboard row with a roster attached, so it clamps to the freeze exactly
@@ -256,7 +286,7 @@ func (s *Server) teamDetail(ctx context.Context, in *teamIDInput) (*teamOutput, 
 		s.opts.Log.ErrorContext(ctx, "team profile failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load the team")
 	}
-	body := teamBodyOf(t)
+	body := teamBodyOf(&t)
 	redactTeamScores(policy.NewRedactor(pol), &body)
 	return &teamOutput{Body: body}, nil
 }
@@ -271,7 +301,7 @@ func (s *Server) myTeam(ctx context.Context, _ *struct{}) (*teamOutput, error) {
 		s.opts.Log.ErrorContext(ctx, "own team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not load your team")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	return &teamOutput{Body: teamBodyOf(&t)}, nil
 }
 
 func (s *Server) updateMyTeam(ctx context.Context, in *updateMyTeamInput) (*teamOutput, error) {
@@ -297,7 +327,7 @@ func (s *Server) updateMyTeam(ctx context.Context, in *updateMyTeamInput) (*team
 		s.opts.Log.ErrorContext(ctx, "update team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not update the team")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	return &teamOutput{Body: teamBodyOf(&t)}, nil
 }
 
 func (s *Server) leaveTeam(ctx context.Context, _ *struct{}) (*leftTeamOutput, error) {
@@ -344,7 +374,7 @@ func (s *Server) kickTeamMember(ctx context.Context, in *kickMemberInput) (*team
 		s.opts.Log.ErrorContext(ctx, "kick member failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not remove the member")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	return &teamOutput{Body: teamBodyOf(&t)}, nil
 }
 
 func (s *Server) transferCaptaincy(ctx context.Context, in *transferCaptainInput) (*teamOutput, error) {
@@ -360,7 +390,7 @@ func (s *Server) transferCaptaincy(ctx context.Context, in *transferCaptainInput
 		s.opts.Log.ErrorContext(ctx, "transfer captaincy failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not transfer captaincy")
 	}
-	return &teamOutput{Body: teamBodyOf(t)}, nil
+	return &teamOutput{Body: teamBodyOf(&t)}, nil
 }
 
 func (s *Server) disbandTeam(ctx context.Context, _ *struct{}) (*leftTeamOutput, error) {

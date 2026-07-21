@@ -70,6 +70,10 @@ type PublicProfile struct {
 	CreatedAt   time.Time
 	Solves      []ProfileSolve
 	History     []ProfileHistoryPoint
+	// Fields carries only the public, answered custom fields — a private answer never reaches here.
+	// It rides the account-visibility gate (a hidden account 404s), not score_visibility: a public
+	// answer is public regardless of whether scores are shown.
+	Fields []PublicFieldAnswer
 }
 
 // ProfileSolve is one solved challenge on a public profile, newest first.
@@ -131,11 +135,18 @@ func (s *Service) UserProfile(ctx context.Context, userID int64, admin bool, cut
 		history[i] = ProfileHistoryPoint{Date: r.Date.Time, Delta: r.Delta, Score: r.Cumulative}
 	}
 
+	// Only public, answered fields — the query itself refuses to project a private answer.
+	fields, err := s.PublicFields(ctx, userID)
+	if err != nil {
+		return PublicProfile{}, fmt.Errorf("accounts: user profile fields: %w", err)
+	}
+
 	return PublicProfile{
 		ID: row.ID, Name: row.Name,
 		Website: row.Website, Affiliation: row.Affiliation, Country: row.Country,
 		BracketID: row.BracketID, BracketName: row.BracketName,
 		Score: row.Score, CreatedAt: row.CreatedAt.Time, Solves: solves, History: history,
+		Fields: fields,
 	}, nil
 }
 

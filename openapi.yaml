@@ -906,6 +906,23 @@ components:
         - value
         - date
       type: object
+    PublicFieldBody:
+      additionalProperties: false
+      properties:
+        field_type:
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        value: {}
+      required:
+        - id
+        - name
+        - field_type
+        - value
+      type: object
     RegisterInputBody:
       additionalProperties: false
       properties:
@@ -1200,6 +1217,12 @@ components:
           type:
             - integer
             - "null"
+        solves:
+          items:
+            $ref: "#/components/schemas/ProfileSolveBody"
+          type:
+            - array
+            - "null"
         website:
           type: string
       required:
@@ -1208,6 +1231,7 @@ components:
         - score
         - created_at
         - members
+        - solves
       type: object
     TeamMember:
       additionalProperties: false
@@ -1383,6 +1407,12 @@ components:
         created_at:
           format: date-time
           type: string
+        fields:
+          items:
+            $ref: "#/components/schemas/PublicFieldBody"
+          type:
+            - array
+            - "null"
         id:
           format: int64
           type: integer
@@ -1413,6 +1443,7 @@ components:
         - score
         - created_at
         - solves
+        - fields
         - points
       type: object
 info:

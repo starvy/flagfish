@@ -6,6 +6,13 @@ import { ScoreChart } from "../../scoreboard/ScoreChart";
 import { Badge, Card, EmptyState, RelativeTime, Skeleton } from "../../ui";
 import "../../scoreboard/screens.css";
 
+// A public custom-field answer is a string (text field) or a boolean (checkbox), typed server-side
+// by field_type. The value arrives as `unknown` because the wire schema places no constraint on it.
+function fieldDisplay(fieldType: string, value: unknown): string {
+  if (fieldType === "boolean") return value === true ? "Yes" : "No";
+  return typeof value === "string" ? value : "";
+}
+
 export const Route = createFileRoute("/_auth/users/$userId")({
   params: {
     parse: (raw) => ({ userId: Number(raw.userId) }),
@@ -25,6 +32,9 @@ function UserProfilePage() {
 
   const profile = useQuery(userProfileQuery(userId));
   const solves = profile.data?.solves ?? [];
+  // Public custom fields only — the server never sends a private answer here. They are not
+  // score-gated, so they show even while scores are hidden.
+  const fields = profile.data?.fields ?? [];
   const isSelf = me.user_id === userId;
   // A null score is the server withholding it: score_visibility hides the figures while leaving the
   // account itself visible. The score-over-time curve rides the same gate and comes back empty, so
@@ -72,6 +82,19 @@ function UserProfilePage() {
                 joined <RelativeTime value={profile.data.created_at} />
               </span>
             </div>
+
+            {fields.length > 0 && (
+              <Card title="Details">
+                <dl className="ff-fields">
+                  {fields.map((f) => (
+                    <div key={f.id} className="ff-fields__row">
+                      <dt>{f.name}</dt>
+                      <dd>{fieldDisplay(f.field_type, f.value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Card>
+            )}
 
             {scoresHidden ? (
               <Card title="Score">

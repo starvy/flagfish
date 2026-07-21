@@ -1,7 +1,7 @@
 import { useId } from "react";
 import type { ScorePoint } from "../api/client";
 import { EmptyState, formatAbsolute } from "../ui";
-import { areaPath, linePath, niceMax, project } from "../lib/chart";
+import { areaPath, axisTicks, linePath, niceMax, project } from "../lib/chart";
 
 const WIDTH = 640;
 const HEIGHT = 180;
@@ -46,19 +46,46 @@ export function ScoreChart({ points, subject }: ScoreChartProps) {
   const final = points[points.length - 1];
   const who = subject === undefined || subject === "" ? "This account" : subject;
 
+  // A few labelled gridlines so the shape reads against a scale. The lines live in the SVG (a
+  // horizontal rule survives the non-uniform stretch), the labels ride an HTML layer so they stay
+  // crisp instead of being squeezed with the viewBox. Both are decorative — the values are in the
+  // adjacent table — so the label layer is aria-hidden.
+  const ticks = axisTicks(yMax);
+  const yFor = (value: number) => PAD + (HEIGHT - PAD * 2) * (1 - value / yMax);
+
   return (
     <figure className="ff-scorechart" aria-labelledby={captionId}>
-      <svg
-        className="ff-scorechart__svg"
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-labelledby={captionId}
-      >
-        <path className="ff-scorechart__area" d={areaPath(projected, baseline, true)} />
-        <path className="ff-scorechart__line" d={linePath(projected, true)} />
-        <circle className="ff-scorechart__head" cx={last.x} cy={last.y} r={3.5} />
-      </svg>
+      <div className="ff-scorechart__plot">
+        <svg
+          className="ff-scorechart__svg"
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-labelledby={captionId}
+        >
+          {ticks.map((v) => (
+            <line
+              key={v}
+              className="ff-scorechart__grid"
+              x1={PAD}
+              x2={WIDTH - PAD}
+              y1={yFor(v)}
+              y2={yFor(v)}
+            />
+          ))}
+          <path className="ff-scorechart__area" d={areaPath(projected, baseline, true)} />
+          <path className="ff-scorechart__line" d={linePath(projected, true)} />
+          <circle className="ff-scorechart__head" cx={last.x} cy={last.y} r={3.5} />
+        </svg>
+
+        <div className="ff-scorechart__yaxis" aria-hidden="true">
+          {ticks.map((v) => (
+            <span key={v} className="ff-scorechart__tick" style={{ top: `${(yFor(v) / HEIGHT) * 100}%` }}>
+              {v.toLocaleString()}
+            </span>
+          ))}
+        </div>
+      </div>
 
       <figcaption id={captionId} className="ff-scorechart__cap">
         {who} reached <strong>{final.score}</strong> points over {points.length}{" "}

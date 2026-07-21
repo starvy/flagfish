@@ -16,6 +16,16 @@ export function niceMax(value: number): number {
   return step * magnitude;
 }
 
+/**
+ * Integer y-axis ticks for a chart topping out at `yMax`: 0, the midpoint, and the max. Rounded and
+ * de-duplicated, so a tiny axis (yMax = 1) collapses to just [0, 1] rather than labelling a "0.5".
+ */
+export function axisTicks(yMax: number): number[] {
+  const top = Math.max(0, Math.round(yMax));
+  const values = [0, Math.round(top / 2), top];
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
 export interface ProjectOptions {
   width: number;
   height: number;

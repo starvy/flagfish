@@ -86,6 +86,9 @@ type Team struct {
 	CreatedAt   time.Time
 	IsCaptain   bool // only meaningful on the own-team view
 	Members     []TeamMember
+	// Solves is the team's solved-challenge history, newest first — populated on the public profile,
+	// clamped to the same freeze horizon as the score. Empty on the own-team view, which does not read it.
+	Solves []ProfileSolve
 }
 
 // CreateTeam creates a team with the caller as captain and sole member, atomically —
@@ -240,10 +243,24 @@ func (s *Service) TeamProfile(ctx context.Context, teamID int64, cutoff *time.Ti
 		return Team{}, fmt.Errorf("accounts: team profile: %w", err)
 	}
 
+	solveRows, err := s.q.ListTeamSolves(ctx, db.ListTeamSolvesParams{
+		TeamID: &teamID, Cutoff: cutoffArg(cutoff),
+	})
+	if err != nil {
+		return Team{}, fmt.Errorf("accounts: team profile solves: %w", err)
+	}
+	solves := make([]ProfileSolve, 0, len(solveRows))
+	for _, r := range solveRows {
+		solves = append(solves, ProfileSolve{
+			ChallengeID: r.ChallengeID, ChallengeName: r.ChallengeName,
+			Category: r.Category, Value: r.Value, Date: r.Date.Time,
+		})
+	}
+
 	return Team{
 		ID: row.ID, Name: row.Name,
 		Website: row.Website, Affiliation: row.Affiliation, Country: row.Country,
-		Score: row.Score, CreatedAt: row.CreatedAt.Time, Members: members,
+		Score: row.Score, CreatedAt: row.CreatedAt.Time, Members: members, Solves: solves,
 	}, nil
 }
 

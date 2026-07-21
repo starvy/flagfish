@@ -1091,6 +1091,13 @@ export interface components {
             /** Format: int32 */
             value: number;
         };
+        PublicFieldBody: {
+            field_type: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            value: unknown;
+        };
         RegisterInputBody: {
             /**
              * Format: uri
@@ -1236,6 +1243,7 @@ export interface components {
             name: string;
             /** Format: int64 */
             score: number | null;
+            solves: components["schemas"]["ProfileSolveBody"][] | null;
             website?: string;
         };
         TeamMember: {
@@ -1321,6 +1329,7 @@ export interface components {
             country?: string;
             /** Format: date-time */
             created_at: string;
+            fields: components["schemas"]["PublicFieldBody"][] | null;
             /** Format: int64 */
             id: number;
             name: string;

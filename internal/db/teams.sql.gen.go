@@ -317,6 +317,66 @@ func (q *Queries) ListTeamMembers(ctx context.Context, arg ListTeamMembersParams
 	return items, nil
 }
 
+const listTeamSolves = `-- name: ListTeamSolves :many
+SELECT c.id AS challenge_id, c.name AS challenge_name, c.category,
+       s.value::int AS value, s.date
+  FROM solves s
+  JOIN challenges c ON c.id = s.challenge_id
+ WHERE s.team_id = $1
+   AND c.state = 'visible'
+   AND ($2::timestamptz IS NULL OR s.date < $2::timestamptz)
+ ORDER BY s.date DESC, s.id DESC
+ LIMIT 100
+`
+
+type ListTeamSolvesParams struct {
+	TeamID *int64
+	Cutoff pgtype.Timestamptz
+}
+
+type ListTeamSolvesRow struct {
+	ChallengeID   int64
+	ChallengeName string
+	Category      string
+	Value         int32
+	Date          pgtype.Timestamptz
+}
+
+// The team's solved challenges, newest first, under the same freeze horizon as the score above
+// (cutoff strict `<`, NULL = live). Only visible challenges are listed: the headline score sums the
+// whole ledger, but naming a hidden challenge here would leak its existence, so the itemised history
+// hides it exactly as the per-challenge solve list and the user profile's history do.
+//
+// Bounded to the most recent page, matching ListUserSolves: this rides inside a public profile
+// document, not a paged feed, and the total is summed separately over the whole ledger — so the cap
+// trims only the tail of the view, never the score. Without it a heavy team's page is a slow query
+// and a one-request scrape at a large event.
+func (q *Queries) ListTeamSolves(ctx context.Context, arg ListTeamSolvesParams) ([]ListTeamSolvesRow, error) {
+	rows, err := q.db.Query(ctx, listTeamSolves, arg.TeamID, arg.Cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTeamSolvesRow{}
+	for rows.Next() {
+		var i ListTeamSolvesRow
+		if err := rows.Scan(
+			&i.ChallengeID,
+			&i.ChallengeName,
+			&i.Category,
+			&i.Value,
+			&i.Date,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reassignCaptainAfterLeave = `-- name: ReassignCaptainAfterLeave :exec
 UPDATE teams t
    SET captain_id = (SELECT min(u.id) FROM users u WHERE u.team_id = t.id)
