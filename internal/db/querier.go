@@ -598,6 +598,13 @@ type Querier interface {
 	// and awards.user_id ledgers under the caller's freeze horizon (cutoff strict `<`, NULL = live), so a
 	// public page served during a freeze hands over the frozen standing, one account at a time.
 	GetUserPublicProfile(ctx context.Context, arg GetUserPublicProfileParams) (GetUserPublicProfileRow, error)
+	// One user's OWN cumulative contribution over time, keyed unconditionally on the stamped
+	// solves.user_id / awards.user_id ledger — never on team_id. In teams mode a user's public page shows
+	// their personal share of the team's total (the headline score and the solve list are summed the same
+	// way), so the curve beneath them has to be that same personal series: a user id is not a team id, and
+	// resolving it as one plots a stranger's team. Freeze-safe by the same cutoff the profile score uses
+	// (strict `<`, NULL = live). `value <> 0` mirrors the board: a zero-point event does not move the line.
+	GetUserScoreHistory(ctx context.Context, arg GetUserScoreHistoryParams) ([]GetUserScoreHistoryRow, error)
 	// Standings and scoreboard time-travel. The heaviest read in the product.
 	// Four things here are load-bearing:
 	//

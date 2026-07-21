@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, getRouteApi } from "@tanstack/react-router";
-import { meQuery, scoreHistoryQuery, userProfileQuery } from "../../queries";
+import { meQuery, userProfileQuery } from "../../queries";
 import { ScreenGate } from "../../scoreboard/states";
 import { ScoreChart } from "../../scoreboard/ScoreChart";
 import { Badge, Card, EmptyState, RelativeTime, Skeleton } from "../../ui";
@@ -24,11 +24,10 @@ function UserProfilePage() {
   const { data: me } = useQuery({ ...meQuery, initialData: cachedMe });
 
   const profile = useQuery(userProfileQuery(userId));
-  const history = useQuery(scoreHistoryQuery(userId));
   const solves = profile.data?.solves ?? [];
   const isSelf = me.user_id === userId;
   // A null score is the server withholding it: score_visibility hides the figures while leaving the
-  // account itself visible. The score-over-time endpoint is gated the same way and simply 404s, so
+  // account itself visible. The score-over-time curve rides the same gate and comes back empty, so
   // there is nothing to chart either.
   const scoresHidden = profile.data?.score === null;
 
@@ -84,7 +83,7 @@ function UserProfilePage() {
             ) : (
               <>
                 <Card title="Score over time">
-                  <ScoreChart points={history.data?.points ?? []} subject={profile.data.name} />
+                  <ScoreChart points={profile.data.points ?? []} subject={profile.data.name} />
                 </Card>
 
                 <Card title="Solves">

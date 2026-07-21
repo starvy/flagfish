@@ -39,6 +39,10 @@ type userProfileBody struct {
 	Score     *int64             `json:"score"`
 	CreatedAt time.Time          `json:"created_at"`
 	Solves    []profileSolveBody `json:"solves"`
+	// Points is the user's OWN cumulative score curve, keyed on their stamped ledger — in teams mode
+	// their personal share, never the team's. It rides score_visibility exactly as Score and Solves do
+	// and comes back empty when scores are withheld, so the chart shares the page's one visibility gate.
+	Points []scorePointBody `json:"points"`
 }
 
 type userProfileOutput struct {
@@ -92,11 +96,21 @@ func (s *Server) userDetail(ctx context.Context, in *userIDInput) (*userProfileO
 		})
 	}
 
+	curve := make([]policy.HistoryPoint, len(p.History))
+	for i, pt := range p.History {
+		curve[i] = policy.HistoryPoint{Date: pt.Date, Delta: pt.Delta, Score: pt.Score}
+	}
+	shownCurve := red.ProfileScoreHistory(curve)
+	points := make([]scorePointBody, 0, len(shownCurve))
+	for _, pt := range shownCurve {
+		points = append(points, scorePointBody{Date: pt.Date, Delta: pt.Delta, Score: pt.Score})
+	}
+
 	out := &userProfileOutput{Body: userProfileBody{
 		ID: p.ID, Name: p.Name,
 		Website: p.Website, Affiliation: p.Affiliation, Country: p.Country,
 		BracketID: p.BracketID, BracketName: p.BracketName,
-		Score: af.Score, CreatedAt: p.CreatedAt, Solves: solves,
+		Score: af.Score, CreatedAt: p.CreatedAt, Solves: solves, Points: points,
 	}}
 	return out, nil
 }

@@ -69,6 +69,7 @@ type PublicProfile struct {
 	Score       int64
 	CreatedAt   time.Time
 	Solves      []ProfileSolve
+	History     []ProfileHistoryPoint
 }
 
 // ProfileSolve is one solved challenge on a public profile, newest first.
@@ -78,6 +79,15 @@ type ProfileSolve struct {
 	Category      string
 	Value         int32
 	Date          time.Time
+}
+
+// ProfileHistoryPoint is one instant on a user's own cumulative score curve: Delta is the ledger
+// event's value, Score the running total up to it. Keyed on the user's stamped ledger, so in teams
+// mode it is the player's personal contribution — not their team's curve.
+type ProfileHistoryPoint struct {
+	Date  time.Time
+	Delta int64
+	Score int64
 }
 
 // UserProfile is the public user page, gated exactly like the scoreboard and the team page: a hidden
@@ -107,11 +117,25 @@ func (s *Service) UserProfile(ctx context.Context, userID int64, admin bool, cut
 		})
 	}
 
+	// The curve under the profile is this user's own ledger, keyed on user_id — not the scoreboard
+	// account. In teams mode a user id would otherwise resolve to a stranger's team, so the history
+	// is read here through a user-keyed query rather than the scoreboard-detail one.
+	histRows, err := s.q.GetUserScoreHistory(ctx, db.GetUserScoreHistoryParams{
+		UserID: userID, Cutoff: cutoffArg(cutoff),
+	})
+	if err != nil {
+		return PublicProfile{}, fmt.Errorf("accounts: user profile history: %w", err)
+	}
+	history := make([]ProfileHistoryPoint, len(histRows))
+	for i, r := range histRows {
+		history[i] = ProfileHistoryPoint{Date: r.Date.Time, Delta: r.Delta, Score: r.Cumulative}
+	}
+
 	return PublicProfile{
 		ID: row.ID, Name: row.Name,
 		Website: row.Website, Affiliation: row.Affiliation, Country: row.Country,
 		BracketID: row.BracketID, BracketName: row.BracketName,
-		Score: row.Score, CreatedAt: row.CreatedAt.Time, Solves: solves,
+		Score: row.Score, CreatedAt: row.CreatedAt.Time, Solves: solves, History: history,
 	}, nil
 }
 

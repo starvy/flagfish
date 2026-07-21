@@ -1386,6 +1386,12 @@ components:
           type: integer
         name:
           type: string
+        points:
+          items:
+            $ref: "#/components/schemas/ScorePointBody"
+          type:
+            - array
+            - "null"
         score:
           format: int64
           type:
@@ -1405,6 +1411,7 @@ components:
         - score
         - created_at
         - solves
+        - points
       type: object
 info:
   title: flagfish

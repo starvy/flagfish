@@ -129,6 +129,24 @@ func (r Redactor) ProfileSolveList(solves []ProfileSolveEntry) []ProfileSolveEnt
 	return nil
 }
 
+// A HistoryPoint is one instant on a public profile's cumulative score curve.
+type HistoryPoint struct {
+	Date  time.Time
+	Delta int64
+	Score int64
+}
+
+// ProfileScoreHistory withholds the score-over-time curve when scores are not visible to the viewer,
+// on the same reasoning as ProfileSolveList: the account gate has already let the viewer see the page,
+// so the one open question is whether scores are visible — and the curve's final point IS the score.
+// Omission, not a nulled figure, because the whole series is a running total of withheld data.
+func (r Redactor) ProfileScoreHistory(points []HistoryPoint) []HistoryPoint {
+	if r.ScoresVisible {
+		return points
+	}
+	return nil
+}
+
 // A MemberContribution is a team member's scoring line on the public roster: the points they earned
 // and the solves they landed. Both are nullable on the wire — a withheld figure is null, never 0.
 type MemberContribution struct {

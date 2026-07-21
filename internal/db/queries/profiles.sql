@@ -20,6 +20,32 @@ SELECT u.id, u.name, u.website, u.affiliation, u.country, u.created_at,
  WHERE u.id = @user_id
    AND (sqlc.arg(admin)::boolean OR (u.hidden = false AND u.banned = false));
 
+-- name: GetUserScoreHistory :many
+-- One user's OWN cumulative contribution over time, keyed unconditionally on the stamped
+-- solves.user_id / awards.user_id ledger — never on team_id. In teams mode a user's public page shows
+-- their personal share of the team's total (the headline score and the solve list are summed the same
+-- way), so the curve beneath them has to be that same personal series: a user id is not a team id, and
+-- resolving it as one plots a stranger's team. Freeze-safe by the same cutoff the profile score uses
+-- (strict `<`, NULL = live). `value <> 0` mirrors the board: a zero-point event does not move the line.
+WITH events AS (
+    SELECT s.date AS date, s.value AS value
+      FROM solves s
+     WHERE s.user_id = @user_id
+       AND s.value <> 0
+       AND (sqlc.narg(cutoff)::timestamptz IS NULL OR s.date < sqlc.narg(cutoff)::timestamptz)
+    UNION ALL
+    SELECT a.date, a.value
+      FROM awards a
+     WHERE a.user_id = @user_id
+       AND a.value <> 0
+       AND (sqlc.narg(cutoff)::timestamptz IS NULL OR a.date < sqlc.narg(cutoff)::timestamptz)
+)
+SELECT date::timestamptz AS date,
+       value::bigint AS delta,
+       (sum(value) OVER (ORDER BY date, value))::bigint AS cumulative
+  FROM events
+ ORDER BY date, value;
+
 -- name: ListUserSolves :many
 -- The account's solved challenges, newest first, under the same freeze horizon as the score above.
 -- Only visible challenges are listed: the total score sums the whole ledger (matching the board), but

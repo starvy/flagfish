@@ -23,6 +23,12 @@ func userProfilePath(id int64) string  { return "/api/v1/users/" + strconv.Forma
 func teamProfilePath(id int64) string  { return "/api/v1/teams/" + strconv.FormatInt(id, 10) }
 func scoreHistoryPath(id int64) string { return "/api/v1/scoreboard/" + strconv.FormatInt(id, 10) }
 
+type scorePointWire struct {
+	Date  time.Time `json:"date"`
+	Delta int64     `json:"delta"`
+	Score int64     `json:"score"`
+}
+
 type userProfileWire struct {
 	Name   string `json:"name"`
 	Score  *int64 `json:"score"`
@@ -30,6 +36,25 @@ type userProfileWire struct {
 		ChallengeName string `json:"challenge_name"`
 		Value         int32  `json:"value"`
 	} `json:"solves"`
+	Points []scorePointWire `json:"points"`
+}
+
+// lastPoint is the final cumulative score on a curve, or 0 when the curve is empty.
+func lastPoint(pts []scorePointWire) int64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	return pts[len(pts)-1].Score
+}
+
+// solveAtTeam stamps a solve with both the user and the team, the shape a teams-mode solve carries.
+func (f *fixture) solveAtTeam(challengeID, userID, teamID int64, value int, at time.Time) {
+	f.t.Helper()
+	if _, err := f.pool.Exec(context.Background(),
+		`INSERT INTO solves (challenge_id, user_id, team_id, value, date) VALUES ($1,$2,$3,$4,$5)`,
+		challengeID, userID, teamID, value, at); err != nil {
+		f.t.Fatalf("seed team solve: %v", err)
+	}
 }
 
 func decodeUserProfile(t *testing.T, body string) userProfileWire {
@@ -122,6 +147,15 @@ func TestS50_UserProfileRedactsScoreAndSolves(t *testing.T) {
 			}
 			if len(prof.Solves) != tc.wantSolves {
 				t.Errorf("solves = %d, want %d", len(prof.Solves), tc.wantSolves)
+			}
+			// The score-over-time curve rides the same gate: shown when the figure is, withheld with
+			// it. A withheld curve is an empty series, and a shown one ends at the shown score.
+			if tc.wantScore == nil {
+				if len(prof.Points) != 0 {
+					t.Errorf("score curve = %d points, want none — a hidden score hides its curve", len(prof.Points))
+				}
+			} else if got := lastPoint(prof.Points); got != *tc.wantScore {
+				t.Errorf("score curve final = %d, want %d — the chart must end at the shown score", got, *tc.wantScore)
 			}
 			// Belt and braces: when the score is withheld the solved challenge's name must not reach
 			// the body through any field.
@@ -313,6 +347,99 @@ func TestS54_ScoreHistoryGatesOnScoreVisibility(t *testing.T) {
 			t.Errorf("admin status = %d, want 200", res.StatusCode)
 		}
 	})
+}
+
+type historyWire struct {
+	Points []scorePointWire `json:"points"`
+}
+
+func decodeHistoryWire(t *testing.T, body string) historyWire {
+	t.Helper()
+	var out historyWire
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("decode score history: %v (%s)", err, body)
+	}
+	return out
+}
+
+// TestS55 — in teams mode a user's public chart must plot THAT user, never a team that merely shares
+// their id. User ids and team ids are independent bigserials, so a user id collides with an unrelated
+// team's id, and resolving the profile's curve through the scoreboard-detail endpoint (which keys on
+// the team in teams mode) plots a stranger. The profile carries the user's own ledger instead — keyed
+// on user_id — so the curve is the player's personal contribution, agreeing with the headline score.
+//
+// Remove that and the chart falls back to an empty series here: the assertion on the user's own curve
+// fails, which is the regression this test exists to catch.
+func TestS55_UserProfileChartIsOwnSeriesNotForeignTeam(t *testing.T) {
+	f := setup(t, withTeamsMode())
+
+	// The foreign team is seeded first so the teams sequence hands it the same id the first user will
+	// get. This reproduces the collision exactly: a stranger's team whose id equals the user's.
+	foreign := f.team("Strangers")
+	own := f.team("Aces")
+	ada := f.user("Ada", pw)
+	if ada != foreign {
+		t.Fatalf("test needs the user id to collide with the foreign team id: user=%d team=%d", ada, foreign)
+	}
+	f.assign(ada, own)
+
+	// The foreign team's curve: a large, unmistakable total earned by someone who is not Ada.
+	mate := f.user("Mate", pw)
+	f.assign(mate, foreign)
+	chForeign := f.challenge("Foreign", 900)
+	f.solveAtTeam(chForeign, mate, foreign, 900, time.Now().Add(-2*time.Hour))
+
+	// Ada's own curve: a small, distinct total stamped to Ada and her real team.
+	chMine := f.challenge("Mine", 100)
+	f.solveAtTeam(chMine, ada, own, 100, time.Now().Add(-time.Hour))
+
+	sid := f.session(t, false)
+	res := f.do(http.MethodGet, userProfilePath(ada), withCookie(sid))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("profile status = %d, want 200: %s", res.StatusCode, res.Body)
+	}
+	prof := decodeUserProfile(t, res.Body)
+
+	// The chart under Ada's profile is Ada's own contribution: it ends at her 100, not the stranger
+	// team's 900. The headline score is summed from the same stamped ledger, so the two agree.
+	if got := lastPoint(prof.Points); got != 100 {
+		t.Fatalf("profile chart final = %d, want 100 (Ada's own); 900 would be the foreign team's curve", got)
+	}
+	if prof.Score == nil || *prof.Score != 100 {
+		t.Errorf("headline score = %s, want 100 — the chart and the headline must agree", showScore(prof.Score))
+	}
+	// The foreign total must not surface anywhere in Ada's profile document.
+	if strings.Contains(res.Body, "900") {
+		t.Errorf("a foreign team's figure leaked into the profile body: %s", res.Body)
+	}
+
+	// The smoking gun: the endpoint the chart used to be fetched from resolves Ada's id as a TEAM id
+	// in teams mode, handing back the stranger's 900. This is why the profile must not use it.
+	hist := decodeHistoryWire(t, f.do(http.MethodGet, scoreHistoryPath(ada), withCookie(sid)).Body)
+	if got := lastPoint(hist.Points); got != 900 {
+		t.Fatalf("scoreboard-detail for the user id returned %d, want the colliding team's 900 — the collision assumption is stale", got)
+	}
+}
+
+// TestS56 — users mode is unregressed: the user IS the scoring account, so the profile chart is the
+// user's own curve and matches the scoreboard-detail endpoint for the same id. The fix keys the
+// profile curve on user_id, which in users mode is exactly what the scoreboard resolves too.
+func TestS56_UserProfileChartUsersModeUnchanged(t *testing.T) {
+	f := setup(t)
+	ada := f.user("Ada", pw)
+	ch := f.challenge("Sanity", 300)
+	f.solveAt(ch, ada, 300, time.Now().Add(-time.Hour))
+
+	sid := f.session(t, false)
+	prof := decodeUserProfile(t, f.do(http.MethodGet, userProfilePath(ada), withCookie(sid)).Body)
+	if got := lastPoint(prof.Points); got != 300 {
+		t.Fatalf("profile chart final = %d, want 300 — the user's own curve", got)
+	}
+	// In users mode the two paths resolve the same account, so their curves agree.
+	hist := decodeHistoryWire(t, f.do(http.MethodGet, scoreHistoryPath(ada), withCookie(sid)).Body)
+	if got := lastPoint(hist.Points); got != 300 {
+		t.Fatalf("scoreboard-detail final = %d, want 300 — users-mode resolution must not regress", got)
+	}
 }
 
 // --- helpers ---

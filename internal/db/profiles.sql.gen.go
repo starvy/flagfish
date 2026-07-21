@@ -69,6 +69,64 @@ func (q *Queries) GetUserPublicProfile(ctx context.Context, arg GetUserPublicPro
 	return i, err
 }
 
+const getUserScoreHistory = `-- name: GetUserScoreHistory :many
+WITH events AS (
+    SELECT s.date AS date, s.value AS value
+      FROM solves s
+     WHERE s.user_id = $1
+       AND s.value <> 0
+       AND ($2::timestamptz IS NULL OR s.date < $2::timestamptz)
+    UNION ALL
+    SELECT a.date, a.value
+      FROM awards a
+     WHERE a.user_id = $1
+       AND a.value <> 0
+       AND ($2::timestamptz IS NULL OR a.date < $2::timestamptz)
+)
+SELECT date::timestamptz AS date,
+       value::bigint AS delta,
+       (sum(value) OVER (ORDER BY date, value))::bigint AS cumulative
+  FROM events
+ ORDER BY date, value
+`
+
+type GetUserScoreHistoryParams struct {
+	UserID int64
+	Cutoff pgtype.Timestamptz
+}
+
+type GetUserScoreHistoryRow struct {
+	Date       pgtype.Timestamptz
+	Delta      int64
+	Cumulative int64
+}
+
+// One user's OWN cumulative contribution over time, keyed unconditionally on the stamped
+// solves.user_id / awards.user_id ledger — never on team_id. In teams mode a user's public page shows
+// their personal share of the team's total (the headline score and the solve list are summed the same
+// way), so the curve beneath them has to be that same personal series: a user id is not a team id, and
+// resolving it as one plots a stranger's team. Freeze-safe by the same cutoff the profile score uses
+// (strict `<`, NULL = live). `value <> 0` mirrors the board: a zero-point event does not move the line.
+func (q *Queries) GetUserScoreHistory(ctx context.Context, arg GetUserScoreHistoryParams) ([]GetUserScoreHistoryRow, error) {
+	rows, err := q.db.Query(ctx, getUserScoreHistory, arg.UserID, arg.Cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUserScoreHistoryRow{}
+	for rows.Next() {
+		var i GetUserScoreHistoryRow
+		if err := rows.Scan(&i.Date, &i.Delta, &i.Cumulative); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSolves = `-- name: ListUserSolves :many
 SELECT c.id AS challenge_id, c.name AS challenge_name, c.category,
        s.value::int AS value, s.date

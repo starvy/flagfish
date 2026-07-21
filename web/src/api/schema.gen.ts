@@ -1323,6 +1323,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+            points: components["schemas"]["ScorePointBody"][] | null;
             /** Format: int64 */
             score: number | null;
             solves: components["schemas"]["ProfileSolveBody"][] | null;
