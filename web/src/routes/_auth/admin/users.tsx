@@ -11,7 +11,9 @@ import {
   useSetUserBanned,
   useSetUserHidden,
   useSetUserRole,
+  useSetUserVerified,
   useUpdateUser,
+  useVerifyAllUsers,
 } from "../../../queries";
 import {
   AwardsPanel,
@@ -82,6 +84,8 @@ function UsersPage() {
   const [hideTarget, setHideTarget] = useState<AdminUser | null>(null);
   const [forceTarget, setForceTarget] = useState<AdminUser | null>(null);
   const [pointsTarget, setPointsTarget] = useState<AdminUser | null>(null);
+  const [verifyTarget, setVerifyTarget] = useState<AdminUser | null>(null);
+  const [verifyAllOpen, setVerifyAllOpen] = useState(false);
 
   // A manual award moves the scoring account. In users mode that is the user, so the per-user grant
   // belongs here; in teams mode the team is the scoring account and the control lives on the team.
@@ -92,6 +96,8 @@ function UsersPage() {
   const setRole = useSetUserRole();
   const setHidden = useSetUserHidden();
   const force = useForcePasswordChange();
+  const setVerified = useSetUserVerified();
+  const verifyAll = useVerifyAllUsers();
 
   const submitSearch = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -206,6 +212,9 @@ function UsersPage() {
           <Button size="sm" variant="ghost" onClick={() => setHideTarget(u)}>
             {u.hidden ? "Unhide" : "Hide"}
           </Button>
+          <Button size="sm" variant="ghost" onClick={() => setVerifyTarget(u)}>
+            {u.verified ? "Un-verify" : "Mark verified"}
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => setForceTarget(u)}>
             Force new password
           </Button>
@@ -247,6 +256,12 @@ function UsersPage() {
       <div className="page-head">
         <h1>users</h1>
         <span className="muted">{users.data?.total ?? 0} accounts</span>
+        <span className="ff-spacer" />
+        {/* The recovery for a mailer that accepted everything and delivered nothing: without
+            it every player sits unverified and 403ed, and there is no way back from here. */}
+        <Button size="sm" variant="secondary" onClick={() => setVerifyAllOpen(true)}>
+          Verify everyone
+        </Button>
       </div>
 
       <Card>
@@ -391,6 +406,85 @@ function UsersPage() {
           confirmLabel="Force new password"
           busy={force.isPending}
           description="Use this when the credential is suspect. Every session dies now; the account is walled everywhere except the password-change form until they comply."
+        />
+      )}
+
+      {verifyTarget !== null && (
+        <Dialog
+          open
+          size="sm"
+          onClose={() => setVerifyTarget(null)}
+          title={verifyTarget.verified ? "Un-verify user" : "Mark user verified"}
+          description={
+            verifyTarget.verified
+              ? `${verifyTarget.name} is locked out of the challenges again until they confirm their address.`
+              : `${verifyTarget.name} can play immediately, without a confirmation email. Use this when the mail never arrived.`
+          }
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setVerifyTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant={verifyTarget.verified ? "danger" : "primary"}
+                loading={setVerified.isPending}
+                onClick={() => {
+                  setVerified.mutate(
+                    { id: verifyTarget.id, verified: !verifyTarget.verified },
+                    {
+                      onSuccess: (u) => {
+                        setVerifyTarget(null);
+                        toast.success(
+                          u.verified ? `${u.name} is verified` : `${u.name} is no longer verified`,
+                        );
+                      },
+                      onError: (error) =>
+                        toast.error("Could not change verification", messageOf(error)),
+                    },
+                  );
+                }}
+              >
+                {verifyTarget.verified ? "Un-verify" : "Mark verified"}
+              </Button>
+            </>
+          }
+        />
+      )}
+
+      {verifyAllOpen && (
+        <Dialog
+          open
+          size="sm"
+          onClose={() => setVerifyAllOpen(false)}
+          title="Verify everyone"
+          description="Every unverified account is marked verified and can play at once. Accounts that are already verified are left alone. Each change is recorded against you in the audit log."
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setVerifyAllOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                loading={verifyAll.isPending}
+                onClick={() => {
+                  verifyAll.mutate(undefined, {
+                    onSuccess: (result) => {
+                      setVerifyAllOpen(false);
+                      toast.success(
+                        result.verified === 0
+                          ? "Nobody was waiting"
+                          : `${result.verified} accounts verified`,
+                        "They can play without a confirmation email.",
+                      );
+                    },
+                    onError: (error) => toast.error("Could not verify everyone", messageOf(error)),
+                  });
+                }}
+              >
+                Verify everyone
+              </Button>
+            </>
+          }
         />
       )}
 

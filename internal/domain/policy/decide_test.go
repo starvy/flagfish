@@ -52,7 +52,7 @@ func TestDecideTable(t *testing.T) {
 		{
 			name: "forced password change redirects",
 			p:    mustChange, r: policy.Request{Class: policy.ClassChallengeList},
-			redirect: "/reset-password", reason: policy.ReasonPasswordChangeRequired,
+			redirect: "/change-password", reason: policy.ReasonPasswordChangeRequired,
 		},
 		{
 			name: "forced password change exempts the reset route itself",

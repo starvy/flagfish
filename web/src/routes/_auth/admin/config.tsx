@@ -48,7 +48,7 @@ export const Route = createFileRoute("/_auth/admin/config")({
 const CHALLENGE_VIS = ["public", "private"] as const;
 const SCORE_VIS = ["public", "private", "hidden"] as const;
 const ACCOUNT_VIS = ["public", "private"] as const;
-const REGISTRATION_VIS = ["public", "private", "mlc"] as const;
+const REGISTRATION_VIS = ["public", "private"] as const;
 
 function ConfigPage() {
   const config = useQuery(adminConfigQuery);
@@ -73,6 +73,7 @@ function ConfigPage() {
   }
 
   const problems = config.data.problems ?? [];
+  const repairs = config.data.repairs ?? [];
 
   return (
     <Page>
@@ -85,6 +86,19 @@ function ConfigPage() {
           <ul>
             {problems.map((p) => (
               <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+      {repairs.length > 0 && (
+        <Alert tone="warn" title="A stored setting is not the one being served">
+          <p>
+            This build cannot honour a value in the config table, so it is running on a safe
+            substitute. Nothing is broken — but the choice below is not yours until you make it.
+          </p>
+          <ul>
+            {repairs.map((r) => (
+              <li key={r}>{r}</li>
             ))}
           </ul>
         </Alert>
@@ -520,7 +534,7 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
         <Field
           name="registration_visibility"
           label="Registration"
-          hint="private and mlc both make the register form a 404 — it does not exist, rather than refusing."
+          hint="private makes the register form a 404 — it does not exist, rather than refusing."
         >
           <Select
             value={draft.registration_visibility}

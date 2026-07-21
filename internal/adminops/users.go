@@ -175,3 +175,44 @@ func (s *Service) SetRole(ctx context.Context, actor audit.Actor, userID int64, 
 	})
 	return out, err
 }
+
+// SetVerified marks an account's email verified, or un-marks it.
+//
+// This is the escape hatch for the failure the mail coherence rules cannot catch: a
+// mail_server that is set but wrong — bad password, blocked port, a relay that accepts
+// and drops — leaves every player registered, unverified, and 403ed out of the whole
+// game, with no self-service remedy. Verification is a claim about an address the
+// organizer can make on the player's behalf, so it is theirs to make, and it is audited
+// like any other admin act on an account.
+func (s *Service) SetVerified(ctx context.Context, actor audit.Actor, userID int64, verified bool) (db.AdminSetUserVerifiedRow, error) {
+	var out db.AdminSetUserVerifiedRow
+	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		var err error
+		out, err = q.AdminSetUserVerified(ctx, db.AdminSetUserVerifiedParams{UserID: userID, Verified: verified})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: id=%d", ErrUserNotFound, userID)
+		} else if err != nil {
+			return fmt.Errorf("adminops: set user %d verified: %w", userID, err)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// VerifyAll marks every unverified account verified and reports how many it moved.
+//
+// When the mailer is the thing that is broken, it is broken for the whole field, and
+// clicking through a paginated list one player at a time is not a recovery. One
+// statement, one transaction, one actor stamped over all of it.
+func (s *Service) VerifyAll(ctx context.Context, actor audit.Actor) (int64, error) {
+	var n int64
+	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+		var err error
+		n, err = q.AdminVerifyAllUsers(ctx)
+		if err != nil {
+			return fmt.Errorf("adminops: verify all users: %w", err)
+		}
+		return nil
+	})
+	return n, err
+}

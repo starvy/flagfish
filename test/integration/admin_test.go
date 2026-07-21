@@ -56,7 +56,10 @@ func newAdminAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) *apiFix {
 		t.Fatalf("config: %v", err)
 	}
 
-	acct := accounts.NewService(pool, mode, log)
+	// A queue that accepts and delivers nothing. Under verify_emails that is the interesting
+	// state for the admin surface: everyone registers, nobody is verified, and no mail is
+	// coming — which is what an organizer with wrong SMTP settings actually has.
+	acct := accounts.NewService(pool, mode, log, accounts.WithJobs(stubInserter{}))
 	srv := httpapi.New(httpapi.Options{
 		Config:   cfg,
 		Auth:     acct,

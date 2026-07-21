@@ -96,7 +96,21 @@ type Snapshot struct {
 	// an import round-trips, and are reachable only through Raw() — a caller that
 	// wants one has to say so, and gets a string, not a guess.
 	raw map[string]string
+
+	// repairs are stored values this build cannot honour, replaced at load with a
+	// safe one. See Repairs.
+	repairs []string
 }
+
+// Repairs reports the stored values this snapshot could not honour and substituted
+// for. Empty on a healthy instance.
+//
+// It is a third category, deliberately: a parse error refuses to boot, a coherence
+// violation refuses to boot, and a repair does neither — because the values that land
+// here are ones the write path no longer even accepts, so refusing to start would
+// strand an instance whose operator has no way in to fix it. Instead the safe value is
+// served, logged, and shown on the config screen until somebody chooses a real one.
+func (s *Snapshot) Repairs() []string { return s.repairs }
 
 // Raw returns an unmodelled config value exactly as stored. No coercion. If you
 // find yourself parsing the result of this at a call site, the key belongs in the
@@ -206,6 +220,10 @@ type keyDef struct {
 	// set is nil for a key we recognise but do not source from the config table.
 	set    setter
 	secret bool
+
+	// refuseWrite rejects a value that an existing table may still hold but that must
+	// never be written again. Nil means every value set accepts is also writable.
+	refuseWrite func(string) error
 }
 
 // public and secret declare a key's sensitivity at its definition, so adding a key is
@@ -213,6 +231,9 @@ type keyDef struct {
 // secret by default — see Secret.
 func public(s setter) keyDef { return keyDef{set: s} }
 func secret(s setter) keyDef { return keyDef{set: s, secret: true} }
+
+// withdrawn marks values the key still parses but can no longer be assigned.
+func (d keyDef) withdrawn(refuse func(string) error) keyDef { d.refuseWrite = refuse; return d }
 
 // registry is the declared schema. A key in here is typed; a key not in here is a
 // string in raw.
@@ -230,10 +251,11 @@ var registry = map[string]keyDef{
 
 	"setup": public(boolSetter(func(s *Snapshot, b bool) { s.SetupDone = b })),
 
-	"challenge_visibility":    public(visSetter(policy.VisChallenge, func(s *Snapshot, v policy.Vis) { s.ChallengeVis = v })),
-	"score_visibility":        public(visSetter(policy.VisScore, func(s *Snapshot, v policy.Vis) { s.ScoreVis = v })),
-	"account_visibility":      public(visSetter(policy.VisAccount, func(s *Snapshot, v policy.Vis) { s.AccountVis = v })),
-	"registration_visibility": public(visSetter(policy.VisRegistration, func(s *Snapshot, v policy.Vis) { s.RegistrationVis = v })),
+	"challenge_visibility": public(visSetter(policy.VisChallenge, func(s *Snapshot, v policy.Vis) { s.ChallengeVis = v })),
+	"score_visibility":     public(visSetter(policy.VisScore, func(s *Snapshot, v policy.Vis) { s.ScoreVis = v })),
+	"account_visibility":   public(visSetter(policy.VisAccount, func(s *Snapshot, v policy.Vis) { s.AccountVis = v })),
+	"registration_visibility": public(visSetter(policy.VisRegistration, func(s *Snapshot, v policy.Vis) { s.RegistrationVis = v })).
+		withdrawn(refuseMLC),
 
 	"verify_emails":  public(boolSetter(func(s *Snapshot, b bool) { s.VerifyEmails = b })),
 	"view_after_ctf": public(boolSetter(func(s *Snapshot, b bool) { s.ViewAfterCTF = b })),
@@ -381,10 +403,34 @@ func visSetter(kind policy.VisKind, assign func(*Snapshot, policy.Vis)) setter {
 			return errors.New(`"hidden" is only a legal value for score_visibility`)
 		case vis == policy.VisMLC && kind != policy.VisRegistration:
 			return errors.New(`"mlc" is only a legal value for registration_visibility`)
+		case vis == policy.VisMLC:
+			// Only reachable from a table written before this value was withdrawn, or
+			// from an imported archive. Honouring it would 404 the registration form
+			// while nothing in this binary can create the accounts it promises, and
+			// there is no admin route that mints a user — so the event would have no
+			// players and no way to get any. Serve the open form and complain.
+			s.repairs = append(s.repairs, mlcRepair)
+			assign(s, policy.VisPublic)
+			return nil
 		}
 		assign(s, vis)
 		return nil
 	}
+}
+
+const mlcRepair = `registration_visibility is stored as "mlc", but this build has no MajorLeagueCyber ` +
+	`sign-in to create accounts with: honouring it would leave registration unreachable for everyone. ` +
+	`Serving "public" instead — set registration_visibility to "public" or "private" to clear this.`
+
+// refuseMLC keeps the withdrawn value out of the table. Rejecting it at the write and
+// repairing it at the load are the same decision seen from two sides: nobody can choose
+// a setting the binary cannot honour, and nobody who already did is locked out by it.
+func refuseMLC(v string) error {
+	if v == "mlc" {
+		return errors.New(`"mlc" is not available: this build has no MajorLeagueCyber sign-in, so it ` +
+			`would leave registration unreachable for everyone. Use "public" or "private"`)
+	}
+	return nil
 }
 
 // Build parses and validates the whole table, once.

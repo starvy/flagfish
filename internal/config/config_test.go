@@ -646,3 +646,111 @@ func TestSnapshotProjectsOntoThePolicyEvent(t *testing.T) {
 		t.Errorf("the projection dropped a field: %+v", e)
 	}
 }
+
+// `mlc` promised accounts from a MajorLeagueCyber OAuth callback this binary does not
+// have. Choosing it 404s the registration form with nothing able to create accounts
+// behind it, and there is no admin route that mints a user — so the event ends up with
+// no players and no way to get any. The write path refuses it.
+func TestSetRefusesTheWithdrawnMLCVisibility(t *testing.T) {
+	ctx := context.Background()
+	store := &mapStore{rows: sane(), mode: modep(account.ModeTeams)}
+
+	m, err := config.New(ctx, store, discard())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	setErr := m.Set(ctx, map[string]string{"registration_visibility": "mlc"})
+	if setErr == nil {
+		t.Fatal("registration_visibility=mlc was accepted; it must be unreachable")
+	}
+	if !errors.Is(setErr, config.ErrRejected) {
+		t.Errorf("error = %v, want a rejection so the transport answers 422", setErr)
+	}
+	if !strings.Contains(setErr.Error(), "registration_visibility") {
+		t.Errorf("error %q does not name the key — an operator cannot act on it", setErr)
+	}
+	if m.Current().RegistrationVis != policy.VisPublic {
+		t.Error("the live snapshot changed despite the write being rejected")
+	}
+
+	got, err := store.All(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["registration_visibility"] == "mlc" {
+		t.Error("the rejected value reached the store")
+	}
+}
+
+// The other half of the same decision. An instance that stored `mlc` before it was
+// withdrawn — or imported an archive holding it — must still boot, and must still have
+// a reachable registration form: refusing to start would strand an operator behind the
+// very API that repairs it, which is a worse footgun than the one being fixed.
+func TestStoredMLCBootsWithRegistrationReachable(t *testing.T) {
+	ctx := context.Background()
+	rows := sane()
+	rows["registration_visibility"] = "mlc"
+	store := &mapStore{rows: rows, mode: modep(account.ModeTeams)}
+
+	var logbuf strings.Builder
+	m, err := config.New(ctx, store, slog.New(slog.NewTextHandler(&logbuf, nil)))
+	if err != nil {
+		t.Fatalf("an instance holding the withdrawn value must still boot: %v", err)
+	}
+
+	snap := m.Current()
+	if snap.RegistrationVis != policy.VisPublic {
+		t.Errorf("RegistrationVis = %s, want public — registration has to be reachable", snap.RegistrationVis)
+	}
+	if got := policy.Decide(policy.Policy{
+		E: snap.Event(time.Unix(1784030400, 0).UTC()),
+		R: policy.Request{Class: policy.ClassRegister},
+	}); got.Denied() {
+		t.Errorf("the registration route is still denied: %+v", got)
+	}
+
+	// Loud, not silent: the operator has to learn that a setting they chose is not the
+	// setting being served.
+	if len(m.Repairs()) != 1 || !strings.Contains(m.Repairs()[0], "registration_visibility") {
+		t.Errorf("Repairs() = %v, want the substitution named", m.Repairs())
+	}
+	if !strings.Contains(logbuf.String(), "cannot honour") {
+		t.Errorf("the substitution was not logged: %s", logbuf.String())
+	}
+	// A repair is not a coherence problem, and it must not be reported as one — boot
+	// refuses those.
+	if len(m.Problems()) != 0 {
+		t.Errorf("Problems() = %v, want empty", m.Problems())
+	}
+}
+
+// A stored `mlc` must not hold every other knob hostage: an operator repairing an
+// instance edits unrelated keys first, and the repair stands until they choose.
+func TestStoredMLCDoesNotBlockUnrelatedWrites(t *testing.T) {
+	ctx := context.Background()
+	rows := sane()
+	rows["registration_visibility"] = "mlc"
+	m, err := config.New(ctx, &mapStore{rows: rows, mode: modep(account.ModeTeams)}, discard())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if setErr := m.Set(ctx, map[string]string{"ctf_name": "renamed"}); setErr != nil {
+		t.Fatalf("an unrelated write was refused over a repaired key: %v", setErr)
+	}
+	if m.Current().CTFName != "renamed" {
+		t.Error("the write did not land")
+	}
+	if len(m.Repairs()) != 1 {
+		t.Errorf("Repairs() = %v, want the substitution to survive the write", m.Repairs())
+	}
+
+	// And choosing a real value clears it.
+	if setErr := m.Set(ctx, map[string]string{"registration_visibility": "private"}); setErr != nil {
+		t.Fatalf("the repair could not be cleared: %v", setErr)
+	}
+	if len(m.Repairs()) != 0 {
+		t.Errorf("Repairs() = %v, want empty once a real value is chosen", m.Repairs())
+	}
+}

@@ -118,9 +118,12 @@ func Decide(p Policy) Outcome {
 		}
 	}
 
-	// 4. Forced password change.
+	// 4. Forced password change. The destination is the logged-in change form, not the
+	//    emailed-token reset: the caller is authenticated and knows the password they
+	//    just used, so sending them somewhere that needs a link out of a mailbox would
+	//    make a broken mailer into a lockout.
 	if pr.Authed && pr.ForcePasswordChange && !r.Class.ExemptFromPasswordChange() {
-		return Outcome{Redirect: "/reset-password", Reason: ReasonPasswordChangeRequired}
+		return Outcome{Redirect: "/change-password", Reason: ReasonPasswordChangeRequired}
 	}
 
 	// 5. The route may not exist in this mode at all.

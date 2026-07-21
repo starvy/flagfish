@@ -193,6 +193,14 @@ export const adminApi = {
   setUserRole: (id: number, role: "user" | "admin") =>
     request<Schemas["AdminRoleOutputBody"]>("PUT", `${P}/users/${id}/role`, { role }),
 
+  // The recovery for a mailer that is configured but broken: verification is a claim about
+  // an address, and an organiser can make it on a player's behalf when no mail arrives.
+  setUserVerified: (id: number, verified: boolean) =>
+    request<Schemas["AdminVerifiedOutputBody"]>("PUT", `${P}/users/${id}/verified`, { verified }),
+
+  verifyAllUsers: () =>
+    request<Schemas["AdminVerifyAllOutputBody"]>("POST", `${P}/users/verify-all`),
+
   // Sets the flag and kills the user's sessions; they must pick a new password to play again.
   forcePasswordChange: (id: number) =>
     request<Schemas["AdminForcePasswordChangeOutputBody"]>(

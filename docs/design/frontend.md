@@ -108,7 +108,7 @@ this table. Screens do not each re-implement it.
 | `setup-incomplete` | 403 | `/setup` | Full-page "this instance is not set up" (setup is CLI-only today — §9). |
 | `banned` | 403 | — | Full-page ban wall. No nav, no retry. |
 | `team-banned` | 403 | — | Same wall, worded for the team. |
-| `password-change-required` | 403 | `/reset_password` | Force the change-password form; suppress nav. |
+| `password-change-required` | 403 | `/change-password` | The logged-in change form, not the emailed-token reset — a broken mailer must not become a lockout. |
 | `auth-required` | 403 | `/login` | Redirect, preserving `?redirect=`. |
 | `authentication-required` | 403 | — | The attempt path's deliberate non-redirect: inline form error. |
 | `admin-required` / `admins-only` | 403 | — | Not-found inside the console; inline "admins only" elsewhere. |
@@ -122,7 +122,7 @@ this table. Screens do not each re-implement it.
 | `ctf-ended` | 403 | — | "The CTF has ended"; with `view_after_ctf` the board stays readable. |
 | `paused` | 403 | — | Banner + disabled flag input. Attempt only — hint unlocks and browsing keep working, and **admins are paused too**. |
 | `scores-hidden` | 403 | — | Board replaced with "scores are hidden". |
-| `not-found` | 404 | — | The route does not exist in this mode (all five team ops in users mode), or existence is being denied (`admins` visibility on scores/accounts; `private`/`mlc` registration). |
+| `not-found` | 404 | — | The route does not exist in this mode (all five team ops in users mode), or existence is being denied (`admins` visibility on scores/accounts; `private` registration). |
 | `already-authed` | 403 | `/challenges` | Bounce a logged-in user off register. |
 
 Three more come from middleware, on any route: **429 `rate-limited`** (a first-class
@@ -144,7 +144,7 @@ With them, the shell can:
 - show or hide `/team` and `/teams/$id` (teams mode only),
 - render a countdown before start and an "ended" state after end,
 - show a freeze banner when `now >= freeze` ("standings frozen at …"),
-- hide the register link when registration is `private`/`mlc`.
+- hide the register link when registration is `private`.
 
 ## 5. Design system
 
@@ -207,7 +207,7 @@ Every published operation and the screen that drives it. This is the definition 
 | `login` | `/login` |
 | `logout` | Shell (user menu) |
 | `me` | `/_auth` guard + user menu |
-| `change-password` | `/_auth/settings` → Security |
+| `change-password` | `/_auth/settings` → Security, and `/change-password` (outside the shell: the forced-change wall blocks the `/me` the shell loads) |
 | `reset-request` | `/forgot-password` |
 | `reset-apply` | `/reset-password?token=` |
 | `verify-resend` | `/confirm` |

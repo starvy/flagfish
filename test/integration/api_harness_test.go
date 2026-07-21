@@ -214,6 +214,9 @@ func (f *apiFix) login(email, password string) (cookie, csrf string) {
 type apiResp struct {
 	StatusCode int
 	Cookies    []*http.Cookie
+	// Header carries the response headers. The policy gate answers a redirect as a status
+	// plus Location rather than a 3xx, so where a denial sends you is only assertable here.
+	Header http.Header
 }
 
 // do issues a JSON request. Attach credentials with the withCookie/withCSRF/withToken mutators.
@@ -246,7 +249,7 @@ func (f *apiFix) do(method, path string, jsonBody any, mut ...func(*http.Request
 	if err != nil {
 		f.t.Fatalf("read body: %v", err)
 	}
-	return apiResp{StatusCode: res.StatusCode, Cookies: res.Cookies()}, body
+	return apiResp{StatusCode: res.StatusCode, Cookies: res.Cookies(), Header: res.Header.Clone()}, body
 }
 
 func withCookie(sid string) func(*http.Request) {

@@ -920,6 +920,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/verify-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark every unverified user verified */
+        post: operations["admin-verify-all-users"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/{id}": {
         parameters: {
             query?: never;
@@ -999,6 +1016,23 @@ export interface paths {
         get?: never;
         /** Promote or demote a user */
         put: operations["admin-set-user-role"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/verified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark a user's email verified, or un-verify them */
+        put: operations["admin-set-user-verified"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1377,7 +1411,7 @@ export interface components {
             num_users?: number;
             paused?: boolean;
             /** @enum {string} */
-            registration_visibility?: "public" | "private" | "mlc";
+            registration_visibility?: "public" | "private";
             /** @enum {string} */
             score_visibility?: "public" | "private" | "hidden";
             /** Format: date-time */
@@ -1422,6 +1456,7 @@ export interface components {
             paused: boolean;
             problems?: string[] | null;
             registration_visibility: string;
+            repairs?: string[] | null;
             score_visibility: string;
             /** Format: date-time */
             start?: string;
@@ -2224,6 +2259,37 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+        };
+        AdminVerifiedInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminVerifiedInputBody.json
+             */
+            readonly $schema?: string;
+            verified: boolean;
+        };
+        AdminVerifiedOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminVerifiedOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            verified: boolean;
+        };
+        AdminVerifyAllOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminVerifyAllOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            verified: number;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -4602,6 +4668,35 @@ export interface operations {
             };
         };
     };
+    "admin-verify-all-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminVerifyAllOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "admin-get-user": {
         parameters: {
             query?: never;
@@ -4791,6 +4886,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminRoleOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-set-user-verified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminVerifiedInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminVerifiedOutputBody"];
                 };
             };
             /** @description Error */

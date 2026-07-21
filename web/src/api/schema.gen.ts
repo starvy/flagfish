@@ -919,7 +919,7 @@ export interface components {
             mode: "users" | "teams";
             paused: boolean;
             /** @enum {string} */
-            registration_visibility: "public" | "private" | "mlc";
+            registration_visibility: "public" | "private";
             /** Format: date-time */
             start?: string;
             team_creation: boolean;

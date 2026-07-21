@@ -575,7 +575,6 @@ components:
           enum:
             - public
             - private
-            - mlc
           type: string
         start:
           format: date-time

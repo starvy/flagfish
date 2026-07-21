@@ -89,6 +89,8 @@ export {
   useSetUserRole,
   useSetUserHidden,
   useUpdateUser,
+  useSetUserVerified,
+  useVerifyAllUsers,
   useForcePasswordChange,
   useAssignBracket,
 } from "./queries/admin/users";

@@ -34,7 +34,9 @@ type instanceOutput struct {
 		TeamCreation bool `json:"team_creation"`
 		VerifyEmails bool `json:"verify_emails"`
 
-		RegistrationVisibility string `json:"registration_visibility" enum:"public,private,mlc"`
+		// The snapshot repairs a stored "mlc" to "public" at load, so it is not a value
+		// this ever serves.
+		RegistrationVisibility string `json:"registration_visibility" enum:"public,private"`
 	}
 }
 

@@ -47,6 +47,19 @@ export function useUpdateUser() {
   );
 }
 
+// Unblocks a player the verification mail never reached. Their next request is gated on a
+// principal read fresh from the row, so the flip takes effect without them signing in again.
+export function useSetUserVerified() {
+  return useUserWrite((v: { id: number; verified: boolean }) =>
+    adminApi.setUserVerified(v.id, v.verified),
+  );
+}
+
+// The whole-field version, for when the mailer — not one address — is what is broken.
+export function useVerifyAllUsers() {
+  return useUserWrite((_: void) => adminApi.verifyAllUsers());
+}
+
 // Kills the user's sessions with the flag; they log back in and are walled until they comply.
 export function useForcePasswordChange() {
   return useUserWrite((id: number) => adminApi.forcePasswordChange(id));

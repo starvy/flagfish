@@ -97,6 +97,10 @@ func (m *Manager) Problems() []string {
 	return nil
 }
 
+// Repairs reports the stored values the current snapshot substituted for. It rides on
+// the snapshot itself, so it is swapped with the config it describes.
+func (m *Manager) Repairs() []string { return m.Current().Repairs() }
+
 // Refresh re-reads the table and swaps the snapshot.
 //
 // On a parse error the old snapshot is kept: a running instance whose operator just
@@ -128,6 +132,9 @@ func (m *Manager) Refresh(ctx context.Context) error {
 	if len(problems) > 0 {
 		m.log.Error("config is incoherent; serving it anyway", "problems", problems)
 	}
+	if repairs := snap.Repairs(); len(repairs) > 0 {
+		m.log.Error("config holds values this build cannot honour; serving substitutes", "repairs", repairs)
+	}
 	m.snap.Store(snap)
 	m.problems.Store(&problems)
 	return nil
@@ -156,6 +163,9 @@ func (m *Manager) instanceMode(ctx context.Context) (*account.Mode, error) {
 // rather than holding every other knob hostage behind a repair the route may not
 // even be able to express.
 func (m *Manager) Set(ctx context.Context, kv map[string]string) error {
+	if err := refuseWithdrawn(kv); err != nil {
+		return err
+	}
 	current, err := m.store.All(ctx)
 	if err != nil {
 		return err
@@ -186,6 +196,27 @@ func (m *Manager) Set(ctx context.Context, kv map[string]string) error {
 	// Refresh locally rather than waiting for our own NOTIFY to come back: the
 	// caller's next read must see their own write.
 	return m.Refresh(ctx)
+}
+
+// refuseWithdrawn rejects a write that would store a value this build cannot honour.
+// It runs before the merge because the load path repairs such a value rather than
+// failing on it — without this the repair would quietly swallow the operator's choice
+// and hand back a setting they did not make.
+func refuseWithdrawn(kv map[string]string) error {
+	var refused []error
+	for _, key := range slices.Sorted(maps.Keys(kv)) {
+		def, known := registry[key]
+		if !known || def.refuseWrite == nil {
+			continue
+		}
+		if err := def.refuseWrite(strings.TrimSpace(kv[key])); err != nil {
+			refused = append(refused, fmt.Errorf("config key %q: %w", key, err))
+		}
+	}
+	if len(refused) > 0 {
+		return fmt.Errorf("%w: %w", ErrRejected, errors.Join(refused...))
+	}
+	return nil
 }
 
 // checkCoherence refuses the write for every violated rule that reads a written

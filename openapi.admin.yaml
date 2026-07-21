@@ -746,7 +746,6 @@ components:
           enum:
             - public
             - private
-            - mlc
           type: string
         score_visibility:
           enum:
@@ -839,6 +838,12 @@ components:
             - "null"
         registration_visibility:
           type: string
+        repairs:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         score_visibility:
           type: string
         start:
@@ -2511,6 +2516,59 @@ components:
         - id
         - name
         - hidden
+      type: object
+    AdminVerifiedInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminVerifiedInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        verified:
+          type: boolean
+      required:
+        - verified
+      type: object
+    AdminVerifiedOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminVerifiedOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        verified:
+          type: boolean
+      required:
+        - id
+        - name
+        - verified
+      type: object
+    AdminVerifyAllOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminVerifyAllOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        verified:
+          format: int64
+          type: integer
+      required:
+        - verified
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -4793,6 +4851,25 @@ paths:
       summary: List users (paginated)
       tags:
         - admin/users
+  /users/verify-all:
+    post:
+      operationId: admin-verify-all-users
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVerifyAllOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Mark every unverified user verified
+      tags:
+        - admin/users
   /users/{id}:
     get:
       operationId: admin-get-user
@@ -4970,6 +5047,38 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Promote or demote a user
+      tags:
+        - admin/users
+  /users/{id}/verified:
+    put:
+      operationId: admin-set-user-verified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminVerifiedInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVerifiedOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Mark a user's email verified, or un-verify them
       tags:
         - admin/users
 servers:

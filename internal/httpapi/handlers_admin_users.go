@@ -71,6 +71,29 @@ type adminUserHiddenOutput struct {
 	}
 }
 
+type adminVerifiedInput struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Verified bool `json:"verified"`
+	}
+}
+
+type adminVerifiedOutput struct {
+	Body struct {
+		ID       int64  `json:"id"`
+		Name     string `json:"name"`
+		Verified bool   `json:"verified"`
+	}
+}
+
+type adminVerifyAllOutput struct {
+	Body struct {
+		// How many accounts this call moved, not how many are verified: an operator who
+		// runs it twice should see 0 the second time and know nothing was left behind.
+		Verified int64 `json:"verified"`
+	}
+}
+
 type adminForcePasswordChangeOutput struct {
 	Body struct {
 		ID                 int64  `json:"id"`
@@ -155,6 +178,21 @@ func (s *Server) registerAdminUsers() {
 		OperationID: "admin-set-user-role", Method: http.MethodPut, Path: "/users/{id}/role",
 		Summary: "Promote or demote a user", Tags: []string{"admin/users"},
 	}, s.adminSetUserRole)
+
+	// The recovery pair for a mailer that is configured but broken. Without them an
+	// instance whose verification mail never lands has no way back at all: every player
+	// is 403ed out of the game and nothing in this surface can say otherwise.
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-set-user-verified", Method: http.MethodPut, Path: "/users/{id}/verified",
+		Summary: "Mark a user's email verified, or un-verify them", Tags: []string{"admin/users"},
+	}, s.adminSetUserVerified)
+
+	// Static segment under a collection that otherwise routes on {id}; the router matches
+	// it first, and no other verb on this path takes an id.
+	Register(s.Admin, policy.ClassAdmin, huma.Operation{
+		OperationID: "admin-verify-all-users", Method: http.MethodPost, Path: "/users/verify-all",
+		Summary: "Mark every unverified user verified", Tags: []string{"admin/users"},
+	}, s.adminVerifyAllUsers)
 }
 
 func (s *Server) adminListUsers(ctx context.Context, in *adminListUsersInput) (*adminListUsersOutput, error) {
@@ -233,6 +271,26 @@ func (s *Server) adminForcePasswordChange(ctx context.Context, in *adminUserIDIn
 	}
 	out := &adminForcePasswordChangeOutput{}
 	out.Body.ID, out.Body.Name, out.Body.MustChangePassword = row.ID, row.Name, row.MustChangePassword
+	return out, nil
+}
+
+func (s *Server) adminSetUserVerified(ctx context.Context, in *adminVerifiedInput) (*adminVerifiedOutput, error) {
+	row, err := s.opts.AdminOps.SetVerified(ctx, s.adminActor(ctx), in.ID, in.Body.Verified)
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "set user verified")
+	}
+	out := &adminVerifiedOutput{}
+	out.Body.ID, out.Body.Name, out.Body.Verified = row.ID, row.Name, row.Verified
+	return out, nil
+}
+
+func (s *Server) adminVerifyAllUsers(ctx context.Context, _ *struct{}) (*adminVerifyAllOutput, error) {
+	n, err := s.opts.AdminOps.VerifyAll(ctx, s.adminActor(ctx))
+	if err != nil {
+		return nil, s.adminOpsError(ctx, err, "verify all users")
+	}
+	out := &adminVerifyAllOutput{}
+	out.Body.Verified = n
 	return out, nil
 }
 

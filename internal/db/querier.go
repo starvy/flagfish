@@ -174,6 +174,12 @@ type Querier interface {
 	AdminSetUserBanned(ctx context.Context, arg AdminSetUserBannedParams) (AdminSetUserBannedRow, error)
 	AdminSetUserHidden(ctx context.Context, arg AdminSetUserHiddenParams) (AdminSetUserHiddenRow, error)
 	AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error)
+	// Admin-side verification repair: the escape hatch for an event whose mail never arrives.
+	// Every statement here runs inside a transaction that has stamped the acting admin into
+	// app.actor_id, so the capture triggers write the audit row in the same transaction as the
+	// change itself. Flipping who counts as a verified player is exactly the kind of act that
+	// has to be attributable afterwards.
+	AdminSetUserVerified(ctx context.Context, arg AdminSetUserVerifiedParams) (AdminSetUserVerifiedRow, error)
 	// Read-side disambiguation only: it shapes "no such team" versus "user is not on that team" after a
 	// zero-row write. The foreign key, not this, is what actually refuses a bad target.
 	AdminTeamExists(ctx context.Context, teamID int64) (bool, error)
@@ -203,6 +209,10 @@ type Querier interface {
 	// Deliberately narrow SET: email, role, banned, hidden, team_id and must_change_password are not
 	// reachable from this statement — each moves through its own route or not at all.
 	AdminUpdateUser(ctx context.Context, arg AdminUpdateUserParams) (AdminUpdateUserRow, error)
+	// The whole-event repair, for a mailer that accepted everything and delivered nothing.
+	// Narrowed to the rows that actually change: the audit trail then names exactly the accounts
+	// this unblocked, and running it twice is a no-op rather than a second sweep of noise.
+	AdminVerifyAllUsers(ctx context.Context) (int64, error)
 	// A sole member adopts a captainless team (the captain's user row was deleted, FK SET NULL).
 	AdoptCaptainlessTeam(ctx context.Context, arg AdoptCaptainlessTeamParams) error
 	// Hands the account an unissued instance from the pool.

@@ -20,7 +20,7 @@ function safeRedirect(to: string | undefined): string {
 }
 
 /**
- * Whether to hide the way to `/register`: `private` and `mlc` instances have no public form.
+ * Whether to hide the way to `/register`: a `private` instance has no public form.
  *
  * An unrecognised value means "we do not know" — the field is missing from the generated schema
  * and the server currently garbles it — and an unknown must not hide the front door. The real
@@ -29,7 +29,7 @@ function safeRedirect(to: string | undefined): string {
 function registrationHidden(instance: Instance | undefined): boolean {
   if (instance === undefined) return false;
   const vis: unknown = (instance as Record<string, unknown>).registration_visibility;
-  return vis === "private" || vis === "mlc";
+  return vis === "private";
 }
 
 function fieldErrorOf(error: unknown, field: string): string | undefined {

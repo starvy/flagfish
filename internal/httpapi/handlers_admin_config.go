@@ -37,10 +37,13 @@ type adminConfigInput struct {
 		End    Optional[time.Time] `json:"end,omitempty"`
 		Freeze Optional[time.Time] `json:"freeze,omitempty"`
 
-		ChallengeVisibility    *string `json:"challenge_visibility,omitempty" enum:"public,private"`
-		ScoreVisibility        *string `json:"score_visibility,omitempty" enum:"public,private,hidden"`
-		AccountVisibility      *string `json:"account_visibility,omitempty" enum:"public,private"`
-		RegistrationVisibility *string `json:"registration_visibility,omitempty" enum:"public,private,mlc"`
+		ChallengeVisibility *string `json:"challenge_visibility,omitempty" enum:"public,private"`
+		ScoreVisibility     *string `json:"score_visibility,omitempty" enum:"public,private,hidden"`
+		AccountVisibility   *string `json:"account_visibility,omitempty" enum:"public,private"`
+		// No "mlc": there is no MajorLeagueCyber sign-in in this binary, so offering it
+		// would let an operator 404 their own registration form with nothing able to
+		// create accounts behind it. config.Set refuses it too.
+		RegistrationVisibility *string `json:"registration_visibility,omitempty" enum:"public,private"`
 
 		// Pausing stops flag submissions for everyone, admins included; browsing and
 		// hint unlocks keep working.
@@ -114,6 +117,11 @@ type adminConfigOutput struct {
 		// They can only arrive out of band — the write path refuses to create them —
 		// and the operator reading this form is the one who can repair them.
 		Problems []string `json:"problems,omitempty"`
+
+		// Repairs are stored values this build cannot honour and has substituted for.
+		// Unlike a problem, the instance is running normally on the substitute; what is
+		// owed is a deliberate choice, and this form is where it gets made.
+		Repairs []string `json:"repairs,omitempty"`
 	}
 }
 
@@ -239,6 +247,7 @@ func configOutput(cfg *config.Manager) *adminConfigOutput {
 	out.Body.WebhookEvents = webhookEventNames(snap.WebhookEvents)
 	out.Body.WebhookURLSet = snap.WebhookURL != ""
 	out.Body.Problems = cfg.Problems()
+	out.Body.Repairs = cfg.Repairs()
 	return out
 }
 

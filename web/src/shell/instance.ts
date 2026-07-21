@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { instanceQuery } from "../queries";
 
 export type AccountMode = "users" | "teams";
-export type RegistrationVisibility = "public" | "private" | "mlc";
+export type RegistrationVisibility = "public" | "private";
 
 /** Where the event's clock stands right now. */
 export type Phase = "before" | "running" | "ended";
@@ -52,7 +52,7 @@ function mode(value: string | undefined): AccountMode {
 }
 
 function visibility(value: string | undefined): RegistrationVisibility {
-  return value === "private" || value === "mlc" ? value : "public";
+  return value === "private" ? "private" : "public";
 }
 
 export function phaseAt(now: number, start?: Date, end?: Date): Phase {

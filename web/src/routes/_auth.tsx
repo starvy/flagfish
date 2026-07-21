@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { NotificationBell, NotificationsDrawer } from "../notifications";
+import { denialOf } from "../policy";
 import { instanceQuery, meQuery, pagesQuery } from "../queries";
 import { ClockBanners, UserMenu, useInstanceState } from "../shell";
 import { applyLocalePreference } from "../ui";
@@ -13,7 +14,15 @@ export const Route = createFileRoute("/_auth")({
     void context.queryClient.prefetchQuery(instanceQuery);
     try {
       return { me: await context.queryClient.ensureQueryData(meQuery) };
-    } catch {
+    } catch (error) {
+      // A denial that names somewhere to go is the server routing us, not a dead session.
+      // The forced-password-change wall blocks `/me` itself, so answering every failure
+      // with /login would bounce the user between the two forever and never show them the
+      // one form that lifts the wall.
+      const denial = denialOf(error);
+      if (denial !== null && denial.location !== null && denial.location !== "/login") {
+        throw redirect({ href: denial.location });
+      }
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
   },

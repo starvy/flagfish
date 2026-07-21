@@ -323,7 +323,7 @@ Rows are route classes; the table is the *whole* L1 surface.
 | Route class | Vis gate | Authed | Verified | Team | Phase | Paused | Extra |
 |---|---|---|---|---|---|---|---|
 | `Index`, `Pages` | — | — | — | — | — | — | — |
-| `Register` | Registration: `private`→404 · `mlc`→404 (§5.9) | already-authed →`/challenges` | — | — | — | — | caps §5.7 |
+| `Register` | Registration: `private`→404 · `mlc`→404 (§5.9, not selectable) | already-authed →`/challenges` | — | — | — | — | caps §5.7 |
 | `Login`, `Reset`, `Confirm` | — | — | — | — | — | — | — |
 | `ChallengeList`/`Detail` | Challenge | `private`→AR · `admins`+authed→403 · `admins`+anon→AR | ✔ | teams-mode & teamless → 403 | ✔ | — | L2: state, prereqs |
 | `ChallengeAttempt` | Challenge | **must be authed** (403) | ✔ | teams-mode & teamless → 403 | ✔ | **403 `paused` — no admin exemption** | admin `?preview` short-circuits *before* pause |
@@ -355,7 +355,7 @@ reset endpoint itself — otherwise the user could not comply with the redirect)
 1. SetupDone           → 302 /setup
 2. authn (session | token)          ← the token path resolves the Principal fully (§5.10)
 3. Banned | TeamBanned → 403        ← therefore covers token auth
-4. ForcePasswordChange → 302 /reset_password/<t>
+4. ForcePasswordChange → 302 /change-password
 5. Mode                → 404        (route doesn't exist in this mode)
 6. Surface visibility  → per table
 7. Authed requirement  → AuthRequired
@@ -403,7 +403,7 @@ func Decide(p Policy) Outcome {
 		return Outcome{Status: 403, Reason: ReasonBanned} // §5.10: token auth included
 	}
 	if pr.Authed && pr.ForcePasswordChange && !r.Class.ExemptFromPasswordChange() {
-		return Outcome{Redirect: "/reset_password", Reason: ReasonPasswordChangeRequired}
+		return Outcome{Redirect: "/change-password", Reason: ReasonPasswordChangeRequired}
 	}
 	if !r.Class.AvailableIn(e.Mode) {
 		return NotFound
@@ -822,8 +822,15 @@ The failure mode this guards against is a visibility value with no explicit arm 
 gate and returning "no decision", which any sane framework turns into a 500. Every arm of the
 visibility switch is exhaustive, and this one is the arm that would otherwise be missing.
 
+**Not reachable today.** No build ships a MajorLeagueCyber OAuth callback, so `mlc` would 404 the
+form with nothing able to create accounts behind it — and there is no admin route that mints a user,
+so the event would have no players and no way to get any. `internal/config` therefore refuses `mlc`
+on write and, on load, substitutes `public` for an instance that already stored it, reporting the
+substitution through `Manager.Repairs`. Refusing to boot instead would strand the operator behind the
+screen that repairs it. The arm below stays: it is what a real provider integration would land on.
+
 **Preserved by:** the `VisMLC` arm of `checkVis`.
-**Test:** `TestRegistrationMLC404sTheFormRoute`.
+**Test:** `TestRegistrationMLC404sTheFormRoute`; `TestStoredMLCBootsWithRegistrationReachable`.
 
 ### 5.10 `PolicyBanCoversTokenAuth`
 
