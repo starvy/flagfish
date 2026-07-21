@@ -17,6 +17,7 @@ import {
   useToast,
 } from "../ui";
 import { errorDetail } from "./errors";
+import { formatSignedPoints, isGrantValid, netContribution, parsePoints } from "./awards";
 
 /**
  * The manual-award surface: an out-of-band point adjustment (a cheating penalty, a live-dispute
@@ -52,14 +53,27 @@ export function AwardsPanel({
         ) : (awards.data.awards ?? []).length === 0 ? (
           <EmptyState title="No manual adjustments" description="Nothing has been granted or penalised by hand." />
         ) : (
-          <ul className="ff-award-list">
-            {(awards.data.awards ?? []).map((a) => (
-              <AwardRow key={a.id} accountId={accountId} award={a} />
-            ))}
-          </ul>
+          <>
+            <NetContribution awards={awards.data.awards ?? []} />
+            <ul className="ff-award-list">
+              {(awards.data.awards ?? []).map((a) => (
+                <AwardRow key={a.id} accountId={accountId} award={a} />
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </Card>
+  );
+}
+
+function NetContribution({ awards }: { awards: readonly AdminAward[] }) {
+  const net = netContribution(awards);
+  return (
+    <div className="ff-award-net">
+      <span className="muted">Net contribution to score</span>
+      <Badge tone={net >= 0 ? "success" : "danger"}>{formatSignedPoints(net)}</Badge>
+    </div>
   );
 }
 
@@ -69,14 +83,12 @@ function GrantForm({ accountId, accountKind }: { accountId: number; accountKind:
   const [value, setValue] = useState("");
   const [reason, setReason] = useState("");
 
-  const parsed = Number(value);
-  // A nonzero integer and a reason: the same two rules the server enforces, echoed so the button
-  // reads as disabled rather than the submit bouncing back a 422.
-  const valid = Number.isInteger(parsed) && parsed !== 0 && reason.trim() !== "";
+  const parsed = parsePoints(value);
+  const valid = isGrantValid(value, reason);
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!valid) return;
+    if (parsed === null || !valid) return;
     grant.mutate(
       { value: parsed, reason: reason.trim() },
       {
@@ -134,7 +146,7 @@ function AwardRow({ accountId, award }: { accountId: number; award: AdminAward }
     <li className="ff-award-row">
       <span className="ff-row">
         <Badge tone={award.value >= 0 ? "success" : "danger"}>
-          {award.value >= 0 ? `+${award.value}` : award.value}
+          {formatSignedPoints(award.value)}
         </Badge>
         <span className="ff-truncate">{award.reason}</span>
       </span>

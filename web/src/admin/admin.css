@@ -432,6 +432,14 @@
 }
 
 /* Manual awards: the point-adjustment ledger on a team/user detail. */
+.ff-award-net {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
 .ff-award-list {
   list-style: none;
   margin: 0;
