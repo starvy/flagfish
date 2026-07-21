@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The credential budgets are keyed on what is being attacked, not on where it comes from.
@@ -36,6 +37,7 @@ func registerBody(name, email, password string) []byte {
 // originate — and an account nobody is attacking is unaffected.
 func TestS26_CredentialGuessingIsThrottledPerTargetNotPerSource(t *testing.T) {
 	const budget = 5
+	wholeWindow(t, 20*time.Second)
 	f := setup(t, withAuthLimit(budget), withTrustedProxy())
 	f.user("victim", pw)
 	f.user("bystander", pw)

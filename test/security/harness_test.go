@@ -181,6 +181,20 @@ type fixOpts struct {
 // request-id correlation test reads the id back out of the lines it produced.
 func withLogTo(w io.Writer) func(*fixOpts) { return func(o *fixOpts) { o.logTo = w } }
 
+// wholeWindow parks until the current rate-limit window has at least need left in it.
+//
+// The limiter truncates to the window, so a burst that straddles a boundary is counted against two
+// separate rows and the "the one past the budget is refused" assertion stops holding — the flake is
+// wall-clock dependent, so it survives every rerun until the suite happens to be slow. Sleeping is
+// only needed in the sliver before a boundary; the common case returns immediately.
+func wholeWindow(t *testing.T, need time.Duration) {
+	t.Helper()
+	const window = time.Minute // the window every fixture builds its limiters with
+	if left := time.Until(time.Now().Truncate(window).Add(window)); left < need {
+		time.Sleep(left)
+	}
+}
+
 func withLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.limit = n } }
 
 // withAuthLimit wires the credential-route budgets, with n as the strict per-target budget: how

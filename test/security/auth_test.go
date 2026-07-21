@@ -251,6 +251,7 @@ func TestS6b_BannedAdminIsWalled(t *testing.T) {
 // still returning 200. Here the counter is a Postgres row and the increment is an atomic upsert.
 func TestS7_RateLimitHoldsUnderConcurrency(t *testing.T) {
 	const limit = 20
+	wholeWindow(t, 20*time.Second)
 	f := setup(t, withLimit(limit))
 	ctx := context.Background()
 

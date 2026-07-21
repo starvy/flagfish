@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/starvy/flagfish/internal/accounts"
 	"github.com/starvy/flagfish/internal/auth"
@@ -59,6 +60,7 @@ func TestS11_SessionCookieIsSecureByDefault(t *testing.T) {
 // and one stranger can spend it and lock everybody out of /login.
 func TestS12_RateLimitIsPerClientBehindATrustedProxy(t *testing.T) {
 	const limit = 5
+	wholeWindow(t, 20*time.Second)
 	f := setup(t, withLimit(limit), withTrustedProxy())
 
 	// One client spends its whole bucket…
@@ -143,6 +145,7 @@ func TestS13_OversizedBodiesAreRefused(t *testing.T) {
 // cosmetic bug.
 func TestS16_RateLimitBucketIsTheRouteNotTheRawPath(t *testing.T) {
 	const limit = 5
+	wholeWindow(t, 20*time.Second)
 	f := setup(t, withLimit(limit))
 
 	// Spend the whole budget for id 7.
@@ -435,6 +438,7 @@ func cspDirective(csp, name string) string {
 func TestS24_CredentialRoutesAreLimitedTighter(t *testing.T) {
 	const general = 100
 	const authLimit = 5
+	wholeWindow(t, 20*time.Second)
 	f := setup(t, withLimit(general), withAuthLimit(authLimit))
 
 	// A general route is nowhere near limited at the credential ceiling.
