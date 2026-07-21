@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/starvy/flagfish/internal/accounts"
@@ -460,6 +461,68 @@ func TestS24_CredentialRoutesAreLimitedTighter(t *testing.T) {
 		t.Fatalf("login attempt %d: %d, want 429 — the credential route is not tighter than the "+
 			"general limiter, so brute force runs to the general budget of %d", authLimit+1, got, general)
 	}
+}
+
+// Every response carries a request id, and that id names the request's log lines.
+//
+// Without it an incident is a needle in a shared log: the caller has a failure, the operator has a
+// million lines, and nothing joins them. The id is returned as X-Request-Id and stamped onto every
+// log line for the request, so the caller can quote the exact id the logs are keyed by.
+func TestS25_RequestIDIsReturnedAndCorrelated(t *testing.T) {
+	t.Run("returned as a header and stamped on the request's log lines", func(t *testing.T) {
+		var buf lockedBuffer
+		// brokenAuth forces a log line during the request — before the response is written — so the
+		// correlation is asserted without racing the access line that follows the handler.
+		f := setup(t, withAuthenticator(brokenAuth{}), withLogTo(&buf))
+
+		r := f.do(http.MethodGet, "/api/v1/probe", withCookie("whatever"))
+
+		id := r.Header.Get("X-Request-Id")
+		if id == "" {
+			t.Fatal("no X-Request-Id on the response — the caller has nothing to quote in a bug report")
+		}
+		if got := buf.String(); !strings.Contains(got, "request_id="+id) {
+			t.Errorf("the log lines for the request do not carry request_id=%s:\n%s", id, snippet(got))
+		}
+	})
+
+	t.Run("an inbound id is honoured from a trusted proxy", func(t *testing.T) {
+		f := setup(t, withTrustedProxy())
+		const supplied = "edge-abc-123"
+		r := f.do(http.MethodGet, "/api/v1/probe", withHeader("X-Request-Id", supplied))
+		if got := r.Header.Get("X-Request-Id"); got != supplied {
+			t.Errorf("X-Request-Id = %q, want the proxy-supplied %q — a trusted proxy's id must survive "+
+				"so its trace and ours share one id", got, supplied)
+		}
+	})
+
+	t.Run("an inbound id from an untrusted client is ignored", func(t *testing.T) {
+		f := setup(t) // no trusted proxy
+		const forged = "forged-by-the-client"
+		r := f.do(http.MethodGet, "/api/v1/probe", withHeader("X-Request-Id", forged))
+		if got := r.Header.Get("X-Request-Id"); got == forged {
+			t.Error("an untrusted client's X-Request-Id was adopted — any caller could then pin or " +
+				"collide the id that names other requests' logs")
+		}
+	})
+}
+
+// lockedBuffer is a bytes.Buffer safe for the server goroutine to write while the test reads.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // dbErrorText stands in for the wrapped driver error an outage produces. It is deliberately

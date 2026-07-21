@@ -12,7 +12,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/starvy/flagfish/internal/accounts"
 	"github.com/starvy/flagfish/internal/adminops"
@@ -113,6 +112,10 @@ type Server struct {
 //
 //nolint:gocritic // hugeParam: Options is assembled once at wiring time; a pointer would only add indirection.
 func New(opts Options) *Server {
+	// Wrap the logger first, so every line this package emits — boot warnings included — flows
+	// through the handler that stamps the request id when the context carries one.
+	opts.Log = slog.New(requestIDLog{opts.Log.Handler()})
+
 	if opts.Limiter == nil {
 		opts.Limiter = auth.NoLimit{}
 		opts.Log.Warn("no rate limiter configured: every endpoint is unlimited")
@@ -146,7 +149,7 @@ func New(opts Options) *Server {
 	// These run before authentication because they must also work when it fails. The body limit
 	// is one of them: an anonymous caller must not be able to make us read a gigabyte before
 	// anyone has decided who they are.
-	r.Use(chimw.RequestID)
+	r.Use(requestID(opts.TrustedProxies))
 	r.Use(realIP(opts.TrustedProxies, !opts.InsecureCookies, opts.Log))
 	// After realIP: HSTS keys on the Secure signal realIP resolves. Before recoverer: a panic's
 	// 500 must still carry the hardening headers, and they are set on the way in.

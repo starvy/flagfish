@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -227,6 +229,80 @@ func securityHeaders() func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+const requestIDHeader = "X-Request-Id"
+
+// maxRequestIDLen bounds an inbound id we are willing to adopt: a proxy that sets one keeps it
+// short, and an unbounded value we echo and log is a header-smuggling and log-injection vector.
+const maxRequestIDLen = 128
+
+// requestID assigns a correlation id to every request and returns it as X-Request-Id, so a caller
+// holding a response can quote the exact id that names its log lines. An inbound id is honoured
+// only from a trusted proxy — otherwise any client could pin, collide, or forge the id that
+// appears in our logs. Trust is read from the socket peer, so this runs before realIP rewrites
+// RemoteAddr.
+func requestID(trusted []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := r.Header.Get(requestIDHeader)
+			if id == "" || !peerTrusted(r, trusted) || !validRequestID(id) {
+				id = newRequestID()
+			}
+			w.Header().Set(requestIDHeader, id)
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxRequestID, id)))
+		})
+	}
+}
+
+// newRequestID mints a random id. crypto/rand is used so ids do not collide across processes the
+// way a per-process counter would; a failing generator is a broken machine, not a runtime path, so
+// a time-based fallback keeps the request correlated rather than blank.
+func newRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// validRequestID keeps an adopted inbound id to a bounded, safe token, so a trusted proxy's header
+// cannot carry control characters into a log line or fold a second header into the response.
+func validRequestID(s string) bool {
+	if len(s) == 0 || len(s) > maxRequestIDLen {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '-', c == '_', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// requestIDLog wraps a slog.Handler so every record whose context carries a request id is stamped
+// with it. Correlation then costs the call sites nothing: any *Context log — the access line, a
+// panic, a handler's own warning — is tied back to the response the caller holds, without each one
+// remembering to add the field.
+type requestIDLog struct{ slog.Handler }
+
+func (h requestIDLog) Handle(ctx context.Context, r slog.Record) error {
+	if id, ok := ctx.Value(ctxRequestID).(string); ok && id != "" {
+		r.AddAttrs(slog.String("request_id", id))
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h requestIDLog) WithAttrs(as []slog.Attr) slog.Handler {
+	return requestIDLog{h.Handler.WithAttrs(as)}
+}
+
+func (h requestIDLog) WithGroup(name string) slog.Handler {
+	return requestIDLog{h.Handler.WithGroup(name)}
 }
 
 // recoverer turns a panic into a 500 and a log line, and keeps the process up.

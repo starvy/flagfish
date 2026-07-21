@@ -75,7 +75,11 @@ func setup(t *testing.T, opts ...func(*fixOpts)) *fixture {
 	truncate(t, ctx, pool)
 	seedInstance(t, ctx, pool, mode)
 
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	var logDst io.Writer = io.Discard
+	if o.logTo != nil {
+		logDst = o.logTo
+	}
+	log := slog.New(slog.NewTextHandler(logDst, nil))
 
 	cfg, err := config.New(ctx, config.NewPGStore(pool), log)
 	if err != nil {
@@ -149,7 +153,12 @@ type fixOpts struct {
 	maxUpload      int64
 	auth           httpapi.Authenticator
 	teams          bool
+	logTo          io.Writer
 }
+
+// withLogTo captures the server's structured log so a test can assert on what was written — the
+// request-id correlation test reads the id back out of the lines it produced.
+func withLogTo(w io.Writer) func(*fixOpts) { return func(o *fixOpts) { o.logTo = w } }
 
 func withLimit(n int) func(*fixOpts) { return func(o *fixOpts) { o.limit = n } }
 
