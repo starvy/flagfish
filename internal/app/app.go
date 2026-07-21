@@ -47,18 +47,18 @@ type ServeConfig struct {
 }
 
 // Serve runs the API process until ctx is cancelled, optionally with the worker in-process.
-func Serve(ctx context.Context, env config.Env, log *slog.Logger, sc ServeConfig) error {
+func Serve(ctx context.Context, env *config.Env, log *slog.Logger, sc ServeConfig) error {
 	return run(ctx, fx.New(ServeOptions(ctx, env, log, sc)...))
 }
 
 // Worker runs a standalone job worker until ctx is cancelled.
-func Worker(ctx context.Context, env config.Env, log *slog.Logger) error {
+func Worker(ctx context.Context, env *config.Env, log *slog.Logger) error {
 	return run(ctx, fx.New(WorkerOptions(ctx, env, log)...))
 }
 
 // ServeOptions is the serve-role graph. It is exported so the validation test can check
 // exactly the graph the binary runs, rather than a re-derived approximation of it.
-func ServeOptions(ctx context.Context, env config.Env, log *slog.Logger, sc ServeConfig) []fx.Option {
+func ServeOptions(ctx context.Context, env *config.Env, log *slog.Logger, sc ServeConfig) []fx.Option {
 	opts := append(
 		baseOptions(ctx, env, log),
 		config.Module,
@@ -106,7 +106,7 @@ func ServeOptions(ctx context.Context, env config.Env, log *slog.Logger, sc Serv
 
 // WorkerOptions is the standalone worker graph: a pool and the worker client, nothing
 // that serves HTTP.
-func WorkerOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Option {
+func WorkerOptions(ctx context.Context, env *config.Env, log *slog.Logger) []fx.Option {
 	// The worker sends mail, so it needs the mailer, which needs the config snapshot it
 	// is built from — both roles pull the same SMTP settings out of the same table. It also needs
 	// the object store: the backup/restore/import workers read and write archives and file blobs
@@ -114,7 +114,7 @@ func WorkerOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.O
 	return append(baseOptions(ctx, env, log), config.Module, mail.Module, fx.Provide(provideStore), jobs.WorkerModule)
 }
 
-func baseOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Option {
+func baseOptions(ctx context.Context, env *config.Env, log *slog.Logger) []fx.Option {
 	return []fx.Option{
 		// Route fx's own lifecycle chatter through our logger at debug, so it is visible
 		// when an operator turns the level up and silent otherwise.
@@ -133,7 +133,7 @@ func baseOptions(ctx context.Context, env config.Env, log *slog.Logger) []fx.Opt
 	}
 }
 
-func providePool(ctx context.Context, lc fx.Lifecycle, env config.Env) (*pgxpool.Pool, error) {
+func providePool(ctx context.Context, lc fx.Lifecycle, env *config.Env) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(env.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("database: parse dsn: %w", err)

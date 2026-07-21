@@ -66,7 +66,7 @@ func main2() int {
 	// run before LoadEnv can reject a box that has none — `flagfish openapi` on a CI runner, `--help`
 	// anywhere.
 	if args := os.Args[1:]; len(args) > 0 && envFreeCommand(args[0]) {
-		if err := run(context.Background(), args, config.Env{}, log); err != nil {
+		if err := run(context.Background(), args, &config.Env{}, log); err != nil {
 			log.Error("fatal", "error", err)
 			return 1
 		}
@@ -85,7 +85,7 @@ func main2() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], env, log); err != nil {
+	if err := run(ctx, os.Args[1:], &env, log); err != nil {
 		log.Error("fatal", "error", err)
 		return 1
 	}
@@ -100,7 +100,7 @@ func envFreeCommand(name string) bool {
 	return false
 }
 
-func run(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func run(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	if len(args) == 0 {
 		usage()
 		return errors.New("no subcommand given")
@@ -139,7 +139,7 @@ func run(ctx context.Context, args []string, env config.Env, log *slog.Logger) e
 // envCmd prints the resolved environment. LoadEnv has already validated it, so
 // reaching this at all means the config is good — which is the point: it turns "why
 // won't it boot" into one command, before the deploy.
-func envCmd(env config.Env) error {
+func envCmd(env *config.Env) error {
 	proxies := "(none — trusting the socket peer address)"
 	if len(env.TrustedProxies) > 0 {
 		parts := make([]string, len(env.TrustedProxies))
@@ -257,7 +257,7 @@ Environment (see .env.example):
 // serve
 // ---------------------------------------------------------------------------
 
-func serve(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func serve(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	// Flags override the environment; both are validated the same way.
 	addr := fs.String("addr", env.Addr, "listen address")
@@ -316,7 +316,7 @@ func parseCIDRs(s string) ([]*net.IPNet, error) {
 // worker
 // ---------------------------------------------------------------------------
 
-func worker(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func worker(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("worker", flag.ExitOnError)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -328,7 +328,7 @@ func worker(ctx context.Context, args []string, env config.Env, log *slog.Logger
 // migrate
 // ---------------------------------------------------------------------------
 
-func migrateCmd(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func migrateCmd(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("migrate", flag.ExitOnError)
 	status := fs.Bool("status", false, "print the current schema version and the embedded migrations, then exit")
 	if err := fs.Parse(args); err != nil {
@@ -360,7 +360,7 @@ func migrateCmd(ctx context.Context, args []string, env config.Env, log *slog.Lo
 // import
 // ---------------------------------------------------------------------------
 
-func importCmd(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func importCmd(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
 	assume := fs.String("assume-revision", "",
 		"translate an unknown archive revision as this known one (unsupported, loud)")
@@ -430,7 +430,7 @@ func printImportReport(r *importer.Report) {
 // exportCmd writes the instance to our own archive. The default is the field-masked, shareable
 // profile; --backup is the full-fidelity artifact for migration and disaster recovery. Never the
 // foreign import shape — this format is ours, and it is not re-importable by the tool we import from.
-func exportCmd(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func exportCmd(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	_ = fs.Bool("safe", true, "field-masked, shareable, NOT restorable (the default)")
 	backup := fs.Bool("backup", false, "full fidelity for migration/DR: includes password hashes and flags")
@@ -479,7 +479,7 @@ func exportCmd(ctx context.Context, args []string, env config.Env, log *slog.Log
 
 // restoreCmd rehydrates a --backup archive into an empty instance, in one transaction. A --safe
 // archive is rejected loudly: it was field-masked and carries no secrets to restore.
-func restoreCmd(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func restoreCmd(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	if err := fs.Parse(args); err != nil {
 		return err

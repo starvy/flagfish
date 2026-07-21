@@ -20,8 +20,8 @@ import (
 // These three cases are the three shipping topologies. If the binary can run it, a test
 // covers its wiring.
 
-func testEnv() config.Env {
-	return config.Env{
+func testEnv() *config.Env {
+	return &config.Env{
 		DatabaseURL: "postgres://u:p@localhost:5432/flagfish?sslmode=disable",
 		Addr:        ":8000",
 		RateLimit:   60,

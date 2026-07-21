@@ -43,7 +43,7 @@ type serverParams struct {
 	fx.In
 
 	Config         *config.Manager
-	Env            config.Env
+	Env            *config.Env
 	Auth           Authenticator
 	Limiter        Limiter
 	AuthLimiter    *accounts.AuthLimiter

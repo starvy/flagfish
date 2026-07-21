@@ -24,7 +24,7 @@ const adminPasswordEnv = "FLAGFISH_ADMIN_PASSWORD" //nolint:gosec // the NAME of
 
 // adminCmd owns the `admin` subcommand tree. Today it is only `create`, but a flat switch here keeps
 // room for `admin promote`/`admin reset` without another dispatch layer in main.
-func adminCmd(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func adminCmd(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	if len(args) == 0 {
 		adminUsage()
 		return errors.New("admin: no subcommand given (try: create)")
@@ -67,7 +67,7 @@ interactive no-echo prompt. Prefer the environment variable: a password in --pas
 `)
 }
 
-func adminCreate(ctx context.Context, args []string, env config.Env, log *slog.Logger) error {
+func adminCreate(ctx context.Context, args []string, env *config.Env, log *slog.Logger) error {
 	fs := flag.NewFlagSet("admin create", flag.ContinueOnError)
 	email := fs.String("email", "", "the admin's email address (required)")
 	name := fs.String("name", "", "display name (defaults to the email)")

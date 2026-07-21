@@ -240,7 +240,7 @@ func LoadEnv() (Env, error) {
 }
 
 // Logger builds the process logger from the environment.
-func (e Env) Logger() *slog.Logger {
+func (e *Env) Logger() *slog.Logger {
 	opts := &slog.HandlerOptions{Level: e.LogLevel}
 	if e.LogFormat == "text" {
 		return slog.New(slog.NewTextHandler(os.Stderr, opts))
@@ -249,11 +249,11 @@ func (e Env) Logger() *slog.Logger {
 }
 
 // RedactedDatabaseURL is the DSN with the password removed, safe to log.
-func (e Env) RedactedDatabaseURL() string { return redactDSN(e.DatabaseURL) }
+func (e *Env) RedactedDatabaseURL() string { return redactDSN(e.DatabaseURL) }
 
 // TrustedProxiesCSV renders the parsed prefixes back to the comma-separated form the
 // serve flag takes, so the env var and the flag are the same knob.
-func (e Env) TrustedProxiesCSV() string {
+func (e *Env) TrustedProxiesCSV() string {
 	parts := make([]string, len(e.TrustedProxies))
 	for i, p := range e.TrustedProxies {
 		parts[i] = p.String()
