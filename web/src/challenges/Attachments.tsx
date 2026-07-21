@@ -18,7 +18,13 @@ export function Attachments({ files }: { files: ChallengeFile[] }) {
   const [busy, setBusy] = useState<number | null>(null);
 
   if (files.length === 0) {
-    return <EmptyState title="no files" description="nothing to download for this one." />;
+    return (
+      <EmptyState
+        className="ff-empty--compact"
+        title="no files"
+        description="nothing to download for this one."
+      />
+    );
   }
 
   const save = (file: ChallengeFile) => {

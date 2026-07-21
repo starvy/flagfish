@@ -1136,6 +1136,17 @@ kbd {
   margin-top: var(--space-2);
 }
 
+/* Inline empty states — a "no files" note above the flag box has no business being a full-height
+   hero; it would push the submit button below the fold. Compact keeps it a single quiet line. */
+.ff-empty--compact {
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+}
+
+.ff-empty--compact .ff-empty__title {
+  font-size: var(--text-sm);
+}
+
 /* ====================================================================== */
 /* .ff-code                                                                */
 /* ====================================================================== */
