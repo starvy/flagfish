@@ -99,6 +99,9 @@ type adminForcePasswordChangeOutput struct {
 		ID                 int64  `json:"id"`
 		Name               string `json:"name"`
 		MustChangePassword bool   `json:"must_change_password"`
+		// How many API tokens the force also deleted. Surfaced because the admin is the only
+		// one who can warn the user: the user finds out when their tooling starts 401ing.
+		APITokensRevoked int64 `json:"api_tokens_revoked"`
 	}
 }
 
@@ -171,7 +174,7 @@ func (s *Server) registerAdminUsers() {
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
 		OperationID: "admin-force-password-change", Method: http.MethodPut, Path: "/users/{id}/force-password-change",
-		Summary: "Force a user to choose a new password (kills their sessions)", Tags: []string{"admin/users"},
+		Summary: "Force a user to choose a new password (kills their sessions and API tokens)", Tags: []string{"admin/users"},
 	}, s.adminForcePasswordChange)
 
 	Register(s.Admin, policy.ClassAdmin, huma.Operation{
@@ -265,12 +268,13 @@ func (s *Server) adminSetUserHidden(ctx context.Context, in *adminUserHiddenInpu
 }
 
 func (s *Server) adminForcePasswordChange(ctx context.Context, in *adminUserIDInput) (*adminForcePasswordChangeOutput, error) {
-	row, err := s.opts.AdminOps.ForcePasswordChange(ctx, s.adminActor(ctx), in.ID)
+	row, revoked, err := s.opts.AdminOps.ForcePasswordChange(ctx, s.adminActor(ctx), in.ID)
 	if err != nil {
 		return nil, s.adminOpsError(ctx, err, "force password change")
 	}
 	out := &adminForcePasswordChangeOutput{}
 	out.Body.ID, out.Body.Name, out.Body.MustChangePassword = row.ID, row.Name, row.MustChangePassword
+	out.Body.APITokensRevoked = revoked
 	return out, nil
 }
 

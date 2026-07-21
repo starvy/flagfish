@@ -980,7 +980,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Force a user to choose a new password (kills their sessions) */
+        /** Force a user to choose a new password (kills their sessions and API tokens) */
         put: operations["admin-force-password-change"];
         post?: never;
         delete?: never;
@@ -1652,6 +1652,8 @@ export interface components {
              * @example /api/v1/admin/schemas/AdminForcePasswordChangeOutputBody.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            api_tokens_revoked: number;
             /** Format: int64 */
             id: number;
             must_change_password: boolean;

@@ -271,8 +271,12 @@ export const api = {
   resetRequest: (body: Body<Schemas["RequestResetInputBody"]>) =>
     request<Schemas["OkOutputBody"]>("POST", "/reset-password", body, { localUnauthorized: true }),
 
+  // A reset also deletes the account's API tokens, and the response says how many — the user is
+  // the only one who can mint replacements, so they have to be told that they need to.
   resetApply: (body: Body<Schemas["ResetPasswordInputBody"]>) =>
-    request<Schemas["OkOutputBody"]>("PATCH", "/reset-password", body, { localUnauthorized: true }),
+    request<Schemas["RevokedOutputBody"]>("PATCH", "/reset-password", body, {
+      localUnauthorized: true,
+    }),
 
   verifyResend: () => request<Schemas["OkOutputBody"]>("POST", "/verify/resend"),
 

@@ -200,19 +200,23 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email, ctfName strin
 	return nil
 }
 
-// ResetPassword consumes a reset token and sets the password. Every existing session
-// dies with the old hash: sessions are fingerprinted against the password hash they
-// were minted under, so the write below is also the kill switch — exactly the property
-// a reset needs when the reason for it is a stolen password.
-func (s *Service) ResetPassword(ctx context.Context, token, password string) error {
+// ResetPassword consumes a reset token, sets the password, and revokes the account's API
+// tokens. It reports how many tokens it revoked.
+//
+// Every existing session dies with the old hash for free: sessions are fingerprinted against
+// the password hash they were minted under. API tokens have no such fingerprint, so they are
+// deleted here, on the same transaction — a reset is the remediation someone runs *because*
+// their credential leaked, and a remediation that leaves the thief a working bearer token has
+// remediated nothing.
+func (s *Service) ResetPassword(ctx context.Context, token, password string) (int64, error) {
 	hash, err := Hash(password)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("accounts: reset password: %w", err)
+		return 0, fmt.Errorf("accounts: reset password: %w", err)
 	}
 	defer tx.Rollback(ctx)
 	q := s.q.WithTx(tx)
@@ -221,21 +225,27 @@ func (s *Service) ResetPassword(ctx context.Context, token, password string) err
 		TokenHash: digestOf(token), Purpose: "reset",
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrTokenInvalid
+		return 0, ErrTokenInvalid
 	} else if err != nil {
-		return fmt.Errorf("accounts: reset password: %w", err)
+		return 0, fmt.Errorf("accounts: reset password: %w", err)
 	}
 
 	// A reset is a real password change, so it also discharges a pending forced change.
 	if err := q.UpdatePasswordAndClearForcedChange(ctx, db.UpdatePasswordAndClearForcedChangeParams{
 		UserID: userID, PasswordHash: &hash,
 	}); err != nil {
-		return fmt.Errorf("accounts: reset password: %w", err)
+		return 0, fmt.Errorf("accounts: reset password: %w", err)
 	}
+
+	revoked, rerr := q.DeleteUserAPITokens(ctx, userID)
+	if rerr != nil {
+		return 0, fmt.Errorf("accounts: reset password: revoke api tokens for user %d: %w", userID, rerr)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("accounts: reset password: %w", err)
+		return 0, fmt.Errorf("accounts: reset password: %w", err)
 	}
-	return nil
+	return revoked, nil
 }
 
 func (s *Service) enqueueVerification(ctx context.Context, tx pgx.Tx, userID int64, email, ctfName string) error {

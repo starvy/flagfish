@@ -252,16 +252,30 @@ cross-site POSTs — defence in depth behind CSRF). Session lookup (`authenticat
 runs the **password-change kill switch**: each session stores a fingerprint of the password
 hash it was minted against, and `authenticateSession` constant-time-compares it to the
 current hash. When `ChangePassword` writes a new hash, every session minted before it stops
-matching and is dead — no revocation list, no fan-out delete, no window. The caller re-mints
-its own session as part of the change.
+matching and is dead — no revocation list and no window. The caller re-mints its own session
+as part of the change. API tokens carry no such fingerprint and so cannot ride the same trick;
+they are deleted outright by the same transaction (see below).
 
 **API tokens** (`handlers_tokens.go`, `accounts/tokens.go`) are bearer credentials in
 `Authorization`. `POST /tokens` returns the plaintext exactly once in `createTokenOutput`;
 only its sha256 is stored, and an expiry is always set — "never expires" is deliberately
 inexpressible. `authenticateToken` looks up by digest and cannot distinguish unknown from
 expired (both are `ErrUnauthorized`). `DELETE /tokens/{id}` enforces ownership in the WHERE
-clause, and "not yours or not there" collapses to one 404. Both credential paths end in the
-same `loadPrincipal`, the one place a `Principal` is built. A presented-but-bad credential is
+clause, and "not yours or not there" collapses to one 404.
+
+A token also dies when its owner's password does. `DeleteUserAPITokens` is a bulk delete keyed
+on `user_id`, run inside the same transaction as the password write by all three credential
+changes: the self-service `ChangePassword`, the emailed `ResetPassword`, and the admin
+`ForcePasswordChange`. It has to be a real delete — a bearer token has nothing to compare
+against the way a session's fingerprint does, and the forced-change wall gates routes by
+principal, which a token sails straight past. Without it the standard remediation for a leaked
+credential leaves the thief full API access, flag submission included, until the token expires.
+The revoked count rides the response of the call that caused it (`api_tokens_revoked`), because
+a credential that stops working with no explanation is indistinguishable from an outage, and
+only the owner can mint a replacement. The login rehash — an imported bcrypt hash upgraded to
+Argon2id — deliberately does **not** revoke: the password did not change, only its encoding.
+
+Both credential paths end in the same `loadPrincipal`, the one place a `Principal` is built. A presented-but-bad credential is
 a 401 and must **not** silently downgrade to anonymous — that downgrade is how a dead token
 quietly becomes public access.
 

@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -322,6 +323,65 @@ func TestPasswordResetAppliesAndKillsSessions(t *testing.T) {
 	// A spent reset token is spent.
 	if res, _ := f.do(http.MethodPatch, "/api/v1/reset-password", map[string]any{"token": token, "password": "third1234"}); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("re-apply spent reset token: status %d, want 400", res.StatusCode)
+	}
+}
+
+// A reset is the remediation for a leaked credential, so it has to take the API tokens too.
+//
+// The whole flow, over the wire, with the real mailer seam: mint a token, run a reset the way a
+// locked-out user runs one, and watch the bearer credential stop working. Sessions die on their
+// own — they carry a fingerprint of the password hash — but nothing about a token tracks the
+// password, so if the reset does not delete it, whoever stole it keeps API access, flag
+// submission included, until the TTL runs out. The response says how many died, because the
+// user is the only one who can re-mint them.
+func TestPasswordResetRevokesAPITokens(t *testing.T) {
+	f, mail := newEmailAPI(t, account.ModeUsers)
+
+	const email = "revoke@ctf.test"
+	const oldPass = "oldpassword1"
+	const newPass = "newpassword2"
+	cookie, csrf := f.register("Revoke", email, oldPass)
+
+	res, body := f.do(http.MethodPost, "/api/v1/tokens", map[string]any{
+		"description": "ci runner",
+	}, withCookie(cookie), withCSRF(csrf))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("create token: status %d: %s", res.StatusCode, body)
+	}
+	var created struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatalf("decode created token: %v (%s)", err, body)
+	}
+	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withToken(created.Token))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("token should work before the reset: status %d", res.StatusCode)
+	}
+
+	res, _ = f.do(http.MethodPost, "/api/v1/reset-password", map[string]any{"email": email})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reset request: status %d", res.StatusCode)
+	}
+	token := tokenFrom(t, mail.waitMail(t))
+
+	res, body = f.do(http.MethodPatch, "/api/v1/reset-password", map[string]any{"token": token, "password": newPass})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reset apply: status %d: %s", res.StatusCode, body)
+	}
+	var applied struct {
+		APITokensRevoked int64 `json:"api_tokens_revoked"`
+	}
+	if err := json.Unmarshal(body, &applied); err != nil {
+		t.Fatalf("decode reset response: %v (%s)", err, body)
+	}
+	if applied.APITokensRevoked != 1 {
+		t.Errorf("api_tokens_revoked = %d, want 1 — a silent revocation looks like an outage", applied.APITokensRevoked)
+	}
+
+	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withToken(created.Token))
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("the API token survived the password reset: status %d, want 401", res.StatusCode)
 	}
 }
 

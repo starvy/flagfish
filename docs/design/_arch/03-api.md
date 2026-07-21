@@ -201,10 +201,11 @@ home to a vendor endpoint.
 | Presented as | `Cookie: flagfish_session=…` | `Authorization: Bearer <token>` — the scheme word is validated, not ignored |
 | Value format | opaque id; only its digest is stored | opaque secret; only its sha256 is stored, returned in plaintext exactly once |
 | Expiry | session TTL, enforced in the lookup query | always set; "never expires" is deliberately inexpressible |
+| Survives a password change? | **no** — the fingerprint stops matching, no delete needed | **no** — but only because it is deleted; a bearer secret has nothing to compare |
 | CSRF | **required** on unsafe methods | **exempt** — see below |
 | Used by | the SPA | `flagfishctl`, bots, CI |
 
-Two rules that follow from having two credentials rather than one:
+Three rules that follow from having two credentials rather than one:
 
 1. **Token auth is honored on every request, uniformly** — every method, every content type,
    including the SSE stream. Not "on JSON requests only, plus a special case for multipart
@@ -216,6 +217,11 @@ Two rules that follow from having two credentials rather than one:
    there. Those are different predicates, and only the first one is safe: an attacker who stuffs an
    `Authorization` header onto a forged cross-site request does not thereby become
    token-authenticated — they just fail to authenticate.
+3. **A credential change evicts both, by different means.** A session dies because its password
+   fingerprint stops matching; a token dies because the change deletes it. Same guarantee, two
+   mechanisms — and the second is easy to forget precisely because the first is free, which is how
+   "change your password" becomes a remediation that leaves the attacker holding a live bearer
+   credential.
 
 ### 4.2 The chain — the order *is* the design
 
@@ -239,6 +245,8 @@ chi (outer → inner)
  5. AUTHENTICATE  ─────────────────────────────────────────────────────────────────
       if Authorization: Bearer <tok>  → look up by digest; unknown/expired → 401
                                         → Principal{account, via: Token}
+                                        #   a credential change DELETED the row, so this is
+                                        #   how a revoked token surfaces: as "unknown"
       else if session cookie          → load session; password-hash fingerprint mismatch
                                         → 401 (changing a password kills every other session)
                                         → Principal{account, via: Cookie}

@@ -56,7 +56,7 @@ is the importer's business, and it is documented there: see [the importer](04-im
 | `brackets` | Named scoring divisions (`applies_to` users or teams). | A bracket is referenced from two account tables and outlives both. |
 | `fields` | Admin-defined registration fields (text \| boolean, required, public). | Registration is gated on "all required fields filled", so the field definition has to be queryable, not a JSON blob in config. |
 | `field_entries` | One account's answer to one field. | `CHECK (num_nonnulls(user_id, team_id) = 1)` — an entry has exactly one owner. `UNIQUE(field_id, user_id)` / `UNIQUE(field_id, team_id)`: an account answers a field once, and that is a database rule, not a form-validation rule. |
-| `api_tokens` | `sha256` of an issued token, its owner, its expiry. | Tokens have their own lifetime (expiry sweep) and their own secret-handling rule: only the hash is stored. |
+| `api_tokens` | `sha256` of an issued token, its owner, its expiry. | Tokens have their own lifetime and their own secret-handling rule: only the hash is stored. Two things end that lifetime early — the expiry sweep, and a change to the owner's password, which deletes every row for that `user_id`. A session can be killed by fingerprint comparison; a bare secret cannot, so revocation here is a real `DELETE`. |
 | `tracking` | The IPs an account has been seen from. | Written on every authenticated request path and read only by admin/anti-cheat screens; mixing that write rate into `users` would put a hot `UPDATE` on the row every authorization check joins to. |
 
 ### Files

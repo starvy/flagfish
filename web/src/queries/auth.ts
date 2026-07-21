@@ -113,9 +113,13 @@ export function useChangePassword() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.changePassword,
-    // A forced change clears the flag that was gating every other page.
+    // A forced change clears the flag that was gating every other page. The change also deletes
+    // the account's API tokens server-side — a write this mutation does not make itself, so the
+    // "invalidate what you wrote" rule does not reach it and the settings list would otherwise
+    // keep rendering tokens that no longer exist.
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.me() });
+      void qc.invalidateQueries({ queryKey: qk.tokens() });
     },
   });
 }

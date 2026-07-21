@@ -349,6 +349,12 @@ Two gates apply globally, before the table: **banned** (403 on every route excep
 assets) and **forced password change** (redirect on every route except theme assets, logout, and the
 reset endpoint itself — otherwise the user could not comply with the redirect).
 
+The forced-change gate is a *route* gate, and a route gate is worth nothing against a bearer token:
+whoever holds one is not being redirected anywhere. So the admin force-change also deletes the
+account's API tokens, in the same transaction that raises the flag — the reason to force a change is
+that the credential is suspect, and the suspect credential may well be the token. The same delete
+runs on the self-service change and on the emailed reset.
+
 ### 3.2 Canonical evaluation order
 
 ```

@@ -229,6 +229,12 @@ Every published operation and the screen that drives it. This is the definition 
 | `team-detail` | `/_auth/teams/$id` (public profile, linked from the board) |
 | `list-tokens` / `create-token` / `delete-token` | `/_auth/settings` → API tokens (create shows the plaintext **once**, in a `<CodeBlock>` with a copy button and a warning) |
 
+Changing a password is the one mutation that writes a prefix it did not name: the server deletes
+every API token on the account, so `change-password` invalidates `["tokens"]` as well as `["me"]`.
+The password forms say so before they submit, and the response carries `api_tokens_revoked` so the
+success toast can name a number — a credential that stops working unannounced is indistinguishable
+from an outage, and only the owner can mint a replacement.
+
 ### Admin surface (33 ops), all under `/_auth/_admin`
 
 | Area | Screen | Operations |

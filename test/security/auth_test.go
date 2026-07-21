@@ -137,7 +137,7 @@ func TestS4_PasswordChangeInvalidatesOtherSessions(t *testing.T) {
 		t.Fatalf("stolen cookie should work before the change: %d", got)
 	}
 
-	fresh, err := f.acct.ChangePassword(ctx, uid, pw, "a totally different password")
+	fresh, _, err := f.acct.ChangePassword(ctx, uid, pw, "a totally different password")
 	if err != nil {
 		t.Fatalf("change password: %v", err)
 	}

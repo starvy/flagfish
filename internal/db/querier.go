@@ -341,6 +341,15 @@ type Querier interface {
 	// without this — the wall reads team_banned per request — but a live cookie on a banned
 	// team is still a door left unlocked.
 	DeleteTeamSessions(ctx context.Context, teamID *int64) error
+	// The credential-change sweep. A session dies on its own when the password hash changes — it
+	// carries a fingerprint of the hash it was minted under — but a token is a bare secret with
+	// nothing to compare against, so deleting the rows is the only way a password change can evict
+	// someone holding one. Without this, "change your password" leaves a thief with full API access,
+	// flag submission included, until the token's TTL runs out.
+	//
+	// The row count comes back so the caller can say how many died: a credential silently vanishing
+	// is a support ticket, and one silently surviving is a breach.
+	DeleteUserAPITokens(ctx context.Context, userID int64) (int64, error)
 	// Clearing an optional, editable answer. A DELETE, not a value=null write: "no answer" has one
 	// representation (no row), which the gate and the reads all agree on.
 	DeleteUserFieldEntry(ctx context.Context, arg DeleteUserFieldEntryParams) error

@@ -115,6 +115,17 @@ SELECT id, user_id, description, created_at, expires_at
 -- "not yours, or not there", and the caller cannot tell the difference — which is correct.
 DELETE FROM api_tokens WHERE id = @id AND user_id = @user_id;
 
+-- name: DeleteUserAPITokens :execrows
+-- The credential-change sweep. A session dies on its own when the password hash changes — it
+-- carries a fingerprint of the hash it was minted under — but a token is a bare secret with
+-- nothing to compare against, so deleting the rows is the only way a password change can evict
+-- someone holding one. Without this, "change your password" leaves a thief with full API access,
+-- flag submission included, until the token's TTL runs out.
+--
+-- The row count comes back so the caller can say how many died: a credential silently vanishing
+-- is a support ticket, and one silently surviving is a breach.
+DELETE FROM api_tokens WHERE user_id = @user_id;
+
 -- name: DeleteExpiredAPITokens :exec
 DELETE FROM api_tokens WHERE expires_at <= now();
 

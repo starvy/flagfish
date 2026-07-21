@@ -103,10 +103,23 @@ func TestAdminForcePasswordChangeLifecycle(t *testing.T) {
 	adminCookie, adminCSRF, adminID := f.admin("root", "root@example.com")
 	auth := []func(*http.Request){withCookie(adminCookie), withCSRF(adminCSRF)}
 
-	victimCookie, _ := f.register("victim", "victim@example.com", "correct-horse-battery")
+	victimCookie, victimCSRF := f.register("victim", "victim@example.com", "correct-horse-battery")
 	uid := f.userID("victim@example.com")
 
-	res, body := f.do(http.MethodPut, "/api/v1/admin/users/"+itoa(uid)+"/force-password-change", nil, auth...)
+	res, body := f.do(http.MethodPost, "/api/v1/tokens", map[string]any{
+		"description": "ci runner",
+	}, withCookie(victimCookie), withCSRF(victimCSRF))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("create victim token: %d (%s)", res.StatusCode, body)
+	}
+	var minted struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &minted); err != nil {
+		t.Fatalf("decode created token: %v (%s)", err, body)
+	}
+
+	res, body = f.do(http.MethodPut, "/api/v1/admin/users/"+itoa(uid)+"/force-password-change", nil, auth...)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("force: %d (%s)", res.StatusCode, body)
 	}
@@ -118,6 +131,22 @@ func TestAdminForcePasswordChangeLifecycle(t *testing.T) {
 	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withCookie(victimCookie))
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("old cookie after force: %d, want 401", res.StatusCode)
+	}
+
+	// …and so did the API tokens. The forced-change wall gates routes by principal, which stops a
+	// cookie holder at the wall; a bearer token would sail past the whole remediation otherwise.
+	var forced struct {
+		APITokensRevoked int64 `json:"api_tokens_revoked"`
+	}
+	if err := json.Unmarshal(body, &forced); err != nil {
+		t.Fatalf("decode force response: %v (%s)", err, body)
+	}
+	if forced.APITokensRevoked != 1 {
+		t.Errorf("api_tokens_revoked = %d, want 1 — the admin is the only one who can warn the user", forced.APITokensRevoked)
+	}
+	res, _ = f.do(http.MethodGet, "/api/v1/me", nil, withToken(minted.Token))
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("the victim's API token survived the force: %d, want 401", res.StatusCode)
 	}
 
 	// Login works (exempt), but everything else is walled…

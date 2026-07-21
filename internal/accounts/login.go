@@ -109,6 +109,13 @@ func (s *Service) Login(ctx context.Context, email, password string) (Session, e
 }
 
 func (s *Service) mintSession(ctx context.Context, userID int64, passwordHash string) (Session, error) {
+	return mintSessionQ(ctx, s.q, userID, passwordHash)
+}
+
+// mintSessionQ takes the querier so a caller that is already mid-transaction can mint the
+// replacement session on it, rather than committing a password write and then racing to
+// create a session against the pool.
+func mintSessionQ(ctx context.Context, q *db.Queries, userID int64, passwordHash string) (Session, error) {
 	sid, idHash, err := NewSessionID()
 	if err != nil {
 		return Session{}, err
@@ -119,7 +126,7 @@ func (s *Service) mintSession(ctx context.Context, userID int64, passwordHash st
 	}
 
 	expires := time.Now().Add(SessionTTL)
-	if _, err := s.q.CreateSession(ctx, db.CreateSessionParams{
+	if _, err := q.CreateSession(ctx, db.CreateSessionParams{
 		IDHash:        idHash,
 		UserID:        userID,
 		PwFingerprint: pwFingerprint(&passwordHash),
@@ -140,36 +147,68 @@ func (s *Service) Logout(ctx context.Context, sid string) error {
 	return nil
 }
 
-// ChangePassword sets a new password.
+// ChangePassword sets a new password, revokes the account's API tokens, and mints a
+// replacement session. It reports how many tokens it revoked.
 //
-// Every other session dies as a consequence, without this function deleting anything:
-// each session carries a fingerprint of the password hash it was minted against, and
-// they all stop matching the moment the hash changes. The caller re-mints its own.
-func (s *Service) ChangePassword(ctx context.Context, userID int64, current, next string) (Session, error) {
+// Every other session dies as a consequence of the write, without this function deleting
+// anything: each session carries a fingerprint of the password hash it was minted against,
+// and they all stop matching the moment the hash changes.
+//
+// API tokens are deleted explicitly, because nothing about them tracks the password. They go
+// for the same reason the other sessions do: a logged-in user reaching for "change my
+// password" is the first and most common response to a suspected compromise, and if the
+// tokens survive it, the attacker keeps API access — flag submission included — while the
+// user believes they have locked the door. The platform cannot tell routine rotation from
+// panic, so it must assume panic; the cheap failure is re-minting a token, the expensive one
+// is a live intruder. The count comes back so this is never silent.
+//
+// Password write, revocation and the new session all ride one transaction: a committed
+// password with surviving tokens is precisely the state this is here to prevent.
+func (s *Service) ChangePassword(ctx context.Context, userID int64, current, next string) (Session, int64, error) {
 	row, err := s.q.GetUserByID(ctx, userID)
 	if err != nil {
-		return Session{}, fmt.Errorf("accounts: change password: %w", err)
+		return Session{}, 0, fmt.Errorf("accounts: change password: %w", err)
 	}
 	if row.PasswordHash == nil {
-		return Session{}, ErrBadCredentials
+		return Session{}, 0, ErrBadCredentials
 	}
 	if ok, _ := Verify(*row.PasswordHash, current); !ok {
-		return Session{}, ErrBadCredentials
+		return Session{}, 0, ErrBadCredentials
 	}
 
 	hash, err := Hash(next)
 	if err != nil {
-		return Session{}, err
-	}
-	// A real change also discharges a pending forced change — unlike the login rehash, which
-	// re-mints the same password and must leave the flag alone.
-	if err := s.q.UpdatePasswordAndClearForcedChange(ctx, db.UpdatePasswordAndClearForcedChangeParams{
-		UserID: userID, PasswordHash: &hash,
-	}); err != nil {
-		return Session{}, fmt.Errorf("accounts: change password: %w", err)
+		return Session{}, 0, err
 	}
 
-	return s.mintSession(ctx, userID, hash)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Session{}, 0, fmt.Errorf("accounts: change password: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	q := s.q.WithTx(tx)
+
+	// A real change also discharges a pending forced change — unlike the login rehash, which
+	// re-mints the same password and must leave the flag alone.
+	if err := q.UpdatePasswordAndClearForcedChange(ctx, db.UpdatePasswordAndClearForcedChangeParams{
+		UserID: userID, PasswordHash: &hash,
+	}); err != nil {
+		return Session{}, 0, fmt.Errorf("accounts: change password: %w", err)
+	}
+
+	revoked, rerr := q.DeleteUserAPITokens(ctx, userID)
+	if rerr != nil {
+		return Session{}, 0, fmt.Errorf("accounts: change password: revoke api tokens for user %d: %w", userID, rerr)
+	}
+
+	sess, serr := mintSessionQ(ctx, q, userID, hash)
+	if serr != nil {
+		return Session{}, 0, serr
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Session{}, 0, fmt.Errorf("accounts: change password: %w", err)
+	}
+	return sess, revoked, nil
 }
 
 // SessionCookieFor builds the Set-Cookie for a session.

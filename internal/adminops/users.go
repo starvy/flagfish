@@ -96,12 +96,19 @@ func (s *Service) SetUserHidden(ctx context.Context, actor audit.Actor, userID i
 	return out, err
 }
 
-// ForcePasswordChange sets the flag and kills the user's live sessions in the same transaction:
-// the reason to force a change is that the credential is suspect, and a suspect credential must
-// not keep riding an already-minted cookie. The user logs back in (the login route is exempt)
-// and is walled everywhere but the password-change endpoint until they comply.
-func (s *Service) ForcePasswordChange(ctx context.Context, actor audit.Actor, userID int64) (db.AdminForcePasswordChangeRow, error) {
-	var out db.AdminForcePasswordChangeRow
+// ForcePasswordChange sets the flag and, in the same transaction, kills the user's live sessions
+// and revokes their API tokens. It reports how many tokens it revoked.
+//
+// The reason to force a change is that the credential is suspect, and a suspect credential must
+// not keep riding an already-minted cookie — nor a bearer token, which outlives the password
+// entirely and would otherwise carry an intruder through the whole remediation. The user logs
+// back in (the login route is exempt) and is walled everywhere but the password-change endpoint
+// until they comply; a token is not walled by that flag at all, which is exactly why it has to go.
+func (s *Service) ForcePasswordChange(ctx context.Context, actor audit.Actor, userID int64) (db.AdminForcePasswordChangeRow, int64, error) {
+	var (
+		out     db.AdminForcePasswordChangeRow
+		revoked int64
+	)
 	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
 		var err error
 		out, err = q.AdminForcePasswordChange(ctx, userID)
@@ -110,12 +117,16 @@ func (s *Service) ForcePasswordChange(ctx context.Context, actor audit.Actor, us
 		} else if err != nil {
 			return fmt.Errorf("adminops: force password change for user %d: %w", userID, err)
 		}
-		if err := q.DeleteUserSessions(ctx, userID); err != nil {
-			return fmt.Errorf("adminops: force password change for user %d: kill sessions: %w", userID, err)
+		if serr := q.DeleteUserSessions(ctx, userID); serr != nil {
+			return fmt.Errorf("adminops: force password change for user %d: kill sessions: %w", userID, serr)
+		}
+		revoked, err = q.DeleteUserAPITokens(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("adminops: force password change for user %d: revoke api tokens: %w", userID, err)
 		}
 		return nil
 	})
-	return out, err
+	return out, revoked, err
 }
 
 // SetBanned bans or unbans, and a ban kills the user's live sessions in the same transaction —

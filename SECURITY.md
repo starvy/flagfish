@@ -144,6 +144,15 @@ transparently rehashed to Argon2id on the user's next successful login — the p
 exactly once, so this is free. The bcrypt population drains to zero without a mass password-reset
 blast.
 
+**Changing your password evicts everyone else holding your credentials.** Every other session dies
+(each one carries a fingerprint of the password hash it was minted under), and **every API token on
+the account is deleted**. That applies to all three paths: the self-service change, the emailed
+reset, and an admin forcing a change. It is unconditional and there is no opt-out — the platform
+cannot tell routine rotation from a compromise, and the two failures are not symmetric: a surprised
+user re-mints a token, while a user whose attacker keeps a token has an ongoing breach with full API
+access, flag submission included. The response tells you how many tokens went, because only you can
+create replacements. A rehash-on-login is not a password change and revokes nothing.
+
 ### Sharing detection is silent, on purpose
 
 When an account submits a flag issued to a *different* account, the submission is accepted as a

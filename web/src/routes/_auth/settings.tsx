@@ -438,10 +438,18 @@ function Security() {
     change.mutate(
       { current_password: current, new_password: next },
       {
-        onSuccess: () => {
+        onSuccess: (sess) => {
           setCurrent("");
           setNext("");
-          toast.success("Password changed", "Your other sessions were signed out.");
+          const revoked = sess.api_tokens_revoked ?? 0;
+          toast.success(
+            "Password changed",
+            revoked > 0
+              ? `Your other sessions were signed out and ${revoked} API token${
+                  revoked === 1 ? "" : "s"
+                } revoked. Mint replacements below.`
+              : "Your other sessions were signed out.",
+          );
         },
       },
     );
@@ -451,6 +459,10 @@ function Security() {
     <Card title="Change password">
       {/* A 401 from this form is a wrong current password, not a dead session — the client
           knows not to bounce us to /login, and the message belongs on the field. */}
+      <p className="ff-muted">
+        This signs out your other sessions and revokes every API token on the account — the
+        platform cannot tell routine rotation from a compromise, so it assumes the worse one.
+      </p>
       <Form
         onSubmit={submit}
         error={change.error ? messageOf(change.error) : undefined}

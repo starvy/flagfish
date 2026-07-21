@@ -88,6 +88,10 @@ type sessionOutput struct {
 		UserID    int64     `json:"user_id"`
 		CSRFToken string    `json:"csrf_token"`
 		ExpiresAt time.Time `json:"expires_at"`
+		// APITokensRevoked is set by the password-change route, which deletes the account's
+		// API tokens along with the old password. Absent on login and register, which revoke
+		// nothing.
+		APITokensRevoked *int64 `json:"api_tokens_revoked,omitempty"`
 	}
 }
 
@@ -122,6 +126,17 @@ type resetPasswordInput struct {
 	Body struct {
 		Token    string `json:"token" minLength:"1" maxLength:"128"`
 		Password string `json:"password" minLength:"8" maxLength:"128"`
+	}
+}
+
+// revokedOutput reports a credential change that also took the caller's API tokens with it.
+// The count is here so no client has to guess: a token that stopped working without anyone
+// saying so is indistinguishable, from the outside, from an outage.
+type revokedOutput struct {
+	Body struct {
+		OK bool `json:"ok"`
+		// APITokensRevoked is how many of the account's API tokens this change deleted.
+		APITokensRevoked int64 `json:"api_tokens_revoked"`
 	}
 }
 
@@ -215,7 +230,7 @@ func (s *Server) registerAuth() {
 	// route, or the wall traps its own exit.
 	Register(s.Public, policy.ClassPasswordChange, huma.Operation{
 		OperationID: "change-password", Method: http.MethodPost, Path: "/me/password",
-		Summary: "Change the current account's password", Tags: []string{"auth"},
+		Summary: "Change the current account's password (revokes all of its API tokens)", Tags: []string{"auth"},
 	}, s.changePassword)
 
 	Register(s.Public, policy.ClassAccountSelf, huma.Operation{
@@ -235,7 +250,7 @@ func (s *Server) registerAuth() {
 
 	Register(s.Public, policy.ClassReset, huma.Operation{
 		OperationID: "reset-apply", Method: http.MethodPatch, Path: "/reset-password",
-		Summary: "Set a new password with a reset token", Tags: []string{"auth"},
+		Summary: "Set a new password with a reset token (revokes all of the account's API tokens)", Tags: []string{"auth"},
 	}, s.resetPassword)
 }
 
@@ -511,8 +526,8 @@ func (s *Server) requestPasswordReset(ctx context.Context, in *requestResetInput
 	return ok(), nil
 }
 
-func (s *Server) resetPassword(ctx context.Context, in *resetPasswordInput) (*okOutput, error) {
-	err := s.opts.Accounts.ResetPassword(ctx, in.Body.Token, in.Body.Password)
+func (s *Server) resetPassword(ctx context.Context, in *resetPasswordInput) (*revokedOutput, error) {
+	revoked, err := s.opts.Accounts.ResetPassword(ctx, in.Body.Token, in.Body.Password)
 	switch {
 	case errors.Is(err, accounts.ErrTokenInvalid):
 		return nil, huma.Error400BadRequest("that reset link is invalid or has expired")
@@ -520,12 +535,14 @@ func (s *Server) resetPassword(ctx context.Context, in *resetPasswordInput) (*ok
 		s.opts.Log.ErrorContext(ctx, "password reset failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not reset the password")
 	}
-	return ok(), nil
+	out := &revokedOutput{}
+	out.Body.OK, out.Body.APITokensRevoked = true, revoked
+	return out, nil
 }
 
 func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*sessionOutput, error) {
 	pr := AuthOf(ctx).Principal
-	sess, err := s.opts.Accounts.ChangePassword(ctx, pr.UserID, in.Body.Current, in.Body.New)
+	sess, revoked, err := s.opts.Accounts.ChangePassword(ctx, pr.UserID, in.Body.Current, in.Body.New)
 	switch {
 	case errors.Is(err, accounts.ErrBadCredentials):
 		return nil, huma.Error401Unauthorized("current password is incorrect")
@@ -533,5 +550,7 @@ func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*
 		s.opts.Log.ErrorContext(ctx, "change password failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not change password")
 	}
-	return sessionOut(ctx, sess), nil
+	out := sessionOut(ctx, sess)
+	out.Body.APITokensRevoked = &revoked
+	return out, nil
 }

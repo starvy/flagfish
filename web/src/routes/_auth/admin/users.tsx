@@ -393,7 +393,11 @@ function UsersPage() {
                 setForceTarget(null);
                 toast.success(
                   `${u.name} must pick a new password`,
-                  "Their sessions are gone; they log back in and are walled until they change it.",
+                  u.api_tokens_revoked > 0
+                    ? `Their sessions are gone, along with ${u.api_tokens_revoked} API token${
+                        u.api_tokens_revoked === 1 ? "" : "s"
+                      }. Tell them: only they can mint a replacement.`
+                    : "Their sessions are gone; they log back in and are walled until they change it.",
                 );
               },
               onError: (error) =>
@@ -405,7 +409,7 @@ function UsersPage() {
           title="Force a new password"
           confirmLabel="Force new password"
           busy={force.isPending}
-          description="Use this when the credential is suspect. Every session dies now; the account is walled everywhere except the password-change form until they comply."
+          description="Use this when the credential is suspect. Every session AND every API token dies now; the account is walled everywhere except the password-change form until they comply. The wall does not stop a bearer token, which is why the tokens are deleted rather than blocked — warn the user, because only they can mint replacements."
         />
       )}
 

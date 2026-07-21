@@ -252,7 +252,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Change the current account's password */
+        /** Change the current account's password (revokes all of its API tokens) */
         post: operations["change-password"];
         delete?: never;
         options?: never;
@@ -429,7 +429,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Set a new password with a reset token */
+        /** Set a new password with a reset token (revokes all of the account's API tokens) */
         patch: operations["reset-apply"];
         trace?: never;
     };
@@ -1115,6 +1115,17 @@ export interface components {
             password: string;
             token: string;
         };
+        RevokedOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/RevokedOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            api_tokens_revoked: number;
+            ok: boolean;
+        };
         ScoreHistoryOutputBody: {
             /**
              * Format: uri
@@ -1150,6 +1161,8 @@ export interface components {
              * @example /api/v1/schemas/SessionOutputBody.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            api_tokens_revoked?: number;
             csrf_token: string;
             /** Format: date-time */
             expires_at: string;
@@ -2192,7 +2205,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OkOutputBody"];
+                    "application/json": components["schemas"]["RevokedOutputBody"];
                 };
             };
             /** @description Error */

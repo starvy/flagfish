@@ -77,6 +77,7 @@ function ResetPasswordPage() {
   }
 
   if (apply.isSuccess) {
+    const revoked = apply.data.api_tokens_revoked;
     return (
       <div className="ff-stack" style={{ margin: "var(--space-7) auto 0", maxWidth: "26rem" }}>
         <Card title="Password changed">
@@ -85,6 +86,15 @@ function ResetPasswordPage() {
               Sign in with the new one.
             </Alert>
           </div>
+          {/* A reset is what someone runs when their credential has leaked, so the API tokens go
+              with the old password. Saying so is the difference between minting a replacement and
+              filing a ticket about tooling that "just stopped working". */}
+          {revoked > 0 && (
+            <Alert tone="warn" title={`${revoked} API token${revoked === 1 ? "" : "s"} revoked`}>
+              Anything signing in with an API token — a script, CI, a submission client — stopped
+              working. Create replacements in Settings once you have signed in.
+            </Alert>
+          )}
           <p>
             <Link to="/login" className="ff-btn ff-btn--primary">
               Sign in

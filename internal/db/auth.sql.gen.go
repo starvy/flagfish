@@ -272,6 +272,26 @@ func (q *Queries) DeleteTeamSessions(ctx context.Context, teamID *int64) error {
 	return err
 }
 
+const deleteUserAPITokens = `-- name: DeleteUserAPITokens :execrows
+DELETE FROM api_tokens WHERE user_id = $1
+`
+
+// The credential-change sweep. A session dies on its own when the password hash changes — it
+// carries a fingerprint of the hash it was minted under — but a token is a bare secret with
+// nothing to compare against, so deleting the rows is the only way a password change can evict
+// someone holding one. Without this, "change your password" leaves a thief with full API access,
+// flag submission included, until the token's TTL runs out.
+//
+// The row count comes back so the caller can say how many died: a credential silently vanishing
+// is a support ticket, and one silently surviving is a breach.
+func (q *Queries) DeleteUserAPITokens(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserAPITokens, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = $1
 `

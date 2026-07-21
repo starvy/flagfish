@@ -993,6 +993,25 @@ components:
         - token
         - password
       type: object
+    RevokedOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/schemas/RevokedOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        api_tokens_revoked:
+          format: int64
+          type: integer
+        ok:
+          type: boolean
+      required:
+        - ok
+        - api_tokens_revoked
+      type: object
     ScoreHistoryOutputBody:
       additionalProperties: false
       properties:
@@ -1062,6 +1081,9 @@ components:
           format: uri
           readOnly: true
           type: string
+        api_tokens_revoked:
+          format: int64
+          type: integer
         csrf_token:
           type: string
         expires_at:
@@ -1752,7 +1774,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Change the current account's password
+      summary: Change the current account's password (revokes all of its API tokens)
       tags:
         - auth
   /me/team:
@@ -2031,7 +2053,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OkOutputBody"
+                $ref: "#/components/schemas/RevokedOutputBody"
           description: OK
         default:
           content:
@@ -2039,7 +2061,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Set a new password with a reset token
+      summary: Set a new password with a reset token (revokes all of the account's API tokens)
       tags:
         - auth
     post:

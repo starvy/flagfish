@@ -88,6 +88,13 @@ function ChangePasswordPage() {
           is closed to you.
         </Alert>
 
+        {/* Said before the change, not after: this page navigates away on success, and a warning
+            the user never reads is the same as no warning. */}
+        <p className="ff-muted">
+          Changing your password signs out your other sessions and revokes every API token on this
+          account. Scripts and CI using one will need a replacement from Settings.
+        </p>
+
         <Form
           onSubmit={submit}
           footer={
