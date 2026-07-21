@@ -32,6 +32,12 @@ change to the auth path.
 | Audit feed redacts config secrets | `redactConfigAudit` → return raw | ✅ FAILS: S17 secret sweep — `GET /api/v1/admin/audit echoes the stored secret` (this is how the leak was found: wiring AdminOps into the fixture put /admin/audit inside S17's OpenAPI-driven sweep) |
 | File download prerequisites | `downloadFile` checks only `meta.Hidden`, not `meta.PrereqsMet` | ✅ FAILS: the file of a prerequisite-locked challenge downloads by id (200, exact bytes) |
 | Hint unlock prerequisites | drop the `challengePrereqsMet` gate from `UnlockHint` | ✅ FAILS: the hint of a prerequisite-locked challenge is sold, content and all |
+| Security headers on every response | drop `securityHeaders` from the chain | ✅ FAILS (S23): nosniff / X-Frame-Options / CSP absent across the route sweep |
+| CSP keeps scripts to 'self' | widen `spaCSP` script-src to add `'unsafe-inline'` | ✅ FAILS (S23): `script-src = "'self' 'unsafe-inline'", want 'self' exactly` |
+| HSTS only on a TLS request | `securityHeaders` HSTS gate → `if true` (drop `servedOverTLS`) | ✅ FAILS (S23b): HSTS present on a plain-HTTP request |
+| Auth routes limited tighter | drop `authRateLimit` from the chain | ✅ FAILS (S24): login runs to the general budget instead of the tighter one |
+| Request-id returned + correlated | drop the `w.Header().Set(requestIDHeader, …)` in `requestID` | ✅ FAILS (S25): no X-Request-Id on the response, nothing to correlate |
+| Request-id inbound trust | adopt an inbound id without the `peerTrusted` check | ✅ FAILS (S25): an untrusted client's forged id is echoed as the request id |
 
 The last two are integration tests (`test/integration`: `TestFileDownloadRequiresPrerequisites`,
 `TestChallengePrerequisiteGatesHintUnlock`) — the guard needs the catalog, gameplay and object-storage
