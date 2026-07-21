@@ -52,3 +52,37 @@ export function useSetTeamHidden() {
     adminApi.setTeamHidden(v.id, v.hidden),
   );
 }
+
+export const adminTeamMembersQuery = (id: number) =>
+  queryOptions({
+    queryKey: qk.admin.teamMembers(id),
+    queryFn: () => adminApi.listTeamMembers(id),
+    staleTime: ADMIN_STALE_TIME,
+  });
+
+/**
+ * A roster edit touches both teams' rosters, member counts and public pages. It deliberately does
+ * not invalidate the scoreboard: solves and awards are stamped with the team that earned them, so
+ * moving a player changes who they score for next and leaves every standing exactly where it was.
+ */
+function useRosterWrite<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      // The prefix covers every team's detail and roster, so the destination refreshes too.
+      void qc.invalidateQueries({ queryKey: qk.admin.teams() });
+      void qc.invalidateQueries({ queryKey: qk.teams() });
+    },
+  });
+}
+
+export function useRemoveTeamMember(teamId: number) {
+  return useRosterWrite((userId: number) => adminApi.removeTeamMember(teamId, userId));
+}
+
+export function useMoveTeamMember(teamId: number) {
+  return useRosterWrite((v: { userId: number; toTeamId: number }) =>
+    adminApi.moveTeamMember(teamId, v.userId, v.toTeamId),
+  );
+}

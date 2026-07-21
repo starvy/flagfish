@@ -629,6 +629,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/AnswerFieldsInputBody.json
              */
             readonly $schema?: string;
             fields: components["schemas"]["FieldAnswerInput"][] | null;
@@ -637,6 +638,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/AnswerFieldsOutputBody.json
              */
             readonly $schema?: string;
             fields: components["schemas"]["MeFieldBody"][] | null;
@@ -645,6 +647,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/AttemptInputBody.json
              */
             readonly $schema?: string;
             flag: string;
@@ -653,6 +656,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/AttemptOutputBody.json
              */
             readonly $schema?: string;
             first_blood: boolean;
@@ -672,6 +676,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/BracketsOutputBody.json
              */
             readonly $schema?: string;
             brackets: components["schemas"]["BracketBody"][] | null;
@@ -680,6 +685,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChallengeDetailOutputBody.json
              */
             readonly $schema?: string;
             attribution?: string;
@@ -757,6 +763,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChallengesOutputBody.json
              */
             readonly $schema?: string;
             challenges: components["schemas"]["ChallengeListItem"][] | null;
@@ -765,6 +772,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChangeEmailInputBody.json
              */
             readonly $schema?: string;
             /** Format: email */
@@ -774,6 +782,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChangeNameInputBody.json
              */
             readonly $schema?: string;
             name: string;
@@ -782,6 +791,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ChangePasswordInputBody.json
              */
             readonly $schema?: string;
             current_password: string;
@@ -791,6 +801,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ClearedOutputBody.json
              */
             readonly $schema?: string;
             ok: boolean;
@@ -799,6 +810,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ConfirmEmailInputBody.json
              */
             readonly $schema?: string;
             token: string;
@@ -807,6 +819,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/CreateTeamInputBody.json
              */
             readonly $schema?: string;
             name: string;
@@ -816,6 +829,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/CreateTokenInputBody.json
              */
             readonly $schema?: string;
             description?: string;
@@ -826,6 +840,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/CreateTokenOutputBody.json
              */
             readonly $schema?: string;
             description?: string;
@@ -848,28 +863,38 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ErrorModel.json
              */
             readonly $schema?: string;
-            /** @description A human-readable explanation specific to this occurrence of the problem. */
+            /**
+             * @description A human-readable explanation specific to this occurrence of the problem.
+             * @example Property foo is required but is missing.
+             */
             detail?: string;
             /** @description Optional list of individual error details */
             errors?: components["schemas"]["ErrorDetail"][] | null;
             /**
              * Format: uri
              * @description A URI reference that identifies the specific occurrence of the problem.
+             * @example https://example.com/error-log/abc123
              */
             instance?: string;
             /**
              * Format: int64
              * @description HTTP status code
+             * @example 400
              */
             status?: number;
-            /** @description A short, human-readable summary of the problem type. This value should not change between occurrences of the error. */
+            /**
+             * @description A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+             * @example Bad Request
+             */
             title?: string;
             /**
              * Format: uri
              * @description A URI reference to human-readable documentation for the error.
              * @default about:blank
+             * @example https://example.com/errors/example
              */
             type: string;
         };
@@ -882,6 +907,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/InstanceOutputBody.json
              */
             readonly $schema?: string;
             ctf_name: string;
@@ -899,7 +925,7 @@ export interface components {
             team_creation: boolean;
             theme: string;
             theme_tokens?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             verify_emails: boolean;
         };
@@ -907,6 +933,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/JoinTeamInputBody.json
              */
             readonly $schema?: string;
             name: string;
@@ -916,6 +943,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/LeftTeamOutputBody.json
              */
             readonly $schema?: string;
             ok: boolean;
@@ -924,6 +952,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ListNotificationsOutputBody.json
              */
             readonly $schema?: string;
             notifications: components["schemas"]["NotificationBody"][] | null;
@@ -938,6 +967,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ListPagesOutputBody.json
              */
             readonly $schema?: string;
             pages: components["schemas"]["PageLink"][] | null;
@@ -946,6 +976,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ListTokensOutputBody.json
              */
             readonly $schema?: string;
             tokens: components["schemas"]["TokenListItem"][] | null;
@@ -954,6 +985,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/LoginInputBody.json
              */
             readonly $schema?: string;
             /** Format: email */
@@ -977,6 +1009,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/MeOutputBody.json
              */
             readonly $schema?: string;
             affiliation?: string;
@@ -1008,6 +1041,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/OkOutputBody.json
              */
             readonly $schema?: string;
             ok: boolean;
@@ -1021,6 +1055,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PageOutputBody.json
              */
             readonly $schema?: string;
             content: string;
@@ -1042,6 +1077,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/RegisterInputBody.json
              */
             readonly $schema?: string;
             /** Format: email */
@@ -1054,6 +1090,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/RegistrationFieldsOutputBody.json
              */
             readonly $schema?: string;
             fields: components["schemas"]["MeFieldBody"][] | null;
@@ -1062,6 +1099,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/RequestResetInputBody.json
              */
             readonly $schema?: string;
             /** Format: email */
@@ -1071,6 +1109,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ResetPasswordInputBody.json
              */
             readonly $schema?: string;
             password: string;
@@ -1080,6 +1119,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ScoreHistoryOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1098,6 +1138,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ScoreboardOutputBody.json
              */
             readonly $schema?: string;
             standings: components["schemas"]["Standing"][] | null;
@@ -1106,6 +1147,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/SessionOutputBody.json
              */
             readonly $schema?: string;
             csrf_token: string;
@@ -1118,6 +1160,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/SolvesOutputBody.json
              */
             readonly $schema?: string;
             solves: components["schemas"]["ChallengeSolve"][] | null;
@@ -1135,6 +1178,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TeamBody.json
              */
             readonly $schema?: string;
             affiliation?: string;
@@ -1174,6 +1218,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TransferCaptainInputBody.json
              */
             readonly $schema?: string;
             /** Format: int64 */
@@ -1183,6 +1228,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UnlockOutputBody.json
              */
             readonly $schema?: string;
             /** Format: int32 */
@@ -1197,6 +1243,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UpdateMeInputBody.json
              */
             readonly $schema?: string;
             affiliation?: string | null;
@@ -1208,6 +1255,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UpdateMyTeamInputBody.json
              */
             readonly $schema?: string;
             affiliation?: string | null;
@@ -1220,6 +1268,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UserProfileBody.json
              */
             readonly $schema?: string;
             affiliation?: string;

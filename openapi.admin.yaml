@@ -1506,6 +1506,25 @@ components:
       required:
         - tags
       type: object
+    AdminListTeamMembersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminListTeamMembersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        members:
+          items:
+            $ref: "#/components/schemas/AdminTeamMemberBody"
+          type:
+            - array
+            - "null"
+      required:
+        - members
+      type: object
     AdminListTeamsOutputBody:
       additionalProperties: false
       properties:
@@ -1583,6 +1602,23 @@ components:
           type: string
       required:
         - into
+      type: object
+    AdminMoveTeamMemberInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminMoveTeamMemberInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        to_team_id:
+          format: int64
+          minimum: 1
+          type: integer
+      required:
+        - to_team_id
       type: object
     AdminPageBody:
       additionalProperties: false
@@ -2084,6 +2120,30 @@ components:
       required:
         - id
         - name
+        - hidden
+      type: object
+    AdminTeamMemberBody:
+      additionalProperties: false
+      properties:
+        banned:
+          type: boolean
+        captain:
+          type: boolean
+        email:
+          type: string
+        hidden:
+          type: boolean
+        name:
+          type: string
+        user_id:
+          format: int64
+          type: integer
+      required:
+        - user_id
+        - name
+        - email
+        - captain
+        - banned
         - hidden
       type: object
     AdminUpdateBracketInputBody:
@@ -4587,6 +4647,94 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Hide or unhide a team on the public surfaces
+      tags:
+        - admin/teams
+  /teams/{id}/members:
+    get:
+      operationId: admin-list-team-members
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListTeamMembersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a team's roster
+      tags:
+        - admin/teams
+  /teams/{id}/members/{user_id}:
+    delete:
+      operationId: admin-remove-team-member
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a member from a team (their past solves stay with the team)
+      tags:
+        - admin/teams
+  /teams/{id}/members/{user_id}/move:
+    post:
+      operationId: admin-move-team-member
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminMoveTeamMemberInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Move a member to another team (their past solves stay with the old team)
       tags:
         - admin/teams
   /users:

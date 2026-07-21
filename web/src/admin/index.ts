@@ -6,6 +6,7 @@ export { AsyncState, ErrorState, LoadingState, type AsyncStateProps, type ErrorS
 export { AwardsPanel } from "./AwardsPanel";
 export { BackupRestore } from "./BackupRestore";
 export { errorDetail, fieldErrorsOf, formErrorOf } from "./errors";
+export { RosterPanel } from "./RosterPanel";
 export { isoToLocalInput, localInputToIso, localZone } from "./datetime";
 export {
   encodeInt,

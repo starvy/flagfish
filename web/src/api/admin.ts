@@ -22,6 +22,7 @@ export type AdminFile = Schemas["AdminFileBody"];
 export type AdminTag = Schemas["AdminTag"];
 export type AdminUser = Schemas["AdminUserBody"];
 export type AdminTeam = Schemas["AdminTeamBody"];
+export type AdminTeamMember = Schemas["AdminTeamMemberBody"];
 export type AdminBracket = Schemas["AdminBracketBody"];
 export type AdminField = Schemas["AdminFieldBody"];
 export type AdminAward = Schemas["AdminAwardBody"];
@@ -216,6 +217,17 @@ export const adminApi = {
 
   setTeamHidden: (id: number, hidden: boolean) =>
     request<Schemas["AdminTeamHiddenOutputBody"]>("PUT", `${P}/teams/${id}/hidden`, { hidden }),
+
+  // Team roster. Removing or moving a player re-points who they score for next; the ledger they
+  // already wrote keeps the team it was stamped with, so no score moves.
+  listTeamMembers: (id: number) =>
+    request<Schemas["AdminListTeamMembersOutputBody"]>("GET", `${P}/teams/${id}/members`),
+
+  removeTeamMember: (id: number, userId: number) =>
+    request<void>("DELETE", `${P}/teams/${id}/members/${userId}`),
+
+  moveTeamMember: (id: number, userId: number, toTeamId: number) =>
+    request<void>("POST", `${P}/teams/${id}/members/${userId}/move`, { to_team_id: toTeamId }),
 
   // Brackets
   createBracket: (body: Body<Schemas["AdminCreateBracketInputBody"]>) =>

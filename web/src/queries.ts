@@ -100,6 +100,9 @@ export {
   useUpdateAdminTeam,
   useSetTeamBanned,
   useSetTeamHidden,
+  adminTeamMembersQuery,
+  useRemoveTeamMember,
+  useMoveTeamMember,
 } from "./queries/admin/teams";
 
 export { adminTagsQuery, useMergeTag, useDeleteTag } from "./queries/admin/tags";

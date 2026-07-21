@@ -27,7 +27,7 @@ import (
 
 // newAdminAPI mirrors newAPI but wires the adminops service, so the /api/v1/admin routes are actually
 // registered. The base harness leaves AdminOps unset on purpose; the admin slice brings its own.
-func newAdminAPI(t *testing.T, mode account.Mode) *apiFix {
+func newAdminAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) *apiFix {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -43,6 +43,12 @@ func newAdminAPI(t *testing.T, mode account.Mode) *apiFix {
 
 	truncate(t, ctx, pool)
 	seedInstance(t, ctx, pool, mode)
+	// Config is loaded once, below, so extra keys must be seeded before that read.
+	for _, kv := range cfgKV {
+		if _, execErr := pool.Exec(ctx, `INSERT INTO config (key, value) VALUES ($1,$2)`, kv[0], kv[1]); execErr != nil {
+			t.Fatalf("seed config %s: %v", kv[0], execErr)
+		}
+	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg, err := config.New(ctx, config.NewPGStore(pool), log)

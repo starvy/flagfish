@@ -10,7 +10,7 @@ import {
   useSetTeamHidden,
   useUpdateAdminTeam,
 } from "../../../queries";
-import { AwardsPanel, Def, DefList, TriStateField, encodeText, triInvalid, triKeep, triPatch, type TriValue } from "../../../admin";
+import { AwardsPanel, Def, DefList, RosterPanel, TriStateField, encodeText, triInvalid, triKeep, triPatch, type TriValue } from "../../../admin";
 import {
   Alert,
   Badge,
@@ -104,6 +104,8 @@ function TeamDetail({ team }: { team: AdminTeam }) {
         </Card>
 
         <ProfileEditor team={team} onSaved={() => toast.success("Team saved")} />
+
+        <RosterPanel teamId={team.id} teamName={team.name} />
 
         <AwardsPanel accountId={team.id} accountKind="team" />
 

@@ -57,6 +57,7 @@ export const qk = {
         | readonly ["admin", "teams"]
         | readonly ["admin", "teams", SearchParams],
     team: (id: number) => ["admin", "teams", "detail", id] as const,
+    teamMembers: (id: number) => ["admin", "teams", "detail", id, "members"] as const,
     tags: () => ["admin", "tags"] as const,
     brackets: () => ["admin", "brackets"] as const,
     fields: () => ["admin", "fields"] as const,

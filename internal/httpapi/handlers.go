@@ -62,6 +62,7 @@ func (s *Server) registerRoutes() {
 		s.registerAdminInstances()
 		s.registerAdminUsers()
 		s.registerAdminTeams()
+		s.registerAdminTeamRoster()
 		s.registerAdminBrackets()
 		s.registerAdminTags()
 		s.registerAdminAwards()

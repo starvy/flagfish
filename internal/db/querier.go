@@ -66,6 +66,14 @@ type Querier interface {
 	AdminDeleteHint(ctx context.Context, arg AdminDeleteHintParams) (int64, error)
 	AdminDeletePage(ctx context.Context, id int64) (int64, error)
 	AdminDeleteTag(ctx context.Context, value string) (int64, error)
+	// Membership is the WHERE, not a prior read: zero rows means the user was not on that team by the
+	// time this ran, and the caller turns that into a named refusal instead of a silent success.
+	//
+	// Unlike the captain's kick this carries no "team has never scored" guard, and that is deliberate.
+	// Every ledger row stamps team_id when it is written, so points already earned stay credited to the
+	// team that earned them no matter who leaves afterwards. Fixing a roster mid-event is the entire
+	// reason this statement exists; the audit trigger records who did it.
+	AdminDetachMember(ctx context.Context, arg AdminDetachMemberParams) (int64, error)
 	// Existence probe for artifact validation, scoped to the challenge: an artifact_id that is not a
 	// file of this challenge filters out here, and the caller names it as invalid.
 	AdminFilterChallengeFileIDs(ctx context.Context, arg AdminFilterChallengeFileIDsParams) ([]int64, error)
@@ -119,6 +127,12 @@ type Querier interface {
 	// and a rules page is large.
 	AdminListPages(ctx context.Context) ([]AdminListPagesRow, error)
 	AdminListTags(ctx context.Context) ([]AdminListTagsRow, error)
+	// Admin-side roster repair: an organizer acting on someone else's team. The captain's own
+	// kick/leave path lives in teams.sql; these are the organizer's equivalents, and they differ in
+	// exactly one way — see AdminDetachMember.
+	// The admin roster view. email is admin-only data, which is why it is selected here and never on
+	// the public team page.
+	AdminListTeamMembers(ctx context.Context, teamID *int64) ([]AdminListTeamMembersRow, error)
 	// ── teams ───────────────────────────────────────────────────────────────────────
 	// COUNT(*) OVER () carries the total in the same round trip, like AdminListUsers. The search is
 	// one optional (q, field) pair; an unset q drops the filter entirely, and an unknown field falls
@@ -160,6 +174,9 @@ type Querier interface {
 	AdminSetUserBanned(ctx context.Context, arg AdminSetUserBannedParams) (AdminSetUserBannedRow, error)
 	AdminSetUserHidden(ctx context.Context, arg AdminSetUserHiddenParams) (AdminSetUserHiddenRow, error)
 	AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error)
+	// Read-side disambiguation only: it shapes "no such team" versus "user is not on that team" after a
+	// zero-row write. The foreign key, not this, is what actually refuses a bad target.
+	AdminTeamExists(ctx context.Context, teamID int64) (bool, error)
 	// Partial update: an absent field keeps its value. applies_to is immutable — flipping it would
 	// silently strand every current member, whose account kind no longer matches.
 	AdminUpdateBracket(ctx context.Context, arg AdminUpdateBracketParams) (Bracket, error)
