@@ -169,7 +169,7 @@ func (c *capturingEnq) last() river.JobArgs {
 
 func newService(p *pgxpool.Pool, store storage.Store) (*Service, *capturingEnq) {
 	enq := &capturingEnq{}
-	return &Service{pool: p, q: db.New(p), store: store, enq: enq}, enq
+	return &Service{pool: p, q: db.New(p), store: store, enq: enq, log: testLog()}, enq
 }
 
 const adminID int64 = 0 // no users seeded; created_by is nullable and unchecked under replica
@@ -227,11 +227,16 @@ func TestEnqueueRestore_StashesUpload(t *testing.T) {
 		t.Fatalf("stashed upload not in store: %v", err)
 	}
 	defer rc.Close()
-	got, _ := io.ReadAll(rc)
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read stashed upload: %v", err)
+	}
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("stashed upload = %q, want %q", got, payload)
 	}
-	_ = store.Delete(ctx, args.UploadKey)
+	if err := store.Delete(ctx, args.UploadKey); err != nil {
+		t.Fatalf("cleanup upload: %v", err)
+	}
 }
 
 // EnqueueImport shares the 'import' kind with restore, so the two are mutually exclusive — only one
@@ -274,12 +279,18 @@ func TestOpenBackup(t *testing.T) {
 	key := jobs.BackupObjectKey(done.ID)
 	// The bucket is shared with the jobs suite, whose task ids reset per database; clear any prior
 	// object at this key and remove ours afterwards so neither suite serves the other's bytes.
-	_ = store.Delete(ctx, key)
-	if err := store.Put(ctx, key, int64(len(artifact)), bytes.NewReader(artifact)); err != nil {
+	if err = store.Delete(ctx, key); err != nil {
+		t.Fatalf("pre-test cleanup: %v", err)
+	}
+	if err = store.Put(ctx, key, int64(len(artifact)), bytes.NewReader(artifact)); err != nil {
 		t.Fatalf("put artifact: %v", err)
 	}
-	t.Cleanup(func() { _ = store.Delete(context.Background(), key) })
-	if err := q.FinishTask(ctx, db.FinishTaskParams{ID: done.ID}); err != nil {
+	t.Cleanup(func() {
+		if derr := store.Delete(context.Background(), key); derr != nil {
+			t.Errorf("cleanup: delete %s: %v", key, derr)
+		}
+	})
+	if err = q.FinishTask(ctx, db.FinishTaskParams{ID: done.ID}); err != nil {
 		t.Fatalf("finish task: %v", err)
 	}
 
@@ -287,7 +298,10 @@ func TestOpenBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open backup: %v", err)
 	}
-	body, _ := io.ReadAll(rc)
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read backup: %v", err)
+	}
 	rc.Close()
 	if !bytes.Equal(body, artifact) {
 		t.Fatalf("downloaded %q = %q, want %q", name, body, artifact)

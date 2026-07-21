@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -66,9 +67,9 @@ type Task struct {
 }
 
 // Downloadable reports whether this task has a backup artifact to fetch.
-func (t Task) Downloadable() bool { return t.Kind == "export" && t.State == "succeeded" }
+func (t *Task) Downloadable() bool { return t.Kind == "export" && t.State == "succeeded" }
 
-func fromDB(r db.Task) Task {
+func fromDB(r *db.Task) Task {
 	t := Task{
 		ID: r.ID, Kind: r.Kind, State: r.State, Progress: r.Progress,
 		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
@@ -92,10 +93,11 @@ type Service struct {
 	q     *db.Queries
 	store storage.Store
 	enq   enqueuer
+	log   *slog.Logger
 }
 
-func New(pool *pgxpool.Pool, store storage.Store, ins *jobs.Inserter) *Service {
-	return &Service{pool: pool, q: db.New(pool), store: store, enq: ins}
+func New(pool *pgxpool.Pool, store storage.Store, ins *jobs.Inserter, log *slog.Logger) *Service {
+	return &Service{pool: pool, q: db.New(pool), store: store, enq: ins, log: log}
 }
 
 // EnqueueBackup records an export task and enqueues the job that fulfils it. profile chooses fidelity
@@ -175,7 +177,7 @@ func (s *Service) enqueue(ctx context.Context, actorID int64, kind string, enque
 	if err := tx.Commit(ctx); err != nil {
 		return Task{}, fmt.Errorf("opsjob: commit: %w", err)
 	}
-	return fromDB(row), nil
+	return fromDB(&row), nil
 }
 
 // Get reads a task for a progress poll.
@@ -187,7 +189,7 @@ func (s *Service) Get(ctx context.Context, id int64) (Task, error) {
 	if err != nil {
 		return Task{}, fmt.Errorf("opsjob: get task %d: %w", id, err)
 	}
-	return fromDB(row), nil
+	return fromDB(&row), nil
 }
 
 // OpenBackup streams a finished backup's archive out of the object store. The caller closes the
@@ -230,7 +232,9 @@ func (s *Service) stash(ctx context.Context, r io.Reader, size int64) (string, e
 // discard best-effort deletes a stashed upload whose task was refused. Detached from the request's
 // cancellation so a declined enqueue still cleans up; a delete failure is a logged leak upstream.
 func (s *Service) discard(ctx context.Context, key string) {
-	_ = s.store.Delete(context.WithoutCancel(ctx), key)
+	if err := s.store.Delete(context.WithoutCancel(ctx), key); err != nil {
+		s.log.WarnContext(ctx, "could not delete stashed upload after declined enqueue", "key", key, "error", err)
+	}
 }
 
 func uploadKey() (string, error) {
