@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, getRouteApi } from "@tanstack/react-router";
 import type { Team } from "../../api/client";
-import { meQuery, teamQuery } from "../../queries";
+import { meQuery, scoreHistoryQuery, teamQuery } from "../../queries";
 import { ScreenGate } from "../../scoreboard/states";
+import { ScoreChart } from "../../scoreboard/ScoreChart";
 import {
   Badge,
   Card,
@@ -68,6 +69,7 @@ function TeamProfilePage() {
   const { data: me } = useQuery({ ...meQuery, initialData: cachedMe });
 
   const team = useQuery(teamQuery(teamId));
+  const history = useQuery(scoreHistoryQuery(teamId));
   const members = team.data?.members ?? [];
   const solves = solvesOf(team.data);
 
@@ -133,6 +135,10 @@ function TeamProfilePage() {
             </div>
 
             <div className="ff-stack">
+              <Card title="Score over time">
+                <ScoreChart points={history.data?.points ?? []} subject={team.data.name} />
+              </Card>
+
               <DataTable
                 columns={columns}
                 rows={members}

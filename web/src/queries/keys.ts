@@ -1,5 +1,12 @@
 import type { NotificationsParams, ScoreboardParams } from "../api/client";
-import type { AuditParams, IPOverlapParams, PageParams, SearchParams } from "../api/admin";
+import type {
+  AuditParams,
+  IPOverlapParams,
+  PageParams,
+  SearchParams,
+  StatsParams,
+  SubmissionsParams,
+} from "../api/admin";
 
 /**
  * Query keys mirror the URL they read, so a mutation can invalidate everything under the
@@ -19,6 +26,7 @@ export const qk = {
       | readonly ["scoreboard"]
       | readonly ["scoreboard", ScoreboardParams],
   brackets: () => ["brackets"] as const,
+  scoreHistory: (id: number) => ["scoreboard", "history", id] as const,
 
   notifications: (params?: NotificationsParams) =>
     (params === undefined ? ["notifications"] : ["notifications", params]) as
@@ -66,6 +74,14 @@ export const qk = {
       (params === undefined ? ["admin", "audit"] : ["admin", "audit", params]) as
         | readonly ["admin", "audit"]
         | readonly ["admin", "audit", AuditParams],
+    submissions: (params?: SubmissionsParams) =>
+      (params === undefined ? ["admin", "submissions"] : ["admin", "submissions", params]) as
+        | readonly ["admin", "submissions"]
+        | readonly ["admin", "submissions", SubmissionsParams],
+    stats: (params?: StatsParams) =>
+      (params === undefined ? ["admin", "stats"] : ["admin", "stats", params]) as
+        | readonly ["admin", "stats"]
+        | readonly ["admin", "stats", StatsParams],
     anticheat: () => ["admin", "anticheat"] as const,
     flagSharing: (params?: PageParams) =>
       (params === undefined

@@ -58,6 +58,27 @@ export interface IPOverlapParams extends PageParams {
   min_accounts?: number;
 }
 
+export type AdminSubmission = Schemas["SubmissionBody"];
+export type AdminStats = Schemas["AdminStatsOutputBody"];
+
+/** The verdict a submission row carries; a bad value is a 422 the screen surfaces. */
+export type SubmissionType = "correct" | "incorrect" | "partial" | "discard" | "ratelimited";
+export type StatsBucket = "hour" | "day" | "week" | "month";
+
+/** Keyset, not offset: `cursor` is the opaque `next_cursor` handed back, never parsed. */
+export interface SubmissionsParams {
+  type?: SubmissionType;
+  cursor?: string;
+  challenge_id?: number;
+  user_id?: number;
+  team_id?: number;
+  limit?: number;
+}
+
+export interface StatsParams {
+  bucket?: StatsBucket;
+}
+
 export const adminApi = {
   // Config
   getConfig: () => request<AdminConfig>("GET", `${P}/config`),
@@ -282,6 +303,17 @@ export const adminApi = {
       "GET",
       `${P}/anticheat/unissued-solves${query({ ...params })}`,
     ),
+
+  // Read-only monitoring. The submissions log is keyset-paginated: pass the response's
+  // `next_cursor` straight back as `cursor` for the next page, and treat it as opaque.
+  submissions: (params: SubmissionsParams = {}) =>
+    request<Schemas["AdminSubmissionsOutputBody"]>(
+      "GET",
+      `${P}/submissions${query({ ...params })}`,
+    ),
+
+  stats: (params: StatsParams = {}) =>
+    request<Schemas["AdminStatsOutputBody"]>("GET", `${P}/stats${query({ ...params })}`),
 
   // Async ops (backup / restore / import). Each mutating call returns a task immediately; poll
   // getTask until it succeeds or fails. The download URL for a finished backup is carried on the

@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, getRouteApi } from "@tanstack/react-router";
-import { meQuery, userProfileQuery } from "../../queries";
+import { meQuery, scoreHistoryQuery, userProfileQuery } from "../../queries";
 import { ScreenGate } from "../../scoreboard/states";
+import { ScoreChart } from "../../scoreboard/ScoreChart";
 import { Badge, Card, EmptyState, RelativeTime, Skeleton } from "../../ui";
 import "../../scoreboard/screens.css";
 
@@ -23,6 +24,7 @@ function UserProfilePage() {
   const { data: me } = useQuery({ ...meQuery, initialData: cachedMe });
 
   const profile = useQuery(userProfileQuery(userId));
+  const history = useQuery(scoreHistoryQuery(userId));
   const solves = profile.data?.solves ?? [];
   const isSelf = me.user_id === userId;
 
@@ -65,6 +67,10 @@ function UserProfilePage() {
                 joined <RelativeTime value={profile.data.created_at} />
               </span>
             </div>
+
+            <Card title="Score over time">
+              <ScoreChart points={history.data?.points ?? []} subject={profile.data.name} />
+            </Card>
 
             <Card title="Solves">
               {solves.length === 0 ? (

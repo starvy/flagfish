@@ -530,3 +530,127 @@
   gap: 0.75rem;
   align-items: center;
 }
+
+/* Statistics dashboard: dependency-free bars and a plain-SVG timeline. */
+.admin-breakdown {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.admin-breakdown__row {
+  display: grid;
+  grid-template-columns: 6rem 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.admin-breakdown__count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-bar {
+  display: block;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--color-inset);
+  overflow: hidden;
+}
+
+.admin-bar__fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+.admin-bar__fill--correct {
+  background: var(--color-success);
+}
+
+.admin-bar__fill--incorrect,
+.admin-bar__fill--discard {
+  background: var(--color-border-strong);
+}
+
+.admin-bar__fill--partial {
+  background: var(--color-info);
+}
+
+.admin-bar__fill--ratelimited {
+  background: var(--color-warn);
+}
+
+.admin-timechart {
+  margin: 0;
+}
+
+.admin-timechart__svg {
+  display: block;
+  width: 100%;
+  height: 9rem;
+  overflow: visible;
+}
+
+.admin-timechart__area {
+  fill: var(--color-accent-dim);
+  opacity: 0.45;
+}
+
+.admin-timechart__line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.admin-timechart__dot {
+  fill: var(--color-accent);
+}
+
+.admin-timechart__cap {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.admin-solvetable__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-solvebar {
+  display: grid;
+  grid-template-columns: 1fr 3.5rem;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 10rem;
+}
+
+.admin-solvebar__count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-sort {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.admin-sort:hover {
+  color: var(--color-text);
+}

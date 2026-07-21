@@ -17,3 +17,10 @@ export const bracketsQuery = queryOptions({
   queryFn: () => api.brackets(),
   staleTime: 5 * 60_000,
 });
+
+export const scoreHistoryQuery = (id: number) =>
+  queryOptions({
+    queryKey: qk.scoreHistory(id),
+    queryFn: () => api.scoreHistory(id),
+    staleTime: 60_000,
+  });

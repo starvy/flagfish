@@ -29,6 +29,8 @@ export type PageLink = Schemas["PageLink"];
 export type PageContent = Schemas["PageOutputBody"];
 export type UserProfile = Schemas["UserProfileBody"];
 export type ProfileSolve = Schemas["ProfileSolveBody"];
+export type ScoreHistory = Schemas["ScoreHistoryOutputBody"];
+export type ScorePoint = Schemas["ScorePointBody"];
 
 /** The server's verdict on a flag. A wrong flag is a 200 with `status: "incorrect"`, never an error. */
 export type AttemptStatus = "correct" | "incorrect" | "already_solved";
@@ -296,6 +298,10 @@ export const api = {
     request<Scoreboard>("GET", `/scoreboard${query({ ...params })}`),
 
   brackets: () => request<Brackets>("GET", "/brackets"),
+
+  // One account's cumulative score over time. The id is a team in teams mode, a user in users mode;
+  // a hidden, banned or frozen-out account answers with empty points, never a leak.
+  scoreHistory: (id: number) => request<ScoreHistory>("GET", `/scoreboard/${id}`),
 
   notifications: (params: NotificationsParams = {}) =>
     request<NotificationPage>("GET", `/notifications${query({ ...params })}`),

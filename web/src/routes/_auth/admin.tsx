@@ -31,6 +31,8 @@ const NAV = [
   { to: "/admin/brackets", label: "Brackets", exact: false },
   { to: "/admin/fields", label: "Fields", exact: false },
   { to: "/admin/notifications", label: "Notifications", exact: false },
+  { to: "/admin/submissions", label: "Submissions", exact: false },
+  { to: "/admin/stats", label: "Stats", exact: false },
   { to: "/admin/audit", label: "Audit", exact: false },
   { to: "/admin/anticheat", label: "Anticheat", exact: false },
 ] as const;

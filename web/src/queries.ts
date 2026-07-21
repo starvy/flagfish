@@ -37,7 +37,7 @@ export {
   type UnlockVars,
 } from "./queries/challenges";
 
-export { scoreboardQuery, bracketsQuery } from "./queries/scoreboard";
+export { scoreboardQuery, bracketsQuery, scoreHistoryQuery } from "./queries/scoreboard";
 
 export {
   myTeamQuery,
@@ -138,3 +138,5 @@ export {
   unissuedSolvesQuery,
   useCreateNotification,
 } from "./queries/admin/moderation";
+
+export { adminSubmissionsQuery, adminStatsQuery } from "./queries/admin/monitoring";
