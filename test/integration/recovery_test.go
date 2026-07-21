@@ -130,6 +130,18 @@ func TestStoredMLCBootsWithRegistrationReachable(t *testing.T) {
 
 // ─────────────────────────────────────────────────────────── verification repair
 
+// verifyEmailsWithAMailer gates gameplay on verification and gives the instance a mailer to do it
+// with. The mailer rows are not optional decoration: verify_emails without one is refused at load,
+// because it gates every gameplay route on an email the instance could never send.
+func verifyEmailsWithAMailer() [][2]string {
+	return [][2]string{
+		{"verify_emails", "true"},
+		{"mail_server", "smtp.invalid"},
+		{"mail_port", "587"},
+		{"mailfrom_addr", "ctf@example.com"},
+	}
+}
+
 // The disaster the coherence rules cannot catch: mail_server is set but wrong — bad password,
 // blocked port, a relay that accepts and drops. Everyone registers, no mail arrives, every
 // gameplay route 403s. An organizer must be able to unblock a player from the product.
@@ -207,7 +219,7 @@ func TestAdminMarkVerifiedUnblocksAPlayer(t *testing.T) {
 // A recovery only an admin may perform. A player who could verify themselves would make
 // verify_emails mean nothing at all.
 func TestMarkVerifiedIsAdminOnly(t *testing.T) {
-	f := newAdminAPI(t, account.ModeUsers, [2]string{"verify_emails", "true"})
+	f := newAdminAPI(t, account.ModeUsers, verifyEmailsWithAMailer()...)
 	f.admin("root", "root@example.com")
 
 	cookie, csrf := f.register("player", "player@example.com", "correct-horse-battery")
@@ -242,7 +254,7 @@ func TestMarkVerifiedIsAdminOnly(t *testing.T) {
 // When the mailer is what is broken it is broken for the whole field, and clicking through a
 // paginated list one player at a time is not a recovery.
 func TestAdminVerifyAllUnblocksTheField(t *testing.T) {
-	f := newAdminAPI(t, account.ModeUsers, [2]string{"verify_emails", "true"})
+	f := newAdminAPI(t, account.ModeUsers, verifyEmailsWithAMailer()...)
 	adminCookie, adminCSRF, adminID := f.admin("root", "root@example.com")
 	auth := []func(*http.Request){withCookie(adminCookie), withCSRF(adminCSRF)}
 
