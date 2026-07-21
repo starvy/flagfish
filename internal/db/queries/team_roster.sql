@@ -27,3 +27,7 @@ UPDATE users u SET team_id = NULL
 -- Read-side disambiguation only: it shapes "no such team" versus "user is not on that team" after a
 -- zero-row write. The foreign key, not this, is what actually refuses a bad target.
 SELECT EXISTS (SELECT 1 FROM teams t WHERE t.id = @team_id)::boolean AS present;
+
+-- name: AdminTeamIsBanned :one
+-- Whether a move's destination would wall its arrival out of the API.
+SELECT t.banned FROM teams t WHERE t.id = @team_id;

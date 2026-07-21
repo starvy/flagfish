@@ -150,7 +150,7 @@ func newEmailAPI(t *testing.T, mode account.Mode, cfgKV ...[2]string) (*apiFix, 
 	worker, err := jobs.NewWorker(pool, jobs.WorkerDeps{
 		Mailer: fake,
 		Config: cfg,
-		Poster: jobs.NewHTTPPoster(),
+		Poster: loopbackPoster(),
 		Log:    log,
 	})
 	if err != nil {

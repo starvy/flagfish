@@ -89,7 +89,10 @@ func (s *Service) MoveTeamMember(ctx context.Context, actor audit.Actor, mode ac
 	if fromTeamID == toTeamID {
 		return fmt.Errorf("%w: id=%d", ErrSameTeam, toTeamID)
 	}
-	return s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+	return s.tx(ctx, actor, func(tx pgx.Tx, q *db.Queries) error {
+		if err := guardAdminOntoBannedTeam(ctx, tx, q, userID, toTeamID); err != nil {
+			return err
+		}
 		if err := detachMember(ctx, q, fromTeamID, userID); err != nil {
 			return err
 		}
@@ -113,6 +116,47 @@ func (s *Service) MoveTeamMember(ctx context.Context, actor audit.Actor, mode ac
 		}
 		return nil
 	})
+}
+
+// guardAdminOntoBannedTeam refuses a move that would take the last usable admin out of reach.
+//
+// A banned team walls its members out of every route, so moving an admin onto one disables them
+// as surely as banning their account — and this route has neither the self-ban refusal nor the
+// count that the ban route has. Moving an admin onto a banned team stays possible (it is how an
+// organizer retires a compromised account into a banned team), just never the last one.
+//
+// The lock is the same one the ban and demotion paths take, so those cannot commit between this
+// count and the move that follows it.
+func guardAdminOntoBannedTeam(ctx context.Context, tx pgx.Tx, q *db.Queries, userID, toTeamID int64) error {
+	if err := lockAdminRoster(ctx, tx); err != nil {
+		return fmt.Errorf("adminops: move user %d to team %d: %w", userID, toTeamID, err)
+	}
+	target, err := q.AdminGetUser(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: id=%d", ErrUserNotFound, userID)
+	} else if err != nil {
+		return fmt.Errorf("adminops: move user %d: read target: %w", userID, err)
+	}
+	if target.Role != "admin" || target.Banned {
+		return nil
+	}
+	destBanned, err := q.AdminTeamIsBanned(ctx, toTeamID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: id=%d", ErrTeamNotFound, toTeamID)
+	} else if err != nil {
+		return fmt.Errorf("adminops: move user %d to team %d: read team: %w", userID, toTeamID, err)
+	}
+	if !destBanned {
+		return nil
+	}
+	remaining, err := q.AdminCountOtherAdmins(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("adminops: move user %d to team %d: count admins: %w", userID, toTeamID, err)
+	}
+	if remaining == 0 {
+		return fmt.Errorf("%w: id=%d", ErrLastAdmin, userID)
+	}
+	return nil
 }
 
 // detachMember nulls a membership and settles the captain's seat behind it.

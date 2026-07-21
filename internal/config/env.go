@@ -73,6 +73,17 @@ type Env struct {
 	AuthRateLimit      int
 	AuthIPFailureLimit int
 	AuthIPRateLimit    int
+
+	// WebhookAllowedNetworks exempts networks from the outbound block that otherwise keeps
+	// the announcement webhook off loopback, link-local, and private space. It is empty by
+	// default, and it is process-level for the same reason the rate limits are: the webhook
+	// URL is admin-settable, so an escape hatch an admin could open from the UI is one a
+	// stolen admin session opens first, and the whole point of the block is that a stolen
+	// admin session must not become a request forger inside the network.
+	//
+	// Set it only to reach a receiver you run — an internal Mattermost, say — and name that
+	// receiver's network, not a blanket range.
+	WebhookAllowedNetworks []netip.Prefix
 }
 
 // DefaultMaxUploadBytes bounds a multipart upload when none is configured. The multipart
@@ -221,19 +232,11 @@ func LoadEnv() (Env, error) {
 	// A malformed CIDR here is fatal rather than skipped. Silently dropping one would
 	// leave the proxy untrusted, so every request would be attributed to the proxy's own
 	// address — which poisons the anti-cheat data rather than breaking anything visibly.
-	for _, raw := range splitList(os.Getenv("FLAGFISH_TRUSTED_PROXIES")) {
-		p, err := netip.ParsePrefix(raw)
-		if err != nil {
-			// Accept a bare address as a single-host prefix; it is the obvious thing to write.
-			addr, aerr := netip.ParseAddr(raw)
-			if aerr != nil {
-				errs = append(errs, fmt.Sprintf("FLAGFISH_TRUSTED_PROXIES: %q is not a CIDR or IP", raw))
-				continue
-			}
-			p = netip.PrefixFrom(addr, addr.BitLen())
-		}
-		env.TrustedProxies = append(env.TrustedProxies, p)
-	}
+	env.TrustedProxies = prefixListEnv("FLAGFISH_TRUSTED_PROXIES", &errs)
+
+	// Likewise fatal: a dropped entry here would look like a working exemption and behave
+	// like none, so the operator would debug their webhook receiver instead of this line.
+	env.WebhookAllowedNetworks = prefixListEnv("FLAGFISH_WEBHOOK_ALLOWED_NETWORKS", &errs)
 
 	if len(errs) > 0 {
 		return Env{}, &EnvError{Problems: errs}
@@ -313,6 +316,26 @@ func budgetEnv(key string, fallback int, errs *[]string) int {
 		return n
 	}
 	return fallback
+}
+
+// prefixListEnv reads a comma-separated list of networks, appending to errs rather than
+// returning early so a misconfigured deploy reports every bad value at once.
+func prefixListEnv(key string, errs *[]string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, raw := range splitList(os.Getenv(key)) {
+		p, err := netip.ParsePrefix(raw)
+		if err != nil {
+			// Accept a bare address as a single-host prefix; it is the obvious thing to write.
+			addr, aerr := netip.ParseAddr(raw)
+			if aerr != nil {
+				*errs = append(*errs, fmt.Sprintf("%s: %q is not a CIDR or IP", key, raw))
+				continue
+			}
+			p = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 func firstSet(keys ...string) string {

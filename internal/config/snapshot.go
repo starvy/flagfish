@@ -295,6 +295,12 @@ var registry = map[string]keyDef{
 // webhookURLSetter accepts only an absolute http(s) URL. A malformed endpoint fails
 // at the write rather than becoming a delivery that errors on every retry for the
 // whole event.
+//
+// It deliberately says nothing about where the URL points. Whether a destination is
+// reachable is decided on the resolved address at dial time, by the poster's egress
+// policy — a name checked here resolves to something else by the time it is dialled, so a
+// check here could only ever be a convenience, and one that reads like a boundary is worse
+// than none.
 func webhookURLSetter(s *Snapshot, v string) error {
 	u, err := url.Parse(v)
 	if err != nil {

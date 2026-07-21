@@ -13,6 +13,7 @@ import (
 
 	"github.com/starvy/flagfish/internal/config"
 	"github.com/starvy/flagfish/internal/domain/policy"
+	"github.com/starvy/flagfish/internal/egress"
 )
 
 // announceTTL bounds how late an announcement may still be delivered. River retries a
@@ -31,10 +32,23 @@ type WebhookPoster interface {
 // httpPoster is the production WebhookPoster.
 type httpPoster struct{ client *http.Client }
 
-// NewHTTPPoster builds the poster the worker uses in a real deployment. The timeout
-// bounds a hung receiver: a slow endpoint must not pin a worker slot forever.
-func NewHTTPPoster() WebhookPoster {
-	return &httpPoster{client: &http.Client{Timeout: 10 * time.Second}}
+// webhookTimeout bounds a hung receiver: a slow endpoint must not pin a worker slot forever.
+const webhookTimeout = 10 * time.Second
+
+// NewHTTPPoster builds the poster the worker uses in a real deployment.
+//
+// The client is egress-guarded because the URL it posts to is admin-settable: without the
+// guard, whoever holds an admin session picks an address inside the deployment's network
+// and the worker dials it for them.
+func NewHTTPPoster(env *config.Env) WebhookPoster {
+	return NewHTTPPosterWithPolicy(egress.Policy{Allowed: env.WebhookAllowedNetworks})
+}
+
+// NewHTTPPosterWithPolicy builds a poster against an explicit egress policy. Tests that
+// stand up a receiver on loopback use it to name that loopback; production goes through
+// NewHTTPPoster so the policy comes from the environment and nowhere else.
+func NewHTTPPosterWithPolicy(p egress.Policy) WebhookPoster {
+	return &httpPoster{client: p.Client(webhookTimeout)}
 }
 
 func (p *httpPoster) Post(ctx context.Context, url string, payload []byte) error {

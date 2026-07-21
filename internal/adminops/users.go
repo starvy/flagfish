@@ -130,16 +130,43 @@ func (s *Service) ForcePasswordChange(ctx context.Context, actor audit.Actor, us
 }
 
 // SetBanned bans or unbans, and a ban kills the user's live sessions in the same transaction —
-// a banned user must not ride out an already-minted cookie. Self-ban is refused; since every
-// caller is an unbanned admin, that alone guarantees a ban can never leave the instance without
-// a usable admin.
+// a banned user must not ride out an already-minted cookie. Self-ban is refused.
+//
+// Refusing self-ban is not on its own enough to keep an admin in the instance, because the
+// two ways to remove one race: A demoting B while B bans A leaves each transaction counting
+// the other as the admin that remains. So a ban takes the same lock a demotion takes and
+// counts under it — one queue for both, or the count is a guess about a row somebody else
+// is already changing.
 func (s *Service) SetBanned(ctx context.Context, actor audit.Actor, userID int64, banned bool) (db.AdminSetUserBannedRow, error) {
 	if banned && actor.ID == userID {
 		return db.AdminSetUserBannedRow{}, fmt.Errorf("%w: id=%d", ErrSelfBan, userID)
 	}
 
 	var out db.AdminSetUserBannedRow
-	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+	err := s.tx(ctx, actor, func(tx pgx.Tx, q *db.Queries) error {
+		if banned {
+			if err := lockAdminRoster(ctx, tx); err != nil {
+				return fmt.Errorf("adminops: set user %d banned: %w", userID, err)
+			}
+			// Read the target under the lock: whether banning it removes an admin depends on a
+			// role another transaction may be in the middle of changing.
+			target, err := q.AdminGetUser(ctx, userID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: id=%d", ErrUserNotFound, userID)
+			} else if err != nil {
+				return fmt.Errorf("adminops: set user %d banned: read target: %w", userID, err)
+			}
+			if target.Role == "admin" && !target.Banned {
+				remaining, err := q.AdminCountOtherAdmins(ctx, userID)
+				if err != nil {
+					return fmt.Errorf("adminops: set user %d banned: count admins: %w", userID, err)
+				}
+				if remaining == 0 {
+					return fmt.Errorf("%w: id=%d", ErrLastAdmin, userID)
+				}
+			}
+		}
+
 		var err error
 		out, err = q.AdminSetUserBanned(ctx, db.AdminSetUserBannedParams{UserID: userID, Banned: banned})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -157,15 +184,29 @@ func (s *Service) SetBanned(ctx context.Context, actor audit.Actor, userID int64
 	return out, err
 }
 
-// SetRole promotes or demotes. Demotions serialize on an advisory lock so two concurrent
+// lockAdminRoster serializes every mutation that can cost the instance its last usable admin:
+// demotion, account ban, team ban, and moving an admin onto a banned team.
+//
+// They all decide by counting who would be left, and a count taken outside this lock is a claim
+// about rows another transaction is already rewriting — two of them each see the other as the
+// admin that remains, both are satisfied, and both commit. One key for all of them, because
+// serializing each against itself is what leaves the interleaving open.
+func lockAdminRoster(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('admin_role'))`); err != nil {
+		return fmt.Errorf("lock admin roster: %w", err)
+	}
+	return nil
+}
+
+// SetRole promotes or demotes. Demotions serialize on the admin-roster lock so two concurrent
 // self-demotions cannot both see "another admin remains" and leave the instance with none —
 // the same count-then-write trap the registration caps close the same way.
 func (s *Service) SetRole(ctx context.Context, actor audit.Actor, userID int64, role string) (db.AdminSetUserRoleRow, error) {
 	var out db.AdminSetUserRoleRow
 	err := s.tx(ctx, actor, func(tx pgx.Tx, q *db.Queries) error {
 		if role != "admin" {
-			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('admin_role'))`); err != nil {
-				return fmt.Errorf("adminops: set role: lock: %w", err)
+			if err := lockAdminRoster(ctx, tx); err != nil {
+				return fmt.Errorf("adminops: set user %d role: %w", userID, err)
 			}
 			remaining, err := q.AdminCountOtherAdmins(ctx, userID)
 			if err != nil {

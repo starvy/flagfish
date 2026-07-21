@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"strconv"
 	"testing"
@@ -19,10 +20,21 @@ import (
 	"github.com/riverqueue/river"
 
 	"github.com/starvy/flagfish/internal/config"
+	"github.com/starvy/flagfish/internal/egress"
 	"github.com/starvy/flagfish/internal/jobs"
 	"github.com/starvy/flagfish/internal/mail"
 	"github.com/starvy/flagfish/internal/migrate"
 )
+
+// loopbackPoster is the poster these tests need: their receiver is an httptest server on
+// 127.0.0.1, and the shipped egress policy refuses loopback precisely because an
+// admin-supplied URL must not reach it. Naming the exemption is what a deployment with a
+// genuine internal receiver does, and everything the tests did not name stays refused.
+func loopbackPoster() jobs.WebhookPoster {
+	return jobs.NewHTTPPosterWithPolicy(egress.Policy{
+		Allowed: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+	})
+}
 
 func unixString(t time.Time) string { return strconv.FormatInt(t.Unix(), 10) }
 
@@ -122,7 +134,7 @@ func setupWebhook(t *testing.T, rows map[string]string) (*pgxpool.Pool, *river.C
 	worker, err := jobs.NewWorker(pool, jobs.WorkerDeps{
 		Mailer: mail.Unconfigured{},
 		Config: cfg,
-		Poster: jobs.NewHTTPPoster(),
+		Poster: loopbackPoster(),
 		Log:    log,
 	})
 	if err != nil {

@@ -35,6 +35,7 @@ Run it **before** a deploy, not after. It fails loudly and lists every problem a
 | `FLAGFISH_AUTH_IP_RATE_LIMIT` | `300` | All credential attempts per window from one source address, successful or not. Positive integer. |
 | `FLAGFISH_RATE_WINDOW` | `1m` | Window over which both rate limits are counted. Go duration, must be positive. |
 | `FLAGFISH_TRUSTED_PROXIES` | empty | Comma-separated CIDRs (or bare IPs) whose `X-Forwarded-For` is believed. Empty = trust nobody, use the socket peer address. |
+| `FLAGFISH_WEBHOOK_ALLOWED_NETWORKS` | empty | Comma-separated CIDRs (or bare IPs) the announcement webhook is permitted to reach despite the internal-address block. Empty = public destinations only. Set it only to reach a receiver you run on a private network. |
 | `FLAGFISH_SECURE_COOKIES` | `true` | Mark session cookies `Secure`. Defaults on; `false` only when you serve plain HTTP on purpose. |
 | `FLAGFISH_MAX_UPLOAD_BYTES` | `33554432` | Largest multipart upload accepted (32 MiB). Every other body is capped at 1 MiB. Positive integer. |
 | `FLAGFISH_DB_MAX_CONNS` | `25` | pgx pool ceiling. At least 1. |
@@ -53,6 +54,16 @@ protection without affecting shared addresses at all.
 it just attributes every request to the proxy's own address, which quietly poisons the anti-cheat
 evidence in `submissions.ip`. Behind a reverse proxy, set it to the proxy's address(es). A
 malformed entry is a startup error rather than a skipped one, deliberately.
+
+**The announcement webhook cannot reach your internal network by default.** The webhook URL is
+admin-settable, so a stolen admin session could otherwise aim it at the cloud metadata endpoint,
+the database, or any host that trusts its own subnet — the worker refuses to dial loopback,
+link-local (including `169.254.169.254`), private, and unique-local addresses, checked on the
+address each connection actually resolves to rather than on the hostname, and it does not follow
+redirects. If you genuinely post to an internal receiver (an in-cluster Mattermost, say), name that
+receiver's network in `FLAGFISH_WEBHOOK_ALLOWED_NETWORKS` — and name the network, not a blanket
+range, so the metadata endpoint stays refused. A malformed entry is a startup error, like the
+trusted-proxy list.
 
 ## Object storage (challenge files)
 

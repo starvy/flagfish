@@ -130,18 +130,32 @@ func teamConstraint(err error) error {
 }
 
 // SetTeamBanned bans or unbans a team, and a ban kills every member's live session in the same
-// transaction. Banning the acting admin's own team is refused: every caller is an unbanned admin,
-// so that alone keeps a ban from leaving the instance without a usable admin.
+// transaction. Banning the acting admin's own team is refused.
+//
+// A team ban locks its members out of every route just as an account ban does, so it is one of the
+// ways the instance can lose its last admin, and refusing self-ban only closes the case where the
+// caller is the admin in question. It takes the same lock and counts the same way a demotion does:
+// banning a team that holds the only other usable admin is refused outright.
 func (s *Service) SetTeamBanned(ctx context.Context, actor audit.Actor, teamID int64, banned bool) (db.AdminSetTeamBannedRow, error) {
 	var out db.AdminSetTeamBannedRow
-	err := s.tx(ctx, actor, func(_ pgx.Tx, q *db.Queries) error {
+	err := s.tx(ctx, actor, func(tx pgx.Tx, q *db.Queries) error {
 		if banned {
+			if err := lockAdminRoster(ctx, tx); err != nil {
+				return fmt.Errorf("adminops: ban team %d: %w", teamID, err)
+			}
 			u, err := q.GetUserByID(ctx, actor.ID)
 			if err != nil {
 				return fmt.Errorf("adminops: ban team %d: load actor: %w", teamID, err)
 			}
 			if u.TeamID != nil && *u.TeamID == teamID {
 				return fmt.Errorf("%w: id=%d", ErrSelfTeamBan, teamID)
+			}
+			remaining, err := q.AdminCountAdminsOutsideTeam(ctx, &teamID)
+			if err != nil {
+				return fmt.Errorf("adminops: ban team %d: count admins: %w", teamID, err)
+			}
+			if remaining == 0 {
+				return fmt.Errorf("%w: team_id=%d", ErrLastAdmin, teamID)
 			}
 		}
 		var err error

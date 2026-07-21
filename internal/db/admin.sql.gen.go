@@ -59,6 +59,25 @@ func (q *Queries) AdminChallengeFlagStats(ctx context.Context, challengeID int64
 	return i, err
 }
 
+const adminCountAdminsOutsideTeam = `-- name: AdminCountAdminsOutsideTeam :one
+SELECT count(*)
+  FROM users u
+  LEFT JOIN teams t ON t.id = u.team_id
+ WHERE u.role = 'admin'
+   AND u.banned = false
+   AND COALESCE(t.banned, false) = false
+   AND (u.team_id IS NULL OR u.team_id <> $1)
+`
+
+// The same count asked the way a team ban needs it: the usable admins who are not on @team_id,
+// and so would survive banning it.
+func (q *Queries) AdminCountAdminsOutsideTeam(ctx context.Context, teamID *int64) (int64, error) {
+	row := q.db.QueryRow(ctx, adminCountAdminsOutsideTeam, teamID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const adminCountChallengeSolves = `-- name: AdminCountChallengeSolves :one
 SELECT count(*)::bigint FROM solves WHERE challenge_id = $1
 `
@@ -74,9 +93,18 @@ func (q *Queries) AdminCountChallengeSolves(ctx context.Context, challengeID int
 }
 
 const adminCountOtherAdmins = `-- name: AdminCountOtherAdmins :one
-SELECT count(*) FROM users WHERE role = 'admin' AND banned = false AND id <> $1
+SELECT count(*)
+  FROM users u
+  LEFT JOIN teams t ON t.id = u.team_id
+ WHERE u.role = 'admin'
+   AND u.banned = false
+   AND COALESCE(t.banned, false) = false
+   AND u.id <> $1
 `
 
+// Admins other than @user_id who could still log in and administer. A banned team walls its
+// members out of the whole API exactly as a banned account does, so an admin sitting on one is
+// not somebody left behind — counting them would be counting a locked door as an exit.
 func (q *Queries) AdminCountOtherAdmins(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, adminCountOtherAdmins, userID)
 	var count int64

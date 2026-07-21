@@ -275,7 +275,27 @@ UPDATE users SET role = @role WHERE id = @user_id
 RETURNING id, name, role;
 
 -- name: AdminCountOtherAdmins :one
-SELECT count(*) FROM users WHERE role = 'admin' AND banned = false AND id <> @user_id;
+-- Admins other than @user_id who could still log in and administer. A banned team walls its
+-- members out of the whole API exactly as a banned account does, so an admin sitting on one is
+-- not somebody left behind — counting them would be counting a locked door as an exit.
+SELECT count(*)
+  FROM users u
+  LEFT JOIN teams t ON t.id = u.team_id
+ WHERE u.role = 'admin'
+   AND u.banned = false
+   AND COALESCE(t.banned, false) = false
+   AND u.id <> @user_id;
+
+-- name: AdminCountAdminsOutsideTeam :one
+-- The same count asked the way a team ban needs it: the usable admins who are not on @team_id,
+-- and so would survive banning it.
+SELECT count(*)
+  FROM users u
+  LEFT JOIN teams t ON t.id = u.team_id
+ WHERE u.role = 'admin'
+   AND u.banned = false
+   AND COALESCE(t.banned, false) = false
+   AND (u.team_id IS NULL OR u.team_id <> @team_id);
 
 -- ── teams ───────────────────────────────────────────────────────────────────────
 

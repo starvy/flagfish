@@ -97,3 +97,15 @@ func (q *Queries) AdminTeamExists(ctx context.Context, teamID int64) (bool, erro
 	err := row.Scan(&present)
 	return present, err
 }
+
+const adminTeamIsBanned = `-- name: AdminTeamIsBanned :one
+SELECT t.banned FROM teams t WHERE t.id = $1
+`
+
+// Whether a move's destination would wall its arrival out of the API.
+func (q *Queries) AdminTeamIsBanned(ctx context.Context, teamID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, adminTeamIsBanned, teamID)
+	var banned bool
+	err := row.Scan(&banned)
+	return banned, err
+}

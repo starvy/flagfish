@@ -26,10 +26,16 @@ type Querier interface {
 	// every submission erroring on an empty flag set, and the regex count decides whether a switch to
 	// unique would strand a pattern that cannot be pool-issued.
 	AdminChallengeFlagStats(ctx context.Context, challengeID int64) (AdminChallengeFlagStatsRow, error)
+	// The same count asked the way a team ban needs it: the usable admins who are not on @team_id,
+	// and so would survive banning it.
+	AdminCountAdminsOutsideTeam(ctx context.Context, teamID *int64) (int64, error)
 	// Whether the challenge has any recorded solve. A flag_mode switch is refused while this is nonzero:
 	// the anti-cheat unissued-solve detector is a date-blind anti-join, so flipping static→unique
 	// mid-event would report every legitimate prior solver as an unissued solve.
 	AdminCountChallengeSolves(ctx context.Context, challengeID int64) (int64, error)
+	// Admins other than @user_id who could still log in and administer. A banned team walls its
+	// members out of the whole API exactly as a banned account does, so an admin sitting on one is
+	// not somebody left behind — counting them would be counting a locked door as an exit.
 	AdminCountOtherAdmins(ctx context.Context, userID int64) (int64, error)
 	AdminCountTagUses(ctx context.Context, value string) (int64, error)
 	AdminCreateBracket(ctx context.Context, arg AdminCreateBracketParams) (Bracket, error)
@@ -183,6 +189,8 @@ type Querier interface {
 	// Read-side disambiguation only: it shapes "no such team" versus "user is not on that team" after a
 	// zero-row write. The foreign key, not this, is what actually refuses a bad target.
 	AdminTeamExists(ctx context.Context, teamID int64) (bool, error)
+	// Whether a move's destination would wall its arrival out of the API.
+	AdminTeamIsBanned(ctx context.Context, teamID int64) (bool, error)
 	// Partial update: an absent field keeps its value. applies_to is immutable — flipping it would
 	// silently strand every current member, whose account kind no longer matches.
 	AdminUpdateBracket(ctx context.Context, arg AdminUpdateBracketParams) (Bracket, error)
