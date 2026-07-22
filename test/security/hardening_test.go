@@ -222,6 +222,8 @@ func TestS15_AdminOpenAPIIsNotAnonymous(t *testing.T) {
 		"/api/v1/admin/openapi.json",
 		"/api/v1/admin/openapi.yaml",
 		"/api/v1/admin/docs",
+		"/api/v1/admin/docs-assets/stoplight-elements.min.js",
+		"/api/v1/admin/docs-assets/stoplight-elements.min.css",
 		// Huma builds its doc routes from the configured path, and a mounted sub-router made that
 		// path a prefixed duplicate. It was the reachable one, so it is pinned here too.
 		"/api/v1/admin/api/v1/admin/openapi.json",

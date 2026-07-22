@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -24,6 +25,7 @@ import (
 	"github.com/starvy/flagfish/internal/domain/policy"
 	"github.com/starvy/flagfish/internal/files"
 	"github.com/starvy/flagfish/internal/gameplay"
+	"github.com/starvy/flagfish/internal/httpapi/docsassets"
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
@@ -318,7 +320,32 @@ func (s *Server) mountAdminDocs(sub chi.Router, api huma.API, prefix, title stri
 			w.Header().Set("Content-Security-Policy", adminDocsCSP)
 			s.writeDoc(r.Context(), w, "text/html; charset=utf-8", []byte(adminDocsHTML(title, prefix)))
 		})
+
+		// The reference UI's bundle, served same-origin so the page needs no external origin. The
+		// filename is version-pinned in the source tree, so the bytes at a URL never change.
+		g.Get("/docs-assets/{file}", s.serveDocsAsset)
 	})
+}
+
+var docsAssetContentType = map[string]string{
+	".js":  "text/javascript; charset=utf-8",
+	".css": "text/css; charset=utf-8",
+}
+
+func (s *Server) serveDocsAsset(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "file")
+	ct, ok := docsAssetContentType[path.Ext(name)]
+	if !ok {
+		problem(w, http.StatusNotFound, "not-found", "no such asset")
+		return
+	}
+	body, err := docsassets.FS.ReadFile(name)
+	if err != nil {
+		problem(w, http.StatusNotFound, "not-found", "no such asset")
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	s.writeDoc(r.Context(), w, ct, body)
 }
 
 func (s *Server) writeDoc(ctx context.Context, w http.ResponseWriter, contentType string, body []byte) {
@@ -329,13 +356,16 @@ func (s *Server) writeDoc(ctx context.Context, w http.ResponseWriter, contentTyp
 	}
 }
 
+// The reference UI's script and styles ship in the binary and are served same-origin under
+// {prefix}/docs-assets, so 'self' is the only origin the page needs. The bundle injects its own
+// styles at runtime, which is why style-src still allows 'unsafe-inline'.
 const adminDocsCSP = "default-src 'none'; base-uri 'none'; connect-src 'self'; form-action 'none'; " +
 	"frame-ancestors 'none'; sandbox allow-same-origin allow-scripts; " +
-	"script-src https://unpkg.com/@stoplight/elements@9.0.15/web-components.min.js; " +
-	"style-src 'unsafe-inline' https://unpkg.com/@stoplight/elements@9.0.15/styles.min.css"
+	"script-src 'self'; style-src 'unsafe-inline' 'self'"
 
 // adminDocsHTML is Huma's Stoplight Elements page, rendered by us because Huma's own is not behind
-// the gate. It fetches the spec same-origin, so the admin's cookie carries it through that gate too.
+// the gate. Its script, styles, and the spec are all fetched same-origin, so the admin's cookie
+// carries each one through that gate too.
 func adminDocsHTML(title, prefix string) string {
 	return `<!doctype html>
 <html lang="en">
@@ -344,8 +374,8 @@ func adminDocsHTML(title, prefix string) string {
     <meta name="referrer" content="no-referrer">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>` + html.EscapeString(title) + ` Reference</title>
-    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements@9.0.15/styles.min.css" crossorigin integrity="sha384-iVQBHadsD+eV0M5+ubRCEVXrXEBj+BqcuwjUwPoVJc0Pb1fmrhYSAhL+BFProHdV">
-    <script src="https://unpkg.com/@stoplight/elements@9.0.15/web-components.min.js" crossorigin integrity="sha384-xjOcq9PZ/k+pGtPS/xcsCRXGjKKfTlIa4H1IYEnC+97jNa6sAMWTNrV6hY08W3GL"></script>
+    <link rel="stylesheet" href="` + html.EscapeString(prefix) + `/docs-assets/stoplight-elements.min.css">
+    <script src="` + html.EscapeString(prefix) + `/docs-assets/stoplight-elements.min.js"></script>
   </head>
   <body style="height: 100vh;">
     <elements-api
