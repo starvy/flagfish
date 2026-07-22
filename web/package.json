@@ -10,7 +10,8 @@
     "test": "vitest run",
     "generate:api": "npm run generate:api:public && npm run generate:api:admin",
     "generate:api:public": "openapi-typescript ../openapi.yaml -o src/api/schema.gen.ts",
-    "generate:api:admin": "openapi-typescript ../openapi.admin.yaml -o src/api/schema.admin.gen.ts"
+    "generate:api:admin": "openapi-typescript ../openapi.admin.yaml -o src/api/schema.admin.gen.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",

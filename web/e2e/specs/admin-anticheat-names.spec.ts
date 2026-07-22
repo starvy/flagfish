@@ -7,11 +7,11 @@ import { test, expect } from "../fixtures";
 // display names, not `#2` / `#3`. Before the read-projection fix the queries selected only ids and
 // this fails: the names never reach the page.
 //
-// The DSN comes from the environment so the spec runs against whatever instance the coordinator
-// booted; the default matches the local bring-up in the task.
+// The seed is account-based, so this runs against the users-mode instance; the DSN points at its
+// database. Overridable from the environment; the default matches the local bring-up.
 const DSN =
-  process.env.FLAGFISH_E2E_DATABASE_URL ??
-  "postgres://flagfish:flagfish@localhost:5584/flagfish_e2e?sslmode=disable";
+  process.env.FLAGFISH_USERS_DATABASE_URL ??
+  "postgres://flagfish:flagfish@localhost:5589/flagfish?sslmode=disable";
 
 interface SeedResult {
   issuer: string;
