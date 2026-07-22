@@ -28,10 +28,12 @@ test.describe("ops — audit log", () => {
     await expect(adminPage.getByRole("dialog")).toContainText(`UPDATE challenges #${id}`);
     await adminPage.getByRole("button", { name: "Reveal payload" }).click();
 
-    // The before/after diff shows the old value removed and the new value added.
+    // The before/after diff shows the old value removed and the new value added. Match the whole
+    // `"value": <n>` fragment, not the bare number — a microsecond timestamp in the same diff can
+    // contain "100"/"250" and would otherwise collide under strict mode.
     const diff = adminPage.getByLabel("Before and after diff");
     await expect(diff).toBeVisible();
-    await expect(diff.locator(".ff-diff__del", { hasText: "100" })).toBeVisible();
-    await expect(diff.locator(".ff-diff__add", { hasText: "250" })).toBeVisible();
+    await expect(diff.locator(".ff-diff__del", { hasText: '"value": 100' })).toBeVisible();
+    await expect(diff.locator(".ff-diff__add", { hasText: '"value": 250' })).toBeVisible();
   });
 });
