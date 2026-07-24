@@ -114,8 +114,48 @@ services:
       retries: 30
       start_period: 3s
 
+  # Dev object storage for challenge files. Unlike minio-test this keeps a named volume, so
+  # uploads survive a restart — it is the store `task run`/`task dev` point the server at.
+  # Mirrors deploy/compose.yaml's `minio`; tests use the tmpfs `minio-test` above instead.
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: flagfish-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: flagfish
+      MINIO_ROOT_PASSWORD: flagfish
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API — what the dev server talks to
+      - "127.0.0.1:9001:9001"   # web console, for eyeballing what got uploaded
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+  # One-shot: create the bucket the dev server writes to, then exit. Idempotent
+  # (--ignore-existing), so `task up` re-running it is a no-op. `task up` invokes it with
+  # `docker compose run --rm minio-init` once minio is healthy.
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 flagfish flagfish
+        mc mb --ignore-existing local/flagfish-dev
+        echo "bucket local/flagfish-dev ready"
+    restart: "no"
+
   # Optional. `task up` does not start it; `docker compose --profile tools up -d`
-  # (or `task db-ui`) does. Keeps the default dev loop to two containers.
+  # (or `task db-ui`) does. Keeps adminer out of the default dev loop.
   adminer:
     image: adminer:5
     container_name: flagfish-adminer
@@ -132,3 +172,4 @@ services:
 
 volumes:
   pgdata:
+  miniodata:

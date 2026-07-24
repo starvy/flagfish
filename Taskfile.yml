@@ -104,12 +104,16 @@ tasks:
   # ---------------------------------------------------------------- compose
 
   up:
-    desc: Start Postgres (dev :5432 + test :5433) and MinIO (test object storage :9002)
+    desc: Start Postgres (dev :5432 + test :5433) and MinIO (dev :9000 + test :9002)
     cmds:
-      - docker compose up -d --wait postgres postgres-test minio-test
+      - docker compose up -d --wait postgres postgres-test minio minio-test
+      # Create the dev bucket once minio is healthy. `run --rm` executes the one-shot to
+      # completion and cleans up; it is idempotent, so this is safe to repeat.
+      - docker compose run --rm minio-init
       - 'echo "  dev  {{.DATABASE_URL}}"'
       - 'echo "  test {{.TEST_DATABASE_URL}}"'
-      - 'echo "  s3   {{.TEST_S3_ENDPOINT}} (bucket {{.TEST_S3_BUCKET}})"'
+      - 'echo "  s3   dev  localhost:9000 (bucket flagfish-dev)"'
+      - 'echo "  s3   test {{.TEST_S3_ENDPOINT}} (bucket {{.TEST_S3_BUCKET}})"'
 
   down:
     desc: Stop the stack (keeps the dev volume)
@@ -491,12 +495,22 @@ tasks:
   run:
     desc: Run the server (serve --with-worker — the default topology)
     deps: [up, migrate]
+    # Point the server at the dev MinIO `up` started, so challenge-file upload works locally.
+    # Path-style + plaintext is what MinIO over HTTP wants; a real S3/R2 flips these.
+    env: &dev-s3-env
+      FLAGFISH_S3_ENDPOINT: "localhost:9000"
+      FLAGFISH_S3_BUCKET: "flagfish-dev"
+      FLAGFISH_S3_ACCESS_KEY: "flagfish"
+      FLAGFISH_S3_SECRET_KEY: "flagfish"
+      FLAGFISH_S3_USE_SSL: "false"
+      FLAGFISH_S3_PATH_STYLE: "true"
     cmds:
       - go run ./cmd/flagfish serve --with-worker
 
   dev:
     desc: Live-reload the server with air
     deps: [tools, up, migrate]
+    env: *dev-s3-env
     cmds:
       - '{{.AIR}}'
 
