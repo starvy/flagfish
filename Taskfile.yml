@@ -31,7 +31,10 @@ vars:
   # The production-shaped stack in deploy/ reads deploy/.env; compose.e2e.yaml is a
   # thin overlay that publishes Postgres for the e2e suite.
   DEPLOY_COMPOSE: "docker compose --env-file deploy/.env -f deploy/compose.yaml"
-  E2E_COMPOSE: "docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.e2e.yaml"
+  # Same stack, plus the build override: builds the app image from local source instead of
+  # pulling the published one. Used by `deploy-up-build` and, with the e2e overlay, by `e2e`.
+  DEPLOY_BUILD_COMPOSE: "docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.build.yaml"
+  E2E_COMPOSE: "docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.e2e.yaml -f deploy/compose.build.yaml"
 
 env:
   # Fallbacks when .env is absent. Values match compose.yaml.
@@ -534,7 +537,7 @@ tasks:
   # stack; compose.e2e.yaml is a thin overlay that publishes Postgres for the suite.
 
   deploy-up:
-    desc: Build and start the production stack (Postgres + MinIO + flagfish) from deploy/
+    desc: Pull and start the production stack (Postgres + MinIO + flagfish) from deploy/
     cmds:
       - |
         if [ ! -f deploy/.env ]; then
@@ -544,13 +547,27 @@ tasks:
       # The secrets in deploy/.env.example are empty, and compose's ${VAR:?} rejects an empty
       # value — so a copied-and-unedited file stops here rather than booting a public CTF on a
       # password that ships in the repository.
-      - "{{.DEPLOY_COMPOSE}} up -d --build --wait"
+      #
+      # Pulls the published image (FLAGFISH_IMAGE, default ghcr.io/starvy/flagfish:latest). To
+      # build from local source instead, use `task deploy-up-build`. `--pull always` refreshes a
+      # moving tag like :latest; pin FLAGFISH_IMAGE to a version for a reproducible deploy.
+      - "{{.DEPLOY_COMPOSE}} up -d --wait --pull always"
       # Until `admin create` runs, the route policy denies everything and /setup just prints
       # this command — the instance is not usable yet, so say so rather than "app is up".
       - 'echo "  stack is up, but the instance is not live until it has an admin:"'
       - 'echo "    {{.DEPLOY_COMPOSE}} exec flagfish /flagfish admin create --email you@example.com"'
       - 'echo "  prompts for the password, and fixes the account model with --mode users|teams."'
       - 'echo "  see docs/ops/deploy.md#first-run-create-the-first-admin"'
+
+  deploy-up-build:
+    desc: Like deploy-up, but build the app image from local source instead of pulling it
+    cmds:
+      - |
+        if [ ! -f deploy/.env ]; then
+          echo "deploy/.env is missing — copy deploy/.env.example and set real secrets first" >&2
+          exit 1
+        fi
+      - "{{.DEPLOY_BUILD_COMPOSE}} up -d --build --wait"
 
   deploy-down:
     desc: Stop the production stack (keeps the named volumes)

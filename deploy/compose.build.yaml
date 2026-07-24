@@ -1,0 +1,24 @@
+# Build override for deploy/compose.yaml. Layer it to build the app image from local
+# source instead of pulling the published one from GHCR:
+#   docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d --build
+#
+# Use it for development, for a change you have not tagged and published yet, or in CI —
+# the e2e stack layers this so the suite tests the working tree, not a release. A plain
+# `task deploy-up` (base file only) pulls the published image and never builds.
+#
+# Both flagfish services carry the same build; the tag they build as is FLAGFISH_IMAGE,
+# so a local build and a later pull address the same reference.
+
+x-flagfish-build: &flagfish-build
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    args:
+      VERSION: ${FLAGFISH_VERSION:-dev}
+
+services:
+  migrate:
+    <<: *flagfish-build
+
+  flagfish:
+    <<: *flagfish-build

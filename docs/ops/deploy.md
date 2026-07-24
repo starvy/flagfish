@@ -34,13 +34,16 @@ the bucket exists.
 
 ```sh
 cp deploy/.env.example deploy/.env      # then edit — set real secrets
-task deploy-up                          # build images, start everything, wait for healthy
+task deploy-up                          # pull the image, start everything, wait for healthy
 # ... run the event ...
 task deploy-down                        # stop (keep data)   |   task deploy-down-clean (wipe volumes)
 ```
 
 `deploy-up` refuses to run without `deploy/.env`. Under the hood it is
-`docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build --wait`.
+`docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --wait --pull always`,
+which pulls the published image (`FLAGFISH_IMAGE`, default `ghcr.io/starvy/flagfish:latest`).
+To build the image from local source instead — a change you have not tagged and published
+yet — use `task deploy-up-build`, which layers `deploy/compose.build.yaml`.
 
 The secret values in `deploy/.env.example` are **empty on purpose**, not `change-me`.
 Compose's `${VAR:?}` rejects an empty value, so a copied-and-forgotten file stops the stack
@@ -69,7 +72,7 @@ so you set secrets once:
 | `FLAGFISH_MAX_UPLOAD_BYTES` | largest multipart upload (default 32 MiB); every other body is capped at 1 MiB |
 | `FLAGFISH_RATE_LIMIT` / `FLAGFISH_RATE_WINDOW` | per-caller request budget (default `60` per `1m`) |
 | `FLAGFISH_LOG_FORMAT` / `FLAGFISH_LOG_LEVEL` | `json`/`info` in production |
-| `FLAGFISH_IMAGE` / `FLAGFISH_VERSION` | image tag and stamped build version (default `flagfish:latest`, `dev`) |
+| `FLAGFISH_IMAGE` / `FLAGFISH_VERSION` | image to pull (default `ghcr.io/starvy/flagfish:latest`) and, when building from source, the stamped version (`dev`) |
 
 These are the knobs the compose file passes through, not the whole process-level surface —
 [environment.md](environment.md) is the exhaustive list and the source of truth for defaults.

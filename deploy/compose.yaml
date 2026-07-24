@@ -1,8 +1,8 @@
 name: flagfish-deploy
 
-# Production-shaped deployment: the single static binary, Postgres 17, and MinIO
-# for challenge files. It is what a competition would run on one host behind a TLS
-# reverse proxy.
+# Production-shaped deployment: the single static binary (pulled from GHCR), Postgres 17,
+# and MinIO for challenge files. It is what a competition would run on one host behind a
+# TLS reverse proxy.
 #
 # The topology mirrors the boot contract:
 #   migrate     one-shot `flagfish migrate` (advisory-locked), runs to completion FIRST.
@@ -20,12 +20,12 @@ name: flagfish-deploy
 # First run is not complete until the instance is marked set up and an admin exists —
 # there is no self-serve setup endpoint. See docs/ops/deploy.md.
 
-x-flagfish-build: &flagfish-build
-  build:
-    context: ..
-    dockerfile: Dockerfile
-    args:
-      VERSION: ${FLAGFISH_VERSION:-dev}
+# The app image is PULLED from GHCR by default (see FLAGFISH_IMAGE on the two flagfish
+# services below). To build it from local source instead — for development, or a change
+# you have not tagged and published yet — layer deploy/compose.build.yaml, which adds the
+# `build:` section back:
+#   docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d --build
+# `task deploy-up` pulls; `task deploy-up-build` builds. The e2e stack always builds.
 
 # Every service that talks to Postgres shares the same derived DSN, written once.
 # sslmode=disable is safe here because Postgres is not published off the compose
@@ -104,8 +104,7 @@ services:
   # start; a failed migration therefore blocks the rollout instead of a half-migrated
   # app taking traffic.
   migrate:
-    <<: *flagfish-build
-    image: ${FLAGFISH_IMAGE:-flagfish:latest}
+    image: ${FLAGFISH_IMAGE:-ghcr.io/starvy/flagfish:latest}
     command: ["migrate"]
     depends_on:
       postgres:
@@ -115,8 +114,7 @@ services:
     restart: "no"
 
   flagfish:
-    <<: *flagfish-build
-    image: ${FLAGFISH_IMAGE:-flagfish:latest}
+    image: ${FLAGFISH_IMAGE:-ghcr.io/starvy/flagfish:latest}
     restart: unless-stopped
     # serve --with-worker is the image default (one container: API + job worker).
     depends_on:
