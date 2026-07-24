@@ -1,0 +1,82 @@
+name: release
+
+# Publish the production image to GHCR on a version tag. This never runs on a
+# branch push or a PR — only when a `v*` tag is pushed — so a release is an
+# explicit act (`git tag v0.1.0 && git push --tags`), not a side effect of merging.
+on:
+  push:
+    tags: ["v*"]
+
+# GITHUB_TOKEN needs packages:write to push to ghcr.io; nothing else is required,
+# so no Docker Hub account and no extra repository secret. contents:read is the
+# floor for checkout.
+permissions:
+  contents: read
+  packages: write
+
+# One release per tag. A re-pushed tag supersedes an in-flight run rather than
+# racing it to the same image reference.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  # github.repository is `starvy/flagfish` → ghcr.io/starvy/flagfish, so the image
+  # tracks the repo name automatically instead of being hardcoded here.
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  image:
+    name: build and push image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Derive the tag list and OCI labels from the git ref. For a full release
+      # (v0.1.0) this produces `0.1.0`, `0.1`, and `latest`; for a prerelease
+      # (v0.1.0-rc.1) it produces only `0.1.0-rc.1` — latest=auto withholds the
+      # moving tag from prereleases, so `docker pull …:latest` never lands on an rc.
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.title=flagfish
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # amd64 only for now: the Dockerfile's Go stage builds for the runner's
+          # native arch. arm64 is a follow-up — cross-compile with $BUILDPLATFORM +
+          # $TARGETARCH in the Dockerfile, then add linux/arm64 here.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The tag becomes the binary's `--version`, the commit its build stamp.
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+          # Share the layer cache with the CI docker-image job (also type=gha).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Keep the manifest single-platform: provenance/SBOM add attestation
+          # manifests that show as a stray unknown/unknown entry in the GHCR UI and
+          # trip older compose/podman pulls. Add them once multi-arch is in.
+          provenance: false
