@@ -14,6 +14,44 @@ export type Challenge = ChallengeDetail & {
   attempts_used?: number;
 };
 
+/**
+ * Free-form operator metadata a view may place a challenge by. Always present on the wire, `{}`
+ * when there is none and when the challenge is locked or masked — so a view that keys off an
+ * annotation cannot be used to learn something about a challenge the player may not see.
+ *
+ * The committed OpenAPI document does not describe it yet, so it is read off the raw body here.
+ * This one cast is the whole stopgap: delete `Annotated` when `schema.gen.ts` is regenerated and
+ * everything below keeps compiling.
+ */
+export type Annotations = Readonly<Record<string, string>>;
+
+interface Annotated {
+  annotations?: Record<string, string>;
+}
+
+const NO_ANNOTATIONS: Annotations = {};
+
+export function annotationsOf(challenge: BoardChallenge | Challenge): Annotations {
+  return (challenge as Annotated).annotations ?? NO_ANNOTATIONS;
+}
+
+/** The well-known key: an uppercase ISO 3166-1 alpha-2 code. */
+export const COUNTRY_ANNOTATION = "country";
+
+/**
+ * The country a challenge is placed in, or null.
+ *
+ * The shape is checked rather than trusted. A value that is not two letters is not a country a
+ * map can find, and quietly dropping a pin at the wrong place — or at 0°,0° — is worse than
+ * treating the challenge as unplaced, where it is still listed and still playable.
+ */
+export function countryOf(challenge: BoardChallenge | Challenge): string | null {
+  const raw = annotationsOf(challenge)[COUNTRY_ANNOTATION];
+  if (typeof raw !== "string") return null;
+  const code = raw.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : null;
+}
+
 /** `0` means unlimited. It is not "no attempts allowed". */
 export function attemptsLabel(c: Challenge): string {
   if (c.max_attempts === 0) return "unlimited attempts";

@@ -22,6 +22,7 @@ interface InstanceExtras {
   team_creation?: boolean;
   verify_emails?: boolean;
   registration_visibility?: string;
+  portal_view?: string;
 }
 
 export interface InstanceState {
@@ -36,6 +37,12 @@ export interface InstanceState {
   teamCreation: boolean;
   verifyEmails: boolean;
   registrationVisibility: RegistrationVisibility;
+  /**
+   * Which view of the challenge board this instance leads with. Passed through unvalidated:
+   * `views/resolve.ts` owns what is and is not a view this build can render, and a value it
+   * does not know has to reach it to be reported.
+   */
+  portalView: string | null;
   loaded: boolean;
 }
 
@@ -81,6 +88,7 @@ export function useInstanceState(): InstanceState {
     teamCreation: extras.team_creation ?? true,
     verifyEmails: extras.verify_emails ?? false,
     registrationVisibility: visibility(extras.registration_visibility),
+    portalView: extras.portal_view ?? null,
     loaded: data !== undefined,
   };
 }

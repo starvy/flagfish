@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { challengesQuery } from "../queries";
-import { EmptyState, Skeleton } from "../ui";
+import { EmptyState } from "../ui";
+import { BoardSkeleton } from "./BoardSkeleton";
 import { ChallengeCard } from "./ChallengeCard";
 import { ClockBanners } from "./Banners";
 import { QueryError } from "./QueryError";
@@ -76,28 +77,4 @@ function groupByCategory(items: BoardChallenge[]): Map<string, BoardChallenge[]>
     list.sort((a, b) => a.value - b.value || a.name.localeCompare(b.name));
   }
   return new Map([...groups].sort(([a], [b]) => a.localeCompare(b)));
-}
-
-// A skeleton in the shape of the board, not a spinner on white: the page that arrives should be
-// the page that was promised.
-export function BoardSkeleton() {
-  return (
-    <>
-      {[0, 1].map((section) => (
-        <section className="board__category" key={section}>
-          <div className="board__category-head">
-            <Skeleton width="8rem" height="1.25rem" />
-          </div>
-          <div className="board__grid">
-            {[0, 1, 2, 3].map((card) => (
-              <div className="ff-card chal-card" key={card}>
-                <Skeleton height="1.25rem" />
-                <Skeleton width="60%" height="0.875rem" />
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
-    </>
-  );
 }
