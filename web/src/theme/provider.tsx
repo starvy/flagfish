@@ -2,6 +2,7 @@ import { createContext, use, useCallback, useEffect, useMemo, useState } from "r
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { instanceQuery } from "../queries";
+import { useResolvedPortalView } from "../views";
 import { applyTheme } from "./apply";
 import { readPreference, writePreference, prefersDark as systemPrefersDark } from "./preference";
 import { resolveTheme, SYSTEM } from "./resolve";
@@ -43,15 +44,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // A failure is not fatal: the resolver falls back to preference and system.
   const { data: instance } = useQuery(instanceQuery);
 
+  // A view may carry a skin, and it is resolved here rather than inside the board so that the
+  // header, the scoreboard and every other page wear it too — half an app in another palette is
+  // not a look, it is a bug.
+  const view = useResolvedPortalView();
+  const viewTheme = view.view.theme ?? null;
+
   const resolved = useMemo(
     () =>
       resolveTheme({
+        viewTheme,
         preference,
         instanceDefault: instance?.theme,
         custom: sanitizeOverrides(instance?.theme_tokens),
         prefersDark,
       }),
-    [preference, instance?.theme, instance?.theme_tokens, prefersDark],
+    [viewTheme, preference, instance?.theme, instance?.theme_tokens, prefersDark],
   );
 
   useEffect(() => applyTheme(resolved), [resolved]);

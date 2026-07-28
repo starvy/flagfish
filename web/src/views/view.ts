@@ -25,4 +25,17 @@ export interface PortalView {
   load: () => Promise<{ default: ComponentType<PortalViewProps> }>;
   /** Rendered while `load` is in flight. Must be cheap: it ships in the eager chunk. */
   Fallback?: ComponentType;
+  /**
+   * A colour theme this view brings with it, by name. While this view is the resolved one the
+   * whole app wears it — a board that is a lit sphere in space cannot sit inside a white page and
+   * still be one thing. The player's escape is the switch back to the standard board, not a
+   * palette that fights the view.
+   */
+  theme?: string;
+  /**
+   * The board wants the viewport, not a column in the document: the shell drops its width and
+   * padding and the header floats over the content. Only the board route — a challenge's own page
+   * stays a page.
+   */
+  chrome?: "immersive";
 }

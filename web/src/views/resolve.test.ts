@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { resolvePortalView } from "./resolve";
 import { DEFAULT_VIEW, VIEWS, viewById } from "./registry";
+// The one place the two names meet. Nothing in `views/` imports `theme/` — a view names a theme
+// as a string and the resolver in `theme/` looks it up — so a typo here would only show up as an
+// app that quietly kept the old palette.
+import { themeByName } from "../theme/registry";
 
 // An id no build ships, standing in for a stale preference or a config from a newer server.
 const UNKNOWN = "hologram";
@@ -79,6 +83,13 @@ describe("view registry", () => {
 
   it("the default view is in the registry", () => {
     expect(viewById(DEFAULT_VIEW.id)).toBe(DEFAULT_VIEW);
+  });
+
+  it("a view that carries a skin names a theme this build ships", () => {
+    for (const view of VIEWS) {
+      if (view.theme === undefined) continue;
+      expect(themeByName(view.theme), `${view.id} asks for theme "${view.theme}"`).toBeDefined();
+    }
   });
 
   // The wire contract: `portal_view` names a view by this id, and "standard" is the value the

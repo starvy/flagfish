@@ -4,6 +4,46 @@ import { TOKEN_KEYS, sanitizeOverrides } from "./tokens";
 import { THEMES } from "./registry";
 
 describe("resolveTheme", () => {
+  // The skin a portal view carries: while that view is the one being rendered it owns the
+  // palette, over anything the player or the instance said.
+  it("puts the active view's theme above every other source", () => {
+    const r = resolveTheme({
+      viewTheme: "nocturne",
+      preference: "light",
+      instanceDefault: "amber",
+      prefersDark: false,
+    });
+    expect(r.theme.name).toBe("nocturne");
+    expect(r.source).toBe("view");
+  });
+
+  it("beats the follow-the-OS sentinel too", () => {
+    const r = resolveTheme({ viewTheme: "nocturne", preference: SYSTEM, prefersDark: false });
+    expect(r.theme.name).toBe("nocturne");
+    expect(r.source).toBe("view");
+  });
+
+  it("falls through a view theme this build does not ship", () => {
+    const r = resolveTheme({ viewTheme: "hologram", preference: "amber", prefersDark: true });
+    expect(r.theme.name).toBe("amber");
+    expect(r.source).toBe("preference");
+  });
+
+  it("is inert when the view carries no theme", () => {
+    const r = resolveTheme({ viewTheme: null, instanceDefault: "light", prefersDark: true });
+    expect(r.theme.name).toBe("light");
+    expect(r.source).toBe("instance");
+  });
+
+  it("still takes the admin's custom override on top of a view theme", () => {
+    const r = resolveTheme({
+      viewTheme: "nocturne",
+      custom: { "color-accent": "#ff00ff" },
+      prefersDark: true,
+    });
+    expect(r.tokens["color-accent"]).toBe("#ff00ff");
+  });
+
   it("prefers a saved preference over instance default and system", () => {
     const r = resolveTheme({
       preference: "amber",
