@@ -79,6 +79,13 @@ type Challenge struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
+type ChallengeAnnotation struct {
+	ID          int64
+	ChallengeID int64
+	Key         string
+	Value       string
+}
+
 type ChallengeInstance struct {
 	ID          int64
 	ChallengeID int64

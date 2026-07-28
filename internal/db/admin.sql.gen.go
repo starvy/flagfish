@@ -777,6 +777,35 @@ func (q *Queries) AdminListAudit(ctx context.Context, arg AdminListAuditParams) 
 	return items, nil
 }
 
+const adminListChallengeAnnotations = `-- name: AdminListChallengeAnnotations :many
+SELECT key, value FROM challenge_annotations WHERE challenge_id = $1 ORDER BY key
+`
+
+type AdminListChallengeAnnotationsRow struct {
+	Key   string
+	Value string
+}
+
+func (q *Queries) AdminListChallengeAnnotations(ctx context.Context, challengeID int64) ([]AdminListChallengeAnnotationsRow, error) {
+	rows, err := q.db.Query(ctx, adminListChallengeAnnotations, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminListChallengeAnnotationsRow{}
+	for rows.Next() {
+		var i AdminListChallengeAnnotationsRow
+		if err := rows.Scan(&i.Key, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminListChallengeRequirements = `-- name: AdminListChallengeRequirements :many
 SELECT id, requirements FROM challenges
 `
@@ -1137,6 +1166,23 @@ func (q *Queries) AdminNextPoolGeneration(ctx context.Context, challengeID int64
 	return generation, err
 }
 
+const adminRemoveAnnotation = `-- name: AdminRemoveAnnotation :execrows
+DELETE FROM challenge_annotations WHERE challenge_id = $1 AND key = $2
+`
+
+type AdminRemoveAnnotationParams struct {
+	ChallengeID int64
+	Key         string
+}
+
+func (q *Queries) AdminRemoveAnnotation(ctx context.Context, arg AdminRemoveAnnotationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adminRemoveAnnotation, arg.ChallengeID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adminRemoveTag = `-- name: AdminRemoveTag :execrows
 DELETE FROM tags WHERE challenge_id = $1 AND value = $2
 `
@@ -1193,6 +1239,40 @@ func (q *Queries) AdminReorderChallenges(ctx context.Context, arg AdminReorderCh
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const adminSetAnnotation = `-- name: AdminSetAnnotation :one
+
+INSERT INTO challenge_annotations (challenge_id, key, value)
+VALUES ($1, $2, $3)
+ON CONFLICT (challenge_id, key) DO UPDATE SET value = EXCLUDED.value
+RETURNING id, challenge_id, key, value
+`
+
+type AdminSetAnnotationParams struct {
+	ChallengeID int64
+	Key         string
+	Value       string
+}
+
+// ── annotations ───────────────────────────────────────────────────────────────────
+//
+// An annotation is a (challenge_id, key, value) row: the keyed sibling of a tag. Unlike a tag it is
+// managed per challenge, because the key is what a renderer asks for and the challenge is what
+// answers.
+// Upsert, with UNIQUE(challenge_id, key) as the arbiter: two admins setting the same key settle on
+// one row instead of racing a SELECT-then-INSERT. The FK refuses a missing challenge, mapped by the
+// caller — there is no pre-read here, because a pre-read is that same check with a race in it.
+func (q *Queries) AdminSetAnnotation(ctx context.Context, arg AdminSetAnnotationParams) (ChallengeAnnotation, error) {
+	row := q.db.QueryRow(ctx, adminSetAnnotation, arg.ChallengeID, arg.Key, arg.Value)
+	var i ChallengeAnnotation
+	err := row.Scan(
+		&i.ID,
+		&i.ChallengeID,
+		&i.Key,
+		&i.Value,
+	)
+	return i, err
 }
 
 const adminSetChallengeFlagMode = `-- name: AdminSetChallengeFlagMode :one

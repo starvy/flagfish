@@ -161,6 +161,22 @@ SELECT
 -- name: ListChallengeTags :many
 SELECT value FROM tags WHERE challenge_id = @challenge_id ORDER BY value;
 
+-- name: ListVisibleAnnotations :many
+-- Every annotation on the visible board, in one pass.
+--
+-- One query for the whole board rather than one per challenge: a globe cannot draw anything until it
+-- knows where every challenge goes, so the N+1 version is not a slow path that occasionally hurts —
+-- it is the board load, every time, multiplied by the challenge count. The caller strips the rows
+-- belonging to challenges it decided to lock or hide.
+SELECT a.challenge_id, a.key, a.value
+  FROM challenge_annotations a
+  JOIN challenges c ON c.id = a.challenge_id
+ WHERE c.state = 'visible'
+ ORDER BY a.challenge_id, a.key;
+
+-- name: ListChallengeAnnotations :many
+SELECT key, value FROM challenge_annotations WHERE challenge_id = @challenge_id ORDER BY key;
+
 -- name: ListChallengeFiles :many
 -- The board shows the name and size; the download link is built from the id. location is the storage
 -- key and never leaves the server.
