@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Me, type Session } from "../api/client";
 import { resetNotificationStream } from "../lib/notifications";
+import { resetSolveStream } from "../lib/solves";
 import { qk } from "./keys";
 
 export const meQuery = queryOptions({
@@ -41,6 +42,7 @@ export function useLogout() {
     mutationFn: api.logout,
     onSuccess: () => {
       resetNotificationStream();
+      resetSolveStream();
       qc.clear();
     },
   });
