@@ -149,6 +149,16 @@ export async function seedAnnotation(
   });
 }
 
+/**
+ * Removes one annotation, un-placing the challenge from any view that keys off it. This is the
+ * cleanup for globe specs: the database is shared across the suite, and a challenge cannot be
+ * deleted once it holds a solve, but its annotation can always go — which is all the
+ * one-challenge-per-country assertion needs from a rerun.
+ */
+export async function removeAnnotation(page: Page, challengeId: number, key: string): Promise<void> {
+  await call(page, "DELETE", `/admin/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`);
+}
+
 /** Flips the fleet-wide pause switch through the admin config API. */
 export async function setPaused(page: Page, paused: boolean): Promise<void> {
   await call(page, "PATCH", "/admin/config", { paused });
