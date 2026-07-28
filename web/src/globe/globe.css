@@ -60,15 +60,27 @@
 }
 
 /* An ops console panel: barely there until you look at it, with brackets at two corners so it
-   reads as instrumentation rather than as a card that lost its page. */
+   reads as instrumentation rather than as a card that lost its page.
+
+   The backdrop is darkened as well as blurred. Blur alone keeps the luminance it started with, so
+   a captured country drifting under a panel would take muted text down to about 2:1 — the panel
+   has to own its contrast whatever the globe puts behind it. */
 .globe-panel {
-  backdrop-filter: blur(8px);
-  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  backdrop-filter: blur(8px) brightness(0.3);
+  background: color-mix(in srgb, var(--color-surface) 65%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
   pointer-events: auto;
   position: relative;
+}
+
+/* Without a backdrop filter there is nothing to darken the scene with, so the panel stops being
+   translucent rather than stops being readable. */
+@supports not (backdrop-filter: blur(1px)) {
+  .globe-panel {
+    background: var(--color-surface);
+  }
 }
 
 .globe-panel::before,
@@ -311,18 +323,17 @@
 
 /* ----------------------------------------------------------- unassigned -- */
 
+/* Everything a button has to give back; the rest of the look is globe-panel__label, which this
+   shares with the heading on the other panel so the two read as the same kind of label. */
 .globe-unassigned__head {
   align-items: center;
   background: none;
   border: 0;
-  color: inherit;
   cursor: pointer;
   display: flex;
-  font: inherit;
+  font-family: inherit;
   gap: var(--space-2);
-  letter-spacing: var(--tracking-caps);
   padding: 0;
-  text-transform: uppercase;
   width: 100%;
 }
 
@@ -348,8 +359,8 @@
 
 .globe-ticker {
   align-items: center;
-  backdrop-filter: blur(8px);
-  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
+  backdrop-filter: blur(8px) brightness(0.3);
+  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
   border-top: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
   display: flex;
   font-size: var(--text-xs);
@@ -357,6 +368,12 @@
   min-width: 0;
   padding: var(--space-2) var(--space-3);
   pointer-events: auto;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .globe-ticker {
+    background: var(--color-bg);
+  }
 }
 
 .globe-ticker__tag {
@@ -381,37 +398,53 @@
 .globe-ticker__row {
   align-items: center;
   animation: globe-ticker-in var(--duration) var(--ease);
-  color: var(--color-text-muted);
+  color: var(--color-text);
   display: flex;
   gap: var(--space-2);
+  /* A flex item refuses to shrink below its content, which is what keeps the ellipsis below from
+     ever being reached. */
+  min-width: 0;
   white-space: nowrap;
 }
 
-.globe-ticker__row--blood {
+.globe-ticker__row--blood,
+.globe-ticker__row--blood .globe-ticker__name {
   color: var(--color-blood);
   font-weight: 700;
 }
 
 .globe-ticker__kind {
+  color: var(--color-text-muted);
+  flex: none;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
 }
 
+.globe-ticker__row--blood .globe-ticker__kind {
+  color: var(--color-blood);
+}
+
 .globe-ticker__name {
-  color: var(--color-text);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.globe-ticker__row--blood .globe-ticker__name {
-  color: var(--color-blood);
+.globe-ticker__idle,
+.globe-ticker__offline {
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .globe-ticker__idle {
   color: var(--color-text-muted);
-  letter-spacing: var(--tracking-caps);
-  opacity: 0.7;
-  text-transform: uppercase;
+}
+
+/* The feed is not coming back on its own timetable — say so rather than sit on "awaiting solves"
+   while nothing is listening. */
+.globe-ticker__offline {
+  color: var(--color-warn);
 }
 
 @keyframes globe-ticker-in {
@@ -421,29 +454,37 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .globe-ticker__row {
-    animation: none;
-  }
-}
-
+/* One column, and the controls move to the bottom of the stack. The clock banners own the top of
+   a narrow screen, and the way back to the list view is the one control that must never end up
+   underneath one. */
 @media (max-width: 720px) {
   .globe-hud {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
     padding-left: var(--space-3);
     padding-right: var(--space-3);
   }
 
-  .globe-hud__controls {
+  .globe-hud__unplaced {
     grid-area: 1 / 1;
-    justify-self: start;
+    max-width: 100%;
   }
 
-  .globe-hud__unplaced {
+  .globe-hud__controls {
+    align-self: end;
     grid-area: 2 / 1;
+    justify-self: start;
   }
 
   .globe-hud__ticker {
     grid-area: 3 / 1;
+  }
+}
+
+/* Nothing scrolls in this layout, so on a short viewport the panels have to give ground rather
+   than grow into each other. */
+@media (max-height: 34rem) {
+  .globe-unassigned__body {
+    max-height: 30vh;
   }
 }
