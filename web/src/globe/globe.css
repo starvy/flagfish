@@ -1,22 +1,101 @@
 /* The globe view.
 
    The scene itself is self-contained: a lit sphere over a starfield holds its own colours in
-   every theme, and palette.ts explains why. Everything around it — the head, the legend, the
-   panel, the drawer — is drawn from the token contract, so a colour theme still lands on the
-   parts of this view that are a document. */
+   every theme, and palette.ts explains why. Everything laid over it — the panels, the
+   pins, the drawer — is drawn from the token contract, so a colour theme still lands on the parts
+   of this view that are a document.
 
-.globe-head {
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+   The layout assumes the immersive chrome the view asks for in the registry: the shell has given
+   this component the viewport, and the header floats over the top of it. --sh-hud-top is the
+   shell's answer to how far down a panel has to start to clear that header. */
+
+.globe-view {
+  height: 100%;
+  position: relative;
+  width: 100%;
 }
 
-.globe-head__controls {
+/* WebGL is missing and the standard board is standing in. It is a document, so it gets a
+   document's column and its own scrollbar back out of the full-bleed shell. */
+.globe-fallback {
+  height: 100%;
+  margin: 0 auto;
+  max-width: 1200px;
+  overflow-y: auto;
+  padding: calc(var(--sh-hud-top, var(--space-8)) + var(--space-4)) var(--space-5) var(--space-8);
+}
+
+/* ------------------------------------------------------------------ hud -- */
+
+.globe-hud {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  inset: 0;
+  padding: var(--sh-hud-top, var(--space-8)) var(--space-5) var(--space-4);
+  /* The globe is dragged with the pointer, and the HUD covers it. Each panel opts back in. */
+  pointer-events: none;
+  position: absolute;
+}
+
+.globe-hud__controls {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-left: auto;
+  gap: var(--space-3);
+  grid-area: 1 / 2;
+  justify-self: end;
+}
+
+.globe-hud__unplaced {
+  align-self: end;
+  grid-area: 2 / 1;
+  justify-self: start;
+  max-width: min(30rem, 100%);
+}
+
+/* An ops console panel: barely there until you look at it, with brackets at two corners so it
+   reads as instrumentation rather than as a card that lost its page. */
+.globe-panel {
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  pointer-events: auto;
+  position: relative;
+}
+
+.globe-panel::before,
+.globe-panel::after {
+  border-color: var(--color-accent);
+  border-style: solid;
+  content: "";
+  height: 0.6rem;
+  position: absolute;
+  width: 0.6rem;
+}
+
+.globe-panel::before {
+  border-width: 1px 0 0 1px;
+  left: -1px;
+  top: -1px;
+}
+
+.globe-panel::after {
+  border-width: 0 1px 1px 0;
+  bottom: -1px;
+  right: -1px;
+}
+
+.globe-panel__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  margin: 0;
+  text-transform: uppercase;
 }
 
 .globe-legend {
@@ -59,13 +138,10 @@
 /* ---------------------------------------------------------------- scene -- */
 
 .globe-scene {
-  border: var(--border);
-  border-radius: var(--radius);
   contain: strict;
-  height: min(68vh, 40rem);
+  inset: 0;
   overflow: hidden;
-  position: relative;
-  width: 100%;
+  position: absolute;
 }
 
 /* The starfield. Generated, not fetched: a handful of gradients cost nothing, and the one thing
@@ -92,14 +168,19 @@
   position: absolute;
 }
 
-.globe-loading {
+/* Whatever stands in for the scene — loading, or the board's error. Centred over the sky, because
+   in this layout there is no column for it to sit at the top of. */
+.globe-standin {
   align-items: center;
-  border: var(--border);
-  border-radius: var(--radius);
   display: flex;
   gap: var(--space-3);
   justify-content: center;
-  min-height: 20rem;
+  left: 50%;
+  max-width: min(34rem, calc(100% - var(--space-8)));
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
 }
 
 /* ----------------------------------------------------------------- pins -- */
@@ -226,10 +307,6 @@
 
 /* ----------------------------------------------------------- unassigned -- */
 
-.globe-unassigned {
-  margin-top: var(--space-5);
-}
-
 .globe-unassigned__head {
   align-items: center;
   background: none;
@@ -240,7 +317,7 @@
   font: inherit;
   gap: var(--space-2);
   letter-spacing: var(--tracking-caps);
-  padding: var(--space-2) 0;
+  padding: 0;
   text-transform: uppercase;
   width: 100%;
 }
@@ -252,4 +329,30 @@
 
 .globe-unassigned__caret {
   color: var(--color-text-muted);
+}
+
+/* Opened, this is a list of challenge cards over a scene. It gets a bounded height and its own
+   scrollbar rather than growing until it covers the globe it belongs to. */
+.globe-unassigned__body {
+  margin-top: var(--space-3);
+  max-height: min(24rem, 45vh);
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+@media (max-width: 720px) {
+  .globe-hud {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .globe-hud__controls {
+    grid-area: 1 / 1;
+    justify-self: start;
+  }
+
+  .globe-hud__unplaced {
+    grid-area: 2 / 1;
+  }
 }

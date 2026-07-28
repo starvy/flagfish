@@ -15,10 +15,10 @@ export function UnassignedPanel({ challenges }: { challenges: readonly BoardChal
   if (challenges.length === 0) return null;
 
   return (
-    <section className="globe-unassigned" data-testid="globe-unassigned">
+    <section className="globe-unassigned globe-panel" data-testid="globe-unassigned">
       <button
         type="button"
-        className="globe-unassigned__head"
+        className="globe-unassigned__head globe-panel__label"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
@@ -32,7 +32,7 @@ export function UnassignedPanel({ challenges }: { challenges: readonly BoardChal
       </button>
 
       {open && (
-        <div className="board__grid">
+        <div className="globe-unassigned__body board__grid">
           {challenges.map((challenge) => (
             <ChallengeCard key={challenge.id} challenge={challenge} />
           ))}

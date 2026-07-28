@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { challengesQuery } from "../queries";
 import { Alert, Button, Spinner } from "../ui";
 import { Board } from "../challenges/Board";
-import { ClockBanners } from "../challenges/Banners";
 import { QueryError } from "../challenges/QueryError";
 import type { PortalViewProps } from "../views/view";
 import { ChallengeDrawer, CountryDrawer } from "./CountryDrawer";
@@ -32,15 +31,16 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
   );
   const byCode = useMemo(() => indexByCode(placement.countries), [placement]);
   const byChallenge = useMemo(() => countryByChallenge(placement.countries), [placement]);
+  // Every challenge this player was served, placed or not, so the drawer can title one wherever
+  // it came from.
   const nameById = useMemo(() => {
     const names = new Map<number, string>();
-    for (const country of placement.countries) {
-      for (const challenge of country.challenges) names.set(challenge.id, challenge.name);
-    }
+    for (const challenge of board.data?.challenges ?? []) names.set(challenge.id, challenge.name);
     return names;
-  }, [placement]);
+  }, [board.data]);
 
-  const pulses = usePulses(byChallenge, { enabled: webgl && board.isSuccess });
+  const live = webgl && board.isSuccess;
+  const pulses = usePulses(byChallenge, { enabled: live });
 
   const [open, setOpen] = useState<Open>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
@@ -64,24 +64,49 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
   const closeDrawer = useCallback(() => setOpen(null), []);
 
   if (!webgl) {
+    // The shell has handed this view the whole viewport; the standard board is a document and
+    // needs its column and its scrollbar back.
     return (
-      <>
+      <div className="globe-fallback">
         <Alert tone="warn" title="this browser cannot draw the globe">
           The globe needs WebGL, and this browser has it switched off or unavailable. Here is the
           standard board instead — nothing is missing from it.
         </Alert>
         <Board />
-      </>
+      </div>
     );
   }
 
   const openCountry = open?.kind === "country" ? byCode.get(open.code) : undefined;
 
   return (
-    <>
-      <div className="page-head globe-head">
-        <h1>challenges</h1>
-        <div className="globe-head__controls">
+    <div className="globe-view">
+      {board.isSuccess && (
+        <GlobeScene
+          countries={placement.countries}
+          pulses={pulses}
+          onSelectCountry={onSelectCountry}
+          focus={focus}
+        />
+      )}
+
+      {board.isPending && (
+        <div className="globe-standin">
+          <Spinner /> <span className="ff-muted">plotting the board…</span>
+        </div>
+      )}
+
+      {board.isError && (
+        <div className="globe-standin">
+          <QueryError error={board.error} onRetry={() => void board.refetch()} />
+        </div>
+      )}
+
+      {/* Inert as a whole so a drag between the panels still spins the globe; each panel takes
+          the pointer back for itself. */}
+      <div className="globe-hud">
+        <section className="globe-hud__controls globe-panel">
+          <h1 className="globe-panel__label">challenges</h1>
           <Legend />
           <Button
             variant="secondary"
@@ -91,30 +116,12 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
           >
             list view
           </Button>
+        </section>
+
+        <div className="globe-hud__unplaced">
+          <UnassignedPanel challenges={placement.unplaced} />
         </div>
       </div>
-
-      <ClockBanners />
-
-      {board.isError && <QueryError error={board.error} onRetry={() => void board.refetch()} />}
-
-      {board.isPending && (
-        <div className="globe-loading">
-          <Spinner /> <span className="ff-muted">plotting the board…</span>
-        </div>
-      )}
-
-      {board.isSuccess && (
-        <>
-          <GlobeScene
-            countries={placement.countries}
-            pulses={pulses}
-            onSelectCountry={onSelectCountry}
-            focus={focus}
-          />
-          <UnassignedPanel challenges={placement.unplaced} />
-        </>
-      )}
 
       {openCountry !== undefined && (
         <CountryDrawer
@@ -135,7 +142,7 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
           }
         />
       )}
-    </>
+    </div>
   );
 }
 
