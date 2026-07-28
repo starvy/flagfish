@@ -1,5 +1,5 @@
 import { Outlet, createFileRoute, useChildMatches } from "@tanstack/react-router";
-import { Board } from "../../challenges/Board";
+import { ViewOutlet } from "../../views";
 
 export const Route = createFileRoute("/_auth/challenges")({
   component: ChallengesRoute,
@@ -9,5 +9,5 @@ export const Route = createFileRoute("/_auth/challenges")({
 // panel inside the board. When a child matches, the board steps out of its way.
 function ChallengesRoute() {
   const children = useChildMatches();
-  return children.length > 0 ? <Outlet /> : <Board />;
+  return children.length > 0 ? <Outlet /> : <ViewOutlet />;
 }
