@@ -18,10 +18,12 @@ import {
   useAddHint,
   useAttachTag,
   useCreateChallenge,
+  useDeleteAnnotation,
   useDeleteFile,
   useDeleteFlag,
   useDeleteHint,
   useDetachTag,
+  useSetAnnotation,
   useSetChallengeFlagMode,
   useSetChallengeRequirements,
   useSetChallengeState,
@@ -32,6 +34,8 @@ import {
   useUploadInstances,
 } from "../../../queries";
 import { PolicyGate, denialOf } from "../../../policy";
+import { CountryPicker } from "../../../admin";
+import { nameOf } from "../../../globe/geography";
 import {
   Alert,
   Badge,
@@ -163,6 +167,15 @@ function ChallengeEditor() {
             label: "Tags",
             disabled: id === null,
             content: id === null ? null : <TagsTab challengeId={id} tags={data?.tags ?? []} />,
+          },
+          {
+            id: "country",
+            label: "Country",
+            disabled: id === null,
+            content:
+              id === null ? null : (
+                <CountryTab challengeId={id} annotations={data?.annotations ?? {}} />
+              ),
           },
           {
             id: "hints",
@@ -797,6 +810,78 @@ function TagsTab({ challengeId, tags: initial }: { challengeId: number; tags: st
               </span>
             ))}
           </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- country */
+
+/** The well-known annotation key a view places a challenge by. */
+const COUNTRY_KEY = "country";
+
+function CountryTab({
+  challengeId,
+  annotations,
+}: {
+  challengeId: number;
+  annotations: Record<string, string>;
+}) {
+  const toast = useToast();
+  const setAnnotation = useSetAnnotation();
+  const deleteAnnotation = useDeleteAnnotation();
+
+  // Seeded from the read, then kept in step locally so a save shows immediately.
+  const [country, setCountry] = useState<string | null>(annotations[COUNTRY_KEY] ?? null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const busy = setAnnotation.isPending || deleteAnnotation.isPending;
+
+  const apply = async (next: string | null) => {
+    setFailure(null);
+    try {
+      // Clearing the box is a delete, not an empty value: an annotation nobody set and an
+      // annotation set to nothing must not be two different states on the wire.
+      if (next === null) {
+        await deleteAnnotation.mutateAsync({ challengeId, key: COUNTRY_KEY });
+        toast.success("Country cleared", "This challenge is no longer placed.");
+      } else {
+        await setAnnotation.mutateAsync({ challengeId, key: COUNTRY_KEY, value: next });
+        toast.success("Country saved", `${nameOf(next)} (${next})`);
+      }
+      setCountry(next);
+    } catch (e) {
+      setFailure(messageOf(e));
+    }
+  };
+
+  return (
+    <div className="ff-stack">
+      {failure !== null && (
+        <Alert tone="danger" title="Could not save the country" onDismiss={() => setFailure(null)}>
+          {failure}
+        </Alert>
+      )}
+
+      <Card
+        title="Where this challenge is"
+        footer={
+          <span className="ff-muted">
+            Only the globe view of the board uses this. A challenge with no country is still on
+            the board — the globe lists it beside the map rather than hiding it.
+          </span>
+        }
+      >
+        <Field name="country" label="Country">
+          {() => (
+            <CountryPicker value={country} onChange={(next) => void apply(next)} disabled={busy} />
+          )}
+        </Field>
+
+        {country !== null && (
+          <p>
+            Placed in <Badge tone="info">{nameOf(country)}</Badge>
+          </p>
         )}
       </Card>
     </div>

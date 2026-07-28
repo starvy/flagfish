@@ -67,6 +67,8 @@ export {
   useSetChallengeRequirements,
   useAttachTag,
   useDetachTag,
+  useSetAnnotation,
+  useDeleteAnnotation,
   useReorderChallenges,
   useDeleteChallenge,
   useAddFlag,

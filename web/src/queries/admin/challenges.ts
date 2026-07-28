@@ -67,6 +67,20 @@ export function useDetachTag() {
   );
 }
 
+// An empty value is not an annotation with nothing in it: it is the annotation removed, which is
+// a different request. The caller decides which; this pair just names both.
+export function useSetAnnotation() {
+  return useChallengeWrite((v: { challengeId: number; key: string; value: string }) =>
+    adminApi.setAnnotation(v.challengeId, v.key, v.value),
+  );
+}
+
+export function useDeleteAnnotation() {
+  return useChallengeWrite((v: { challengeId: number; key: string }) =>
+    adminApi.deleteAnnotation(v.challengeId, v.key),
+  );
+}
+
 export function useReorderChallenges() {
   return useChallengeWrite((items: ReadonlyArray<{ id: number; position: number }>) =>
     adminApi.reorderChallenges(items),
