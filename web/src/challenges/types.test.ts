@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { annotationsOf, countryOf } from "./types";
 import type { BoardChallenge } from "./types";
 
+// The field is required on the wire and the UI ships inside the binary that serves it, so
+// "absent" is not a state a fixture may invent: no server can produce it.
 function challenge(annotations?: Record<string, string>): BoardChallenge {
-  return { ...(annotations === undefined ? {} : { annotations }) } as BoardChallenge;
+  return { annotations: annotations ?? {} } as BoardChallenge;
 }
 
 describe("annotationsOf", () => {
@@ -14,8 +16,7 @@ describe("annotationsOf", () => {
     });
   });
 
-  // A build talking to a server that predates annotations must still render a board.
-  it("is an empty map when the field is absent", () => {
+  it("is an empty map when a challenge carries none", () => {
     expect(annotationsOf(challenge())).toEqual({});
   });
 });

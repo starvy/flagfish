@@ -22,9 +22,7 @@ export type Challenge = ChallengeDetail & {
 export type Annotations = Readonly<Record<string, string>>;
 
 export function annotationsOf(challenge: BoardChallenge | Challenge): Annotations {
-  // The schema says always present. A server older than annotations does not, and a board that
-  // throws is a worse answer than a board with nothing placed on it.
-  return challenge.annotations ?? {};
+  return challenge.annotations;
 }
 
 /** The well-known key: an uppercase ISO 3166-1 alpha-2 code. */
