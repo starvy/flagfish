@@ -8,7 +8,7 @@ import { QueryError } from "../challenges/QueryError";
 import type { PortalViewProps } from "../views/view";
 import { ChallengeDrawer, CountryDrawer } from "./CountryDrawer";
 import { countryByChallenge, indexByCode, placeChallenges } from "./countryStates";
-import { GlobeScene } from "./GlobeScene";
+import { GlobeScene, type FocusRequest } from "./GlobeScene";
 import { UnassignedPanel } from "./UnassignedPanel";
 import { usePulses } from "./usePulses";
 import { supportsWebGL } from "./webgl";
@@ -43,7 +43,7 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
   const pulses = usePulses(byChallenge, { enabled: webgl && board.isSuccess });
 
   const [open, setOpen] = useState<Open>(null);
-  const [focus, setFocus] = useState<string | null>(null);
+  const [focus, setFocus] = useState<FocusRequest | null>(null);
 
   // One click on a pin: a country holding a single challenge opens it, because the drawer in
   // between would list exactly one row and cost a click to say nothing.
@@ -51,7 +51,7 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
     (code: string) => {
       const country = byCode.get(code);
       if (country === undefined) return;
-      setFocus(code);
+      setFocus((previous) => ({ code, seq: (previous?.seq ?? 0) + 1 }));
       setOpen(
         country.total === 1
           ? { kind: "challenge", id: country.challenges[0]!.id, from: null }
