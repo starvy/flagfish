@@ -1,4 +1,5 @@
 import { BoardSkeleton } from "../challenges/BoardSkeleton";
+import { GlobeFallback } from "../globe/GlobeFallback";
 import type { PortalView } from "./view";
 
 // The registry. Adding a view is one entry here and one component module — nothing else in the
@@ -16,6 +17,7 @@ export const VIEWS: readonly PortalView[] = [
     label: "globe view",
     description: "Challenges placed in the countries they belong to. Solve them all to capture one.",
     load: () => import("../globe/GlobeBoard").then((m) => ({ default: m.GlobeBoard })),
+    Fallback: GlobeFallback,
     theme: "nocturne",
     chrome: "immersive",
   },
