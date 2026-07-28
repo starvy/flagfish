@@ -321,6 +321,12 @@
   width: 100%;
 }
 
+/* The container renders even with no alert in it; empty, it must not count towards the
+   measured chrome height. */
+.sh-app[data-chrome="immersive"] .sh-banners:empty {
+  margin-top: 0;
+}
+
 .sh-app[data-chrome="immersive"] .sh-banners .ff-alert {
   backdrop-filter: blur(10px);
   background: color-mix(in srgb, var(--alert-color) 12%, var(--color-overlay));

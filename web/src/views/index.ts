@@ -4,7 +4,6 @@ export { ViewOutlet } from "./ViewOutlet";
 export { usePortalView, useResolvedPortalView, type PortalViewState } from "./usePortalView";
 export { VIEWS, DEFAULT_VIEW, viewById } from "./registry";
 export { resolvePortalView, type ResolveInput, type ResolvedView, type ViewSource } from "./resolve";
-// The store's subscription is not part of the surface: it is for useSyncExternalStore, and a
-// caller who takes it directly is a caller holding a copy that React does not know about.
-export { readPreference, writePreference } from "./preference";
+// The preference store is not part of the surface: reads and writes go through usePortalView,
+// and a caller who takes the store directly is holding a copy that React does not know about.
 export type { PortalView, PortalViewProps } from "./view";

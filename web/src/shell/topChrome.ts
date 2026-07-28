@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 
 /**
  * Publishes the height of the shell's top chrome as `--sh-hud-top` on the app element.
@@ -18,7 +18,9 @@ export function useTopChromeHeight(
 ): (node: HTMLElement | null) => void {
   const [chrome, setChrome] = useState<HTMLElement | null>(null);
 
-  useEffect(() => {
+  // Layout effect: the first measurement must land before paint, or a cached view chunk gets one
+  // frame at the CSS fallback offset.
+  useLayoutEffect(() => {
     const host = app.current;
     if (host === null) return;
     if (!enabled || chrome === null) {

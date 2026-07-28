@@ -49,11 +49,22 @@
   justify-self: end;
 }
 
+/* Clamped to its grid row: expanded on a short screen, the body scrolls instead of climbing
+   under the chrome, which paints above it and would swallow the top of the list. */
 .globe-hud__unplaced {
   align-self: end;
+  display: flex;
   grid-area: 2 / 1;
   justify-self: start;
+  max-height: 100%;
   max-width: min(30rem, 100%);
+  min-height: 0;
+}
+
+.globe-unassigned {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .globe-hud__ticker {
@@ -352,6 +363,7 @@
 .globe-unassigned__body {
   margin-top: var(--space-3);
   max-height: min(24rem, 45vh);
+  min-height: 0;
   overflow-y: auto;
   padding-right: var(--space-1);
 }

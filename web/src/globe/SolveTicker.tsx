@@ -50,7 +50,11 @@ export function SolveTicker({
         feed
       </span>
       <ul className="globe-ticker__list" aria-label="recent solves">
-        {offline && <li className="globe-ticker__offline">feed offline</li>}
+        {offline && (
+          <li className="globe-ticker__offline" role="status">
+            feed offline
+          </li>
+        )}
         {!offline && entries.length === 0 && (
           <li className="globe-ticker__idle">awaiting solves</li>
         )}
