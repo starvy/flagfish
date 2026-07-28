@@ -15,9 +15,16 @@ describe("resolvePortalView", () => {
   });
 
   it("follows the instance when the player has never chosen", () => {
-    const r = resolvePortalView({ preference: null, instanceView: DEFAULT_VIEW.id });
-    expect(r.view).toBe(DEFAULT_VIEW);
+    const r = resolvePortalView({ preference: null, instanceView: "globe" });
+    expect(r.view.id).toBe("globe");
     expect(r.source).toBe("instance");
+  });
+
+  // The opt-out the globe's own "list view" button writes.
+  it("lets a player take the standard board back from an instance on the globe", () => {
+    const r = resolvePortalView({ preference: "standard", instanceView: "globe" });
+    expect(r.view.id).toBe("standard");
+    expect(r.source).toBe("preference");
   });
 
   it("lands on the default when neither source says anything", () => {

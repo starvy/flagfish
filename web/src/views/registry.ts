@@ -11,6 +11,12 @@ export const VIEWS: readonly PortalView[] = [
     load: () => import("../challenges/Board").then((m) => ({ default: m.Board })),
     Fallback: BoardSkeleton,
   },
+  {
+    id: "globe",
+    label: "globe view",
+    description: "Challenges placed in the countries they belong to. Solve them all to capture one.",
+    load: () => import("../globe/GlobeBoard").then((m) => ({ default: m.GlobeBoard })),
+  },
 ];
 
 /**
