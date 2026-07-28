@@ -326,7 +326,7 @@ TRUNCATE TABLE
     sessions, rate_limits, api_tokens,
     hint_unlocks, awards, solves, submissions,
     flag_issues, challenge_instances,
-    hints, flags, tags, files, challenges,
+    hints, flags, tags, challenge_annotations, files, challenges,
     tracking, field_entries, fields,
     users, teams, brackets, config, instance,
     notifications, tasks, audit_log

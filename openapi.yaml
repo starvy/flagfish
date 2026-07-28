@@ -122,6 +122,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
         attribution:
           type: string
         category:
@@ -196,6 +200,7 @@ components:
         - solved
         - locked
         - tags
+        - annotations
         - files
         - hints
       type: object
@@ -260,6 +265,10 @@ components:
     ChallengeListItem:
       additionalProperties: false
       properties:
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
         category:
           type: string
         function:
@@ -290,6 +299,7 @@ components:
         - solve_count
         - solved
         - locked
+        - annotations
       type: object
     ChallengeSolve:
       additionalProperties: false
@@ -575,6 +585,11 @@ components:
           type: string
         paused:
           type: boolean
+        portal_view:
+          enum:
+            - standard
+            - globe
+          type: string
         registration_visibility:
           enum:
             - public
@@ -596,6 +611,7 @@ components:
       required:
         - ctf_name
         - theme
+        - portal_view
         - mode
         - paused
         - team_creation

@@ -368,6 +368,28 @@ components:
       required:
         - content
       type: object
+    AdminAnnotationBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminAnnotationBody.json
+          format: uri
+          readOnly: true
+          type: string
+        challenge_id:
+          format: int64
+          type: integer
+        key:
+          type: string
+        value:
+          type: string
+      required:
+        - challenge_id
+        - key
+        - value
+      type: object
     AdminAssignBracketInputBody:
       additionalProperties: false
       properties:
@@ -661,6 +683,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
         challenge:
           $ref: "#/components/schemas/AdminChallengeBody"
         files:
@@ -692,6 +718,7 @@ components:
         - flags
         - hints
         - tags
+        - annotations
         - files
       type: object
     AdminChallengeFlagModeInputBody:
@@ -849,6 +876,11 @@ components:
           type: integer
         paused:
           type: boolean
+        portal_view:
+          enum:
+            - standard
+            - globe
+          type: string
         registration_visibility:
           enum:
             - public
@@ -937,6 +969,8 @@ components:
           type: integer
         paused:
           type: boolean
+        portal_view:
+          type: string
         problems:
           items:
             type: string
@@ -983,6 +1017,7 @@ components:
         - name
         - description
         - theme
+        - portal_view
         - challenge_visibility
         - score_visibility
         - account_visibility
@@ -2011,6 +2046,23 @@ components:
         - id
         - name
         - role
+      type: object
+    AdminSetAnnotationInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - /api/v1/admin/schemas/AdminSetAnnotationInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        value:
+          maxLength: 256
+          minLength: 1
+          type: string
+      required:
+        - value
       type: object
     AdminSetRequirementsInputBody:
       additionalProperties: false
@@ -3619,6 +3671,71 @@ paths:
       summary: Update a challenge (partial)
       tags:
         - admin/challenges
+  /challenges/{id}/annotations/{key}:
+    delete:
+      operationId: admin-delete-annotation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: key
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a challenge annotation
+      tags:
+        - admin/annotations
+    put:
+      operationId: admin-set-annotation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: key
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminSetAnnotationInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnnotationBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set a challenge annotation (create or replace)
+      tags:
+        - admin/annotations
   /challenges/{id}/files:
     post:
       operationId: admin-upload-file
