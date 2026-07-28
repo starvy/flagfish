@@ -705,6 +705,9 @@ export interface components {
              * @example /api/v1/schemas/ChallengeDetailOutputBody.json
              */
             readonly $schema?: string;
+            annotations: {
+                [key: string]: string;
+            };
             attribution?: string;
             category: string;
             connection_info?: string;
@@ -758,6 +761,9 @@ export interface components {
             };
         };
         ChallengeListItem: {
+            annotations: {
+                [key: string]: string;
+            };
             category: string;
             function: string;
             /** Format: int64 */
@@ -936,6 +942,8 @@ export interface components {
             /** @enum {string} */
             mode: "users" | "teams";
             paused: boolean;
+            /** @enum {string} */
+            portal_view: "standard" | "globe";
             /** @enum {string} */
             registration_visibility: "public" | "private";
             /** Format: date-time */

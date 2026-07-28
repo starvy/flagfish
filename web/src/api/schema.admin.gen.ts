@@ -248,6 +248,24 @@ export interface paths {
         patch: operations["admin-update-challenge"];
         trace?: never;
     };
+    "/challenges/{id}/annotations/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a challenge annotation (create or replace) */
+        put: operations["admin-set-annotation"];
+        post?: never;
+        /** Remove a challenge annotation */
+        delete: operations["admin-delete-annotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/challenges/{id}/files": {
         parameters: {
             query?: never;
@@ -1222,6 +1240,18 @@ export interface components {
             prerequisites?: number[] | null;
             title?: string;
         };
+        AdminAnnotationBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminAnnotationBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            challenge_id: number;
+            key: string;
+            value: string;
+        };
         AdminAssignBracketInputBody: {
             /**
              * Format: uri
@@ -1382,6 +1412,9 @@ export interface components {
              * @example /api/v1/admin/schemas/AdminChallengeDetailOutputBody.json
              */
             readonly $schema?: string;
+            annotations: {
+                [key: string]: string;
+            };
             challenge: components["schemas"]["AdminChallengeBody"];
             files: components["schemas"]["ChallengeFile"][] | null;
             flags: components["schemas"]["AdminFlagBody"][] | null;
@@ -1467,6 +1500,8 @@ export interface components {
             num_users?: number;
             paused?: boolean;
             /** @enum {string} */
+            portal_view?: "standard" | "globe";
+            /** @enum {string} */
             registration_visibility?: "public" | "private";
             /** @enum {string} */
             score_visibility?: "public" | "private" | "hidden";
@@ -1510,6 +1545,7 @@ export interface components {
             /** Format: int64 */
             num_users: number;
             paused: boolean;
+            portal_view: string;
             problems?: string[] | null;
             registration_visibility: string;
             repairs?: string[] | null;
@@ -2022,6 +2058,15 @@ export interface components {
             id: number;
             name: string;
             role: string;
+        };
+        AdminSetAnnotationInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/admin/schemas/AdminSetAnnotationInputBody.json
+             */
+            readonly $schema?: string;
+            value: string;
         };
         AdminSetRequirementsInputBody: {
             /**
@@ -3173,6 +3218,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminChallengeBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-set-annotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSetAnnotationInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAnnotationBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "admin-delete-annotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

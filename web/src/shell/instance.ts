@@ -8,23 +8,6 @@ export type RegistrationVisibility = "public" | "private";
 /** Where the event's clock stands right now. */
 export type Phase = "before" | "running" | "ended";
 
-/**
- * The clock and mode fields `GET /instance` sends but the committed OpenAPI document does not
- * yet describe. They are read off the raw body until the schema is regenerated; every one is
- * optional here because the server omits an unset timestamp rather than sending null.
- */
-interface InstanceExtras {
-  mode?: string;
-  start?: string;
-  end?: string;
-  freeze?: string;
-  paused?: boolean;
-  team_creation?: boolean;
-  verify_emails?: boolean;
-  registration_visibility?: string;
-  portal_view?: string;
-}
-
 export interface InstanceState {
   ctfName: string;
   mode: AccountMode;
@@ -74,21 +57,20 @@ export function phaseAt(now: number, start?: Date, end?: Date): Phase {
  */
 export function useInstanceState(): InstanceState {
   const { data } = useQuery(instanceQuery);
-  const extras = (data ?? {}) as InstanceExtras;
 
-  const accountMode = mode(extras.mode);
+  const accountMode = mode(data?.mode);
   return {
     ctfName: data?.ctf_name ?? "flagfish",
     mode: accountMode,
     teamsMode: accountMode === "teams",
-    start: at(extras.start),
-    end: at(extras.end),
-    freeze: at(extras.freeze),
-    paused: extras.paused ?? false,
-    teamCreation: extras.team_creation ?? true,
-    verifyEmails: extras.verify_emails ?? false,
-    registrationVisibility: visibility(extras.registration_visibility),
-    portalView: extras.portal_view ?? null,
+    start: at(data?.start),
+    end: at(data?.end),
+    freeze: at(data?.freeze),
+    paused: data?.paused ?? false,
+    teamCreation: data?.team_creation ?? true,
+    verifyEmails: data?.verify_emails ?? false,
+    registrationVisibility: visibility(data?.registration_visibility),
+    portalView: data?.portal_view ?? null,
     loaded: data !== undefined,
   };
 }

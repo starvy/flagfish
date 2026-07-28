@@ -18,21 +18,11 @@ export type Challenge = ChallengeDetail & {
  * Free-form operator metadata a view may place a challenge by. Always present on the wire, `{}`
  * when there is none and when the challenge is locked or masked — so a view that keys off an
  * annotation cannot be used to learn something about a challenge the player may not see.
- *
- * The committed OpenAPI document does not describe it yet, so it is read off the raw body here.
- * This one cast is the whole stopgap: delete `Annotated` when `schema.gen.ts` is regenerated and
- * everything below keeps compiling.
  */
 export type Annotations = Readonly<Record<string, string>>;
 
-interface Annotated {
-  annotations?: Record<string, string>;
-}
-
-const NO_ANNOTATIONS: Annotations = {};
-
 export function annotationsOf(challenge: BoardChallenge | Challenge): Annotations {
-  return (challenge as Annotated).annotations ?? NO_ANNOTATIONS;
+  return challenge.annotations;
 }
 
 /** The well-known key: an uppercase ISO 3166-1 alpha-2 code. */

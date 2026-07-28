@@ -10,26 +10,11 @@ type Body<T> = Omit<T, "$schema">;
 // 401 rule as the public one — it is a path prefix, not a second auth story.
 const P = "/admin";
 
-/**
- * The fields the admin API sends and accepts but the committed OpenAPI document does not yet
- * describe. Intersected onto the generated types rather than cast at each call site: when the
- * document is regenerated these two interfaces are deleted and nothing else changes.
- */
-interface ConfigExtras {
-  /** Which view of the challenge board the instance leads with. */
-  portal_view?: string;
-}
-
-interface AnnotationExtras {
-  /** Free-form operator metadata, keyed. The globe view reads `country` off it. */
-  annotations?: Record<string, string>;
-}
-
-export type AdminConfig = Schemas["AdminConfigOutputBody"] & ConfigExtras;
-export type AdminConfigPatch = Body<Schemas["AdminConfigInputBody"]> & ConfigExtras;
+export type AdminConfig = Schemas["AdminConfigOutputBody"];
+export type AdminConfigPatch = Body<Schemas["AdminConfigInputBody"]>;
 export type AdminChallenge = Schemas["AdminChallengeBody"];
 export type AdminChallengeListItem = Schemas["AdminChallengeListItem"];
-export type AdminChallengeDetail = Schemas["AdminChallengeDetailOutputBody"] & AnnotationExtras;
+export type AdminChallengeDetail = Schemas["AdminChallengeDetailOutputBody"];
 export type AdminRequirements = Schemas["AdminRequirementsBody"];
 export type AdminSetRequirementsResult = Schemas["AdminSetRequirementsOutputBody"];
 export type AdminChallengeTag = Schemas["AdminChallengeTagBody"];

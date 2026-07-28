@@ -12,11 +12,12 @@ function challenge(
     id: nextId++,
     name: opts.name ?? `challenge ${nextId}`,
     category: "misc",
+    function: "static",
     value: opts.value ?? 100,
     solved: opts.solved ?? false,
     locked: false,
     solve_count: 0,
-    ...(opts.country === undefined ? {} : { annotations: { country: opts.country } }),
+    annotations: opts.country === undefined ? {} : { country: opts.country },
   } as BoardChallenge;
 }
 

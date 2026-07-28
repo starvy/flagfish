@@ -345,7 +345,9 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     if (draft.name !== config.name) patch.name = draft.name;
     if (draft.description !== config.description) patch.description = draft.description;
     if (draft.theme !== config.theme) patch.theme = draft.theme;
-    if (draft.portal_view !== storedView) patch.portal_view = draft.portal_view;
+    if (draft.portal_view !== storedView) {
+      patch.portal_view = draft.portal_view as AdminConfigPatch["portal_view"];
+    }
     if (overridesChanged) patch.theme_tokens = JSON.stringify(draft.overrides);
     if (draft.challenge_visibility !== config.challenge_visibility) {
       patch.challenge_visibility = draft.challenge_visibility as AdminConfigPatch["challenge_visibility"];
