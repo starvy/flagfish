@@ -34,7 +34,10 @@ Two optional fields on the entry, both read outside the view:
   (`routes/_auth.tsx`) stamps `data-chrome="immersive"` on `.sh-app` while this view is
   resolved **and** the route is the board itself, and `shell/shell.css` then lets the main
   area fill the screen with the header and the clock banners floating over it. A challenge's
-  own page, the scoreboard and the admin console keep the normal layout.
+  own page, the scoreboard and the admin console keep the normal layout. The shell measures
+  that floating chrome and publishes its height as `--sh-hud-top`; a view floating panels over
+  its own scene starts them below that variable and never below a number, because the header
+  wraps when the nav outgrows a line and the banners come and go with the clock.
 
 A player who wants neither switches to the list view; the palette and the layout go back with
 it. That opt-out is the only escape, and it is the whole escape.
