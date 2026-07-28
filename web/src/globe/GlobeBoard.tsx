@@ -8,6 +8,7 @@ import type { PortalViewProps } from "../views/view";
 import { ChallengeDrawer, CountryDrawer } from "./CountryDrawer";
 import { countryByChallenge, indexByCode, placeChallenges } from "./countryStates";
 import { GlobeScene, type FocusRequest } from "./GlobeScene";
+import { SolveTicker } from "./SolveTicker";
 import { UnassignedPanel } from "./UnassignedPanel";
 import { usePulses } from "./usePulses";
 import { supportsWebGL } from "./webgl";
@@ -31,8 +32,8 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
   );
   const byCode = useMemo(() => indexByCode(placement.countries), [placement]);
   const byChallenge = useMemo(() => countryByChallenge(placement.countries), [placement]);
-  // Every challenge this player was served, placed or not, so the drawer can title one wherever
-  // it came from.
+  // Every challenge this player was served, placed or not: the drawer titles one, and the ticker
+  // has to recognise a solve wherever it landed.
   const nameById = useMemo(() => {
     const names = new Map<number, string>();
     for (const challenge of board.data?.challenges ?? []) names.set(challenge.id, challenge.name);
@@ -120,6 +121,10 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
 
         <div className="globe-hud__unplaced">
           <UnassignedPanel challenges={placement.unplaced} />
+        </div>
+
+        <div className="globe-hud__ticker">
+          <SolveTicker names={nameById} enabled={live} />
         </div>
       </div>
 
