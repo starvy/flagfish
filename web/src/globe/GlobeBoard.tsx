@@ -40,7 +40,9 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
     return names;
   }, [board.data]);
 
-  const pulses = usePulses(byChallenge, { enabled: board.isSuccess });
+  // webgl belongs in this gate: hooks run above the no-WebGL early return, and the fallback
+  // board would otherwise hold the solve stream open for rings it never draws.
+  const pulses = usePulses(byChallenge, { enabled: webgl && board.isSuccess });
 
   const [open, setOpen] = useState<Open>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
