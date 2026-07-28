@@ -3,7 +3,6 @@ import { challengesQuery } from "../queries";
 import { EmptyState } from "../ui";
 import { BoardSkeleton } from "./BoardSkeleton";
 import { ChallengeCard } from "./ChallengeCard";
-import { ClockBanners } from "./Banners";
 import { QueryError } from "./QueryError";
 import type { BoardChallenge } from "./types";
 import "./challenges.css";
@@ -23,8 +22,6 @@ export function Board() {
       <div className="page-head">
         <h1>challenges</h1>
       </div>
-
-      <ClockBanners />
 
       {board.isPending && <BoardSkeleton />}
 
