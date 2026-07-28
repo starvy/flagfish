@@ -242,25 +242,40 @@
 
 /* -------------------------------------------------------------- immersive */
 
+/* Two ordinary rows of the page, until they are asked to float. */
+.sh-top {
+  display: contents;
+}
+
 /*
- * The chrome a view asks for when its board is a scene rather than a document. The whole shell
- * becomes one grid cell: the main area spans every row, so the scene fills the viewport, and the
- * header and the clock banners are laid over it in the rows above. The banners need no number to
- * sit below the header — the grid row above them is the header.
+ * The chrome a view asks for when its board is a scene rather than a document. The shell becomes
+ * one grid cell: the main area spans it whole, so the scene fills the viewport, and the header
+ * and the clock banners are laid over it as a single box in the row above.
  *
- * What is inside main does need one: it is a single item spanning every row, so nothing in it can
- * be placed relative to the header. --sh-hud-top is that number, and it is the shell's to state
- * rather than a view's to guess.
+ * That box's height is measured and published as --sh-hud-top (shell/topChrome.ts), because it is
+ * the offset everything the view floats inside main has to clear, and it is not knowable in a
+ * stylesheet: the nav wraps when it outgrows a line and the banners come and go with the clock.
+ * A guess here is a transparent header sitting on top of a control the player cannot then click.
  */
 .sh-app[data-chrome="immersive"] {
-  --sh-hud-top: 4.5rem;
-
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
+}
+
+.sh-app[data-chrome="immersive"] .sh-top {
+  display: flex;
+  flex-direction: column;
+  grid-area: 1 / 1;
+  /* Inert where it draws nothing — the band beside a banner belongs to the scene behind it, and a
+     drag there has to reach the globe. Each part of the chrome takes the pointer back. */
+  pointer-events: none;
+  /* A grid item honours z-index while static, which is what puts this over the cell it shares
+     with main. */
+  z-index: var(--z-sticky);
 }
 
 .sh-app[data-chrome="immersive"] .sh-main {
@@ -279,46 +294,24 @@
     color-mix(in srgb, var(--color-bg) 40%, transparent)
   );
   border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
-  grid-area: 1 / 1;
-  /* Not sticky any more: it is a grid item now, and a grid item honours z-index while static —
-     which is the whole reason it paints over the main area it shares a cell with. */
+  pointer-events: auto;
   position: static;
-  z-index: var(--z-sticky);
 }
 
 /* The clock is the one thing on this screen a player cannot afford to miss, so it stays where it
    is in reading order — it just floats over the scene instead of pushing it down. */
 .sh-app[data-chrome="immersive"] .sh-banners {
+  align-self: flex-start;
   gap: var(--space-2);
-  grid-area: 2 / 1;
-  /* Left, under the brand: the right of the strip belongs to whatever the view floats there. */
-  justify-self: start;
   margin-top: var(--space-3);
   max-width: min(40rem, calc(100vw - var(--space-6)));
   padding: 0 var(--space-5);
+  pointer-events: auto;
   width: 100%;
-  z-index: var(--z-sticky);
 }
 
 .sh-app[data-chrome="immersive"] .sh-banners .ff-alert {
   backdrop-filter: blur(10px);
   background: color-mix(in srgb, var(--alert-color) 12%, var(--color-overlay));
   box-shadow: var(--shadow);
-}
-
-/* A banner is showing, so the top strip is a header plus a banner deep and anything floating in
-   main has that much further to fall. */
-.sh-app[data-chrome="immersive"]:has(.sh-banners .ff-alert) {
-  --sh-hud-top: 10rem;
-}
-
-@media (max-width: 720px) {
-  /* The nav wraps to a row of its own here, so the header is taller and a HUD starts lower. */
-  .sh-app[data-chrome="immersive"] {
-    --sh-hud-top: 9rem;
-  }
-
-  .sh-app[data-chrome="immersive"]:has(.sh-banners .ff-alert) {
-    --sh-hud-top: 15rem;
-  }
 }

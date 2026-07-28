@@ -6,8 +6,9 @@
    of this view that are a document.
 
    The layout assumes the immersive chrome the view asks for in the registry: the shell has given
-   this component the viewport, and the header floats over the top of it. --sh-hud-top is the
-   shell's answer to how far down a panel has to start to clear that header. */
+   this component the viewport and floats its header and clock banners over the top of it.
+   --sh-hud-top is the shell's measurement of how deep that chrome is; the fallback beside it only
+   covers the frame before the first measurement lands. */
 
 .globe-view {
   height: 100%;
@@ -22,7 +23,7 @@
   margin: 0 auto;
   max-width: 1200px;
   overflow-y: auto;
-  padding: calc(var(--sh-hud-top, var(--space-8)) + var(--space-4)) var(--space-5) var(--space-8);
+  padding: calc(var(--sh-hud-top, 4.5rem) + var(--space-4)) var(--space-5) var(--space-8);
 }
 
 /* ------------------------------------------------------------------ hud -- */
@@ -33,7 +34,7 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   inset: 0;
-  padding: var(--sh-hud-top, var(--space-8)) var(--space-5) var(--space-4);
+  padding: calc(var(--sh-hud-top, 4.5rem) + var(--space-3)) var(--space-5) var(--space-4);
   /* The globe is dragged with the pointer, and the HUD covers it. Each panel opts back in. */
   pointer-events: none;
   position: absolute;

@@ -1,10 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createFileRoute, redirect, useMatchRoute } from "@tanstack/react-router";
 import { NotificationBell, NotificationsDrawer } from "../notifications";
 import { denialOf } from "../policy";
 import { instanceQuery, meQuery, pagesQuery } from "../queries";
-import { ClockBanners, UserMenu, useInstanceState } from "../shell";
+import { ClockBanners, UserMenu, useInstanceState, useTopChromeHeight } from "../shell";
 import { applyLocalePreference } from "../ui";
 import { useResolvedPortalView } from "../views";
 
@@ -44,6 +44,12 @@ function AuthLayout() {
   const view = useResolvedPortalView();
   const immersive = view.view.chrome === "immersive" && matchRoute({ to: "/challenges" }) !== false;
 
+  // Immersive chrome floats the header and the banners over the board, so the board has to be
+  // told how tall they are. Nothing about that is knowable up front — the nav wraps, the clock
+  // banners come and go — so it is measured.
+  const app = useRef<HTMLDivElement>(null);
+  const topChrome = useTopChromeHeight(app, immersive);
+
   // The preference becomes real here: every locale-sensitive formatter downstream resolves
   // against it, and the document lang follows the account rather than the browser.
   useEffect(() => {
@@ -51,49 +57,53 @@ function AuthLayout() {
   }, [me.language]);
 
   return (
-    <div className="sh-app" data-chrome={immersive ? "immersive" : undefined}>
+    <div className="sh-app" ref={app} data-chrome={immersive ? "immersive" : undefined}>
       <a className="sh-skip" href="#main">
         skip to content
       </a>
 
-      <header className="sh-header">
-        <div className="sh-header__inner">
-          <Link to="/challenges" className="brand sh-brand">
-            {ctfName}
-            <span className="cursor">_</span>
-          </Link>
-
-          <nav className="sh-nav" aria-label="Primary">
-            <Link to="/challenges">challenges</Link>
-            <Link to="/scoreboard">scoreboard</Link>
-            <Link to="/notifications" search={{ page: 1 }}>
-              notifications
+      {/* Header and banners are one box only when they are floating; display:contents keeps them
+          two ordinary rows of the page everywhere else. */}
+      <div className="sh-top" ref={topChrome}>
+        <header className="sh-header">
+          <div className="sh-header__inner">
+            <Link to="/challenges" className="brand sh-brand">
+              {ctfName}
+              <span className="cursor">_</span>
             </Link>
-            {/* In users mode this route does not exist for anyone — the server answers 404. */}
-            {teamsMode && <Link to="/team">team</Link>}
-            <Link to="/settings" search={{ tab: "profile" }}>
-              settings
-            </Link>
-            {(pages.data?.pages ?? []).map((p) => (
-              <Link key={p.route} to="/pages/$route" params={{ route: p.route }}>
-                {p.title}
+
+            <nav className="sh-nav" aria-label="Primary">
+              <Link to="/challenges">challenges</Link>
+              <Link to="/scoreboard">scoreboard</Link>
+              <Link to="/notifications" search={{ page: 1 }}>
+                notifications
               </Link>
-            ))}
-            {me.is_admin && (
-              <Link to="/admin" className="sh-nav__admin">
-                admin
+              {/* In users mode this route does not exist for anyone — the server answers 404. */}
+              {teamsMode && <Link to="/team">team</Link>}
+              <Link to="/settings" search={{ tab: "profile" }}>
+                settings
               </Link>
-            )}
-          </nav>
+              {(pages.data?.pages ?? []).map((p) => (
+                <Link key={p.route} to="/pages/$route" params={{ route: p.route }}>
+                  {p.title}
+                </Link>
+              ))}
+              {me.is_admin && (
+                <Link to="/admin" className="sh-nav__admin">
+                  admin
+                </Link>
+              )}
+            </nav>
 
-          <span className="ff-spacer" />
+            <span className="ff-spacer" />
 
-          <NotificationBell />
-          <UserMenu me={me} />
-        </div>
-      </header>
+            <NotificationBell />
+            <UserMenu me={me} />
+          </div>
+        </header>
 
-      <ClockBanners />
+        <ClockBanners />
+      </div>
 
       <main className="sh-main" id="main">
         <Outlet />
