@@ -68,3 +68,40 @@ first-blood webhook honours. The payload names a challenge, never an account or 
   reconnecting client just misses pulses. Anything that needs the record reads the solves table.
 - **CTFd import of placements.** CTFd has no country concept, so imported instances arrive
   unplaced and are annotated by hand afterwards.
+
+## Addendum (2026-07-28): a view may carry a skin
+
+The globe shipped as a dark scene inside whatever page the colour theme had painted. On a light
+instance that is a black box in a white document — two things, not one — and the separation the
+original decision drew ("a view is how the board is drawn, a theme is what colour everything is")
+turned out to be too clean to describe a view that is a scene rather than a document.
+
+A `PortalView` gains two optional fields, both of them declarative and both of them read outside
+the view:
+
+- `theme` — the name of a colour theme this view brings with it.
+- `chrome: "immersive"` — the board wants the viewport rather than a column, so the shell drops
+  its width and padding and floats the header and the clock banners over the content. Only on the
+  board route; a challenge's own page, the scoreboard and the admin console stay documents.
+
+`theme` sits at the **top** of the theme resolution order — above the player's saved colour choice
+and the instance's `ctf_theme`. A view is a whole presentation, and a presentation that owns the
+board but not the header is half a design. The name is resolved through the same registry as every
+other source, so a view naming a theme this build does not ship falls through harmlessly instead of
+failing. `views/` still knows nothing about `theme/`: a view names a theme as a string, and the
+resolver in `theme/` is the only thing that looks it up.
+
+The escape hatch does not change: the player's opt-out to the standard board is still the whole of
+it, and taking the standard board back takes its palette with it.
+
+### What was given up
+
+- **Keeping your own colours under a themed view.** While the globe is the resolved view, a player
+  who picked `light` gets `nocturne`. The saved preference is not lost, and the theme picker in
+  settings says why it is not what is on screen — but the only way to see it again is the switch
+  back to the list view.
+- **Partial theming.** A view carries one theme name for the whole document or none at all; there
+  is no "this view repaints the board but not the shell". That was the state we were fixing.
+- **A shell that is only ever a shell.** The layout now has a second shape, and a view can ask for
+  it. The shape is one attribute and one grid, not a second layout tree, but the shell is no longer
+  ignorant of what it contains.

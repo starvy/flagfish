@@ -1,8 +1,9 @@
 # Portal views
 
 A **view** is how the challenge board is drawn. The standard board is one; the globe is
-another. A view is not a theme — `theme/` owns the colour scheme, and every theme keeps
-working inside every view.
+another. A view is not a theme — `theme/` owns the colour scheme — but a view may *carry*
+one: a board that is a lit sphere in space cannot sit inside a white page and still be one
+thing.
 
 Only `/challenges` has views. A challenge's own page, the scoreboard and the admin console
 are the same in all of them.
@@ -19,6 +20,24 @@ are the same in all of them.
 That is the whole contract. No route change, no switch statement, no stylesheet wiring. The
 resolver, the persistence and the outlet pick it up from the registry, and the dynamic
 import means the new view's cost lands in the new view's chunk.
+
+## The skin a view may carry
+
+Two optional fields on the entry, both read outside the view:
+
+- `theme` — the name of a colour theme (`theme/registry.ts`). While this view is the
+  **resolved** view, that theme is applied to the whole document, over the player's saved
+  colour choice and over the instance's `ctf_theme`. Nothing here imports `theme/`: a view
+  names a theme as a string and `theme/resolve.ts` is the only thing that looks one up, so a
+  name this build does not ship falls through as harmlessly as every other unknown name.
+- `chrome: "immersive"` — the board wants the viewport rather than a column. The shell
+  (`routes/_auth.tsx`) stamps `data-chrome="immersive"` on `.sh-app` while this view is
+  resolved **and** the route is the board itself, and `shell/shell.css` then lets the main
+  area fill the screen with the header and the clock banners floating over it. A challenge's
+  own page, the scoreboard and the admin console keep the normal layout.
+
+A player who wants neither switches to the list view; the palette and the layout go back with
+it. That opt-out is the only escape, and it is the whole escape.
 
 ## Resolution order
 

@@ -40,16 +40,26 @@ The picker, resolution, and persistence pick it up from the registry.
 
 `resolveTheme` (`resolve.ts`) is a pure function applying, in order:
 
-1. **User preference** — `localStorage["flagfish.theme"]`: a theme name, or the `system`
+1. **The active view's theme** — a portal view (`views/`) may name a colour theme it brings
+   with it; the globe brings `nocturne`. While that view is the resolved one it owns the
+   palette, because a view is a whole presentation and one that repaints the board but not
+   the header is half a design. The player's way out is the switch back to the standard
+   board, which takes its theme with it.
+2. **User preference** — `localStorage["flagfish.theme"]`: a theme name, or the `system`
    sentinel to follow the OS.
-2. **Instance default** — the backend `ctf_theme` config, served by the public
+3. **Instance default** — the backend `ctf_theme` config, served by the public
    `GET /api/v1/instance` endpoint (readable before login).
-3. **System** — `prefers-color-scheme`, mapping to a built-in dark or light theme.
+4. **System** — `prefers-color-scheme`, mapping to a built-in dark or light theme.
 
 An unknown name at any level does not error; it simply fails to match and the next
-source is tried, so a stale preference or a `ctf_theme` this build does not ship both
-fall back safely. The admin custom-override blob (`theme_tokens`, a JSON object of
-token overrides) is merged over whichever base theme wins.
+source is tried, so a stale preference, a `ctf_theme` this build does not ship, and a view
+naming a theme that has been removed all fall back safely. The admin custom-override blob
+(`theme_tokens`, a JSON object of token overrides) is merged over whichever base theme wins,
+the view's included. `resolved.source` says which level answered, and the picker in settings
+uses it to explain itself when the answer was not the player's.
+
+`theme/` may import from `views/`; `views/` must not import from `theme/`. A view names its
+theme as a string, and this is the only module that turns a name into a theme.
 
 ## Applying and no-flash
 
