@@ -250,6 +250,9 @@ linters:
         # archive by design. The real control is the zip-slip guard in the
         # importer, which is tested, not a linter rule.
         - G304
+        # G705 (XSS via tainted write) fires on serving the two go:embed API-doc
+        # assets — content fixed at compile time, no user input reaches the writer.
+        - G705
       config:
         # Flags, session tokens and unique-flag salts are adversarial inputs.
         G306: "0600"
