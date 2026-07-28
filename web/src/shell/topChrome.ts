@@ -27,7 +27,8 @@ export function useTopChromeHeight(
     }
 
     const publish = () => {
-      host.style.setProperty("--sh-hud-top", `${Math.ceil(chrome.getBoundingClientRect().height)}px`);
+      const height = Math.ceil(chrome.getBoundingClientRect().height);
+      host.style.setProperty("--sh-hud-top", `${height}px`);
     };
     publish();
 

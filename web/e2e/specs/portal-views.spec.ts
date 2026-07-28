@@ -87,6 +87,11 @@ test.describe("portal views", () => {
     adminPage,
     browser,
   }) => {
+    const named = uniq("Skinned");
+    const id = await createChallengeWithFlag(adminPage, { name: named, flag: `flag{${uniq("s")}}` });
+    await seedAnnotation(adminPage, id, "country", "CZ");
+    annotated.push(id);
+
     const { context, page } = await registerPlayer(browser, {
       name: uniq("Nocturne"),
       email: `${uniq("noct")}@example.com`,
@@ -95,38 +100,53 @@ test.describe("portal views", () => {
     });
 
     try {
-      const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
-      const app = page.locator(".sh-app");
+      // Both of these settle a tick after the navigation the test just made — the attribute in
+      // the commit phase, the theme in an effect that writes it onto the document — so they are
+      // polled rather than read once.
+      const theme = () =>
+        expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme));
+      const chrome = () => expect.poll(() => page.locator(".sh-app").getAttribute("data-chrome"));
 
       // What this player would be looking at without a view saying otherwise. Captured rather
       // than named: the instance's own theme config decides it, and this spec is not about that.
       await page.goto("/challenges");
       await expect(page.getByRole("heading", { name: "challenges" })).toBeVisible();
-      const plain = await theme();
+      const plain = await page.evaluate(() => document.documentElement.dataset.theme);
       expect(plain).not.toBe("nocturne");
 
       await patchConfig(adminPage, { portal_view: "globe" });
       await page.reload();
 
       await expect(page.getByTestId("globe-scene")).toBeVisible();
-      await expect(app).toHaveAttribute("data-chrome", "immersive");
+      await chrome().toBe("immersive");
       await expect(page.getByTestId("solve-ticker")).toBeVisible();
-      expect(await theme()).toBe("nocturne");
+      await theme().toBe("nocturne");
 
       // Off the board the palette stays and the layout goes back to being a document.
       await page.getByRole("link", { name: "scoreboard" }).click();
       await expect(page).toHaveURL(/\/scoreboard/);
-      expect(await theme()).toBe("nocturne");
-      await expect(app).not.toHaveAttribute("data-chrome", "immersive");
+      await theme().toBe("nocturne");
+      await chrome().toBeNull();
+
+      // A challenge's own page is a page in every view — the nested route must not inherit the
+      // board's chrome, and must keep its palette.
+      await page.goto(`/challenges/${id}`);
+      await expect(page.getByRole("heading", { name: named })).toBeVisible();
+      await theme().toBe("nocturne");
+      await chrome().toBeNull();
+
+      // The picker says which of the two answers is on screen, on a page that is neither.
+      await page.goto("/settings?tab=profile");
+      await expect(page.getByText(/painting the app/i)).toBeVisible();
 
       // The opt-out takes the skin with it — it is the whole of a player's escape.
-      await page.getByRole("link", { name: "challenges" }).click();
+      await page.goto("/challenges");
       await expect(page.getByTestId("globe-scene")).toBeVisible();
       await page.getByTestId("portal-view-standard").click();
 
       await expect(page.getByTestId("globe-scene")).toHaveCount(0);
-      await expect(app).not.toHaveAttribute("data-chrome", "immersive");
-      expect(await theme()).toBe(plain);
+      await chrome().toBeNull();
+      await theme().toBe(plain);
     } finally {
       await context.close();
     }
