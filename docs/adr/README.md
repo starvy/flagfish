@@ -17,6 +17,7 @@ A PR that quietly relitigates one is not.
 | [0005](0005-per-solve-score-snapshot.md) | **Per-solve score snapshot** | An audit trail on top of retroactive revaluation is a contradiction. A snapshot is a fact; a join to a mutable row is an opinion. |
 | [0006](0006-lazy-lock-on-the-hot-path.md) | **The challenge lock is taken lazily** | Most submissions are *wrong*; a top-of-transaction lock serializes every wrong guess. Contention should scale with solves, not submissions. |
 | [0007](0007-no-plugin-system.md) | **No plugin system. Ever.** | "Plugin system" in Go is a distributed system or a recompile. The extension surface people actually want is two interfaces — ship them in-tree. |
+| [0009](0009-annotations-and-portal-views.md) | **Challenge annotations and portal views** | A tag is membership; an annotation is a lookup by name. A view is a value the client has code for, so the set is closed and an unknown spelling is refused at the write. |
 
 > The sequence has a gap at 0008: that ADR was withdrawn. Numbers are never reused and never
 > renumbered — links, commit messages, and code review comments point at these, so a stable
