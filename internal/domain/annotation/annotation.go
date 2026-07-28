@@ -49,7 +49,7 @@ const KeyCountry Key = "country"
 
 // ParseKey validates the key's shape.
 func ParseKey(s string) (Key, error) {
-	if len(s) == 0 || len(s) > MaxKeyLen {
+	if s == "" || len(s) > MaxKeyLen {
 		return "", fmt.Errorf("%w: got %q", ErrKeyShape, s)
 	}
 	if s[0] < 'a' || s[0] > 'z' {

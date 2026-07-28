@@ -228,7 +228,7 @@ func (sf *solveFix) seedFirstBloodChallenge(name string, value int) int64 {
 }
 
 // submit posts a flag as the given player.
-func (sf *solveFix) submit(chID int64, flag, cookie, csrf string) (apiResp, []byte) {
+func (sf *solveFix) submit(chID int64, flag, cookie, csrf string) (resp apiResp, respBody []byte) {
 	sf.t.Helper()
 	return sf.do(http.MethodPost, fmt.Sprintf("/api/v1/challenges/%d/attempt", chID),
 		map[string]any{"flag": flag},
