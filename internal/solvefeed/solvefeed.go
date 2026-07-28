@@ -31,6 +31,11 @@ const channel = "solves"
 // FirstBlood especially: it is decided under the challenge lock, from a count that is only exact
 // inside that transaction, and there is no column to read it back from afterwards. A listener that
 // recomputed it would be publishing an opinion about a fact that was already established.
+//
+// FirstBlood follows the challenge's own first_blood setting, so it is false on a challenge
+// configured 'none' even for the solve that happened to be first — the same condition that decides
+// whether the announcement webhook fires. It reports a first blood the product recognises, not an
+// arithmetic fact about ordering.
 type Event struct {
 	SolveID     int64     `json:"solve_id"`
 	ChallengeID int64     `json:"challenge_id"`

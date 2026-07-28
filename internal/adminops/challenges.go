@@ -82,9 +82,9 @@ func challengeType(function string) string {
 // state-blind and never redacts a flag — it exists behind the admin gate precisely so an operator
 // can read back what a player must not.
 type ChallengeDetail struct {
-	Challenge db.Challenge
-	Flags     []db.Flag
-	Hints     []db.Hint
+	Challenge   db.Challenge
+	Flags       []db.Flag
+	Hints       []db.Hint
 	Tags        []string
 	Annotations []Annotation
 	Files       []db.ListChallengeFilesRow

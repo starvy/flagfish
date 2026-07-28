@@ -230,7 +230,7 @@ var classNames = map[RouteClass]string{
 	ClassTeamCreate: "team-create", ClassTeamDetail: "team-detail",
 	ClassTokens: "tokens", ClassSSE: "sse", ClassNotifications: "notifications",
 	ClassSolveFeed: "solve-feed",
-	ClassAdmin: "admin", ClassAdminScoreboard: "admin-scoreboard",
+	ClassAdmin:     "admin", ClassAdminScoreboard: "admin-scoreboard",
 	ClassStatistics: "statistics", ClassExport: "export",
 }
 

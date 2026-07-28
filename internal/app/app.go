@@ -30,8 +30,8 @@ import (
 	"github.com/starvy/flagfish/internal/mail"
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
-	"github.com/starvy/flagfish/internal/solvefeed"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/solvefeed"
 	"github.com/starvy/flagfish/internal/stats"
 	"github.com/starvy/flagfish/internal/storage"
 )
