@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute, redirect, useMatchRoute } from "@tanstack/react-router";
 import { NotificationBell, NotificationsDrawer } from "../notifications";
 import { denialOf } from "../policy";
 import { instanceQuery, meQuery, pagesQuery } from "../queries";
 import { ClockBanners, UserMenu, useInstanceState } from "../shell";
 import { applyLocalePreference } from "../ui";
+import { useResolvedPortalView } from "../views";
 
 export const Route = createFileRoute("/_auth")({
   beforeLoad: async ({ context, location }) => {
@@ -37,6 +38,12 @@ function AuthLayout() {
   // them — so a page appears here the moment it is published and disappears when unpublished.
   const pages = useQuery(pagesQuery);
 
+  // A view may ask for the viewport instead of a column. Only on the board itself: a challenge's
+  // own page, the scoreboard and the admin console are documents whatever the board looks like.
+  const matchRoute = useMatchRoute();
+  const view = useResolvedPortalView();
+  const immersive = view.view.chrome === "immersive" && matchRoute({ to: "/challenges" }) !== false;
+
   // The preference becomes real here: every locale-sensitive formatter downstream resolves
   // against it, and the document lang follows the account rather than the browser.
   useEffect(() => {
@@ -44,7 +51,7 @@ function AuthLayout() {
   }, [me.language]);
 
   return (
-    <div className="sh-app">
+    <div className="sh-app" data-chrome={immersive ? "immersive" : undefined}>
       <a className="sh-skip" href="#main">
         skip to content
       </a>

@@ -239,3 +239,73 @@
     width: 100%;
   }
 }
+
+/* -------------------------------------------------------------- immersive */
+
+/*
+ * The chrome a view asks for when its board is a scene rather than a document. The whole shell
+ * becomes one grid cell: the main area spans every row, so the scene fills the viewport, and the
+ * header and the clock banners are laid over it in the rows above. Stacking them in the grid
+ * rather than pinning them keeps the banners a header's height below the top without anything
+ * having to know what that height is.
+ */
+.sh-app[data-chrome="immersive"] {
+  /* How far below the top of the viewport a floating panel has to start to clear the header. The
+     shell answers it so a view laying itself out over the shell does not have to guess. */
+  --sh-hud-top: 4.5rem;
+
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto 1fr;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sh-app[data-chrome="immersive"] .sh-main {
+  grid-area: 1 / 1 / -1 / -1;
+  margin: 0;
+  max-width: none;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.sh-app[data-chrome="immersive"] .sh-header {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-bg) 92%, transparent),
+    color-mix(in srgb, var(--color-bg) 40%, transparent)
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+  grid-area: 1 / 1;
+  position: static;
+  z-index: var(--z-sticky);
+}
+
+/* The clock is the one thing on this screen a player cannot afford to miss, so it stays where it
+   is in reading order — it just floats over the scene instead of pushing it down. */
+.sh-app[data-chrome="immersive"] .sh-banners {
+  gap: var(--space-2);
+  grid-area: 2 / 1;
+  /* Left, under the brand: the right of the strip belongs to whatever the view floats there. */
+  justify-self: start;
+  margin-top: var(--space-3);
+  max-width: min(40rem, calc(100vw - var(--space-6)));
+  padding: 0 var(--space-5);
+  width: 100%;
+  z-index: var(--z-sticky);
+}
+
+.sh-app[data-chrome="immersive"] .sh-banners .ff-alert {
+  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--alert-color) 12%, rgba(0, 0, 0, 0.55));
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 720px) {
+  /* The nav wraps to a row of its own here, so the header is taller and a HUD starts lower. */
+  .sh-app[data-chrome="immersive"] {
+    --sh-hud-top: 9rem;
+  }
+}
