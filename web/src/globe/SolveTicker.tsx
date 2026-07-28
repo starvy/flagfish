@@ -26,7 +26,7 @@ export function SolveTicker({
   names: ReadonlyMap<number, string>;
   enabled?: boolean;
 }) {
-  const { events } = useSolveStream({ enabled });
+  const { events, status } = useSolveStream({ enabled });
 
   const entries = useMemo(() => {
     const out: Entry[] = [];
@@ -39,11 +39,21 @@ export function SolveTicker({
     return out;
   }, [events, names]);
 
+  // The stream gave up rather than dropped: a refused connection (signed out, or the feed closed
+  // before the CTF opens) or a proxy that will not carry SSE. Sitting on "awaiting solves" while
+  // nothing is listening is the quiet failure this whole strip would be lying about.
+  const offline = status === "closed";
+
   return (
     <div className="globe-ticker" data-testid="solve-ticker">
-      <span className="globe-ticker__tag">feed</span>
-      <ul className="globe-ticker__list" aria-live="polite" aria-label="recent solves">
-        {entries.length === 0 && <li className="globe-ticker__idle">awaiting solves</li>}
+      <span className="globe-ticker__tag" aria-hidden="true">
+        feed
+      </span>
+      <ul className="globe-ticker__list" aria-label="recent solves">
+        {offline && <li className="globe-ticker__offline">feed offline</li>}
+        {!offline && entries.length === 0 && (
+          <li className="globe-ticker__idle">awaiting solves</li>
+        )}
         {entries.map((entry) => (
           <li
             key={entry.id}
