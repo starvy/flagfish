@@ -217,7 +217,8 @@ function useAutoRotate(
     (on: boolean) => {
       const controls = globe.current?.controls();
       if (controls === undefined) return;
-      controls.autoRotate = on;
+      // A scene that turns on its own is exactly what prefers-reduced-motion asks to stop.
+      controls.autoRotate = on && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       controls.autoRotateSpeed = SPIN_SPEED;
     },
     [globe],
@@ -249,6 +250,14 @@ function useAutoRotate(
       if (resume.current !== null) clearTimeout(resume.current);
     };
   }, [frame, suspend]);
+
+  // The preference can flip while the scene is up (OS setting, emulation); re-apply, don't cache.
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => apply(wanted.current && resume.current === null);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, [apply]);
 
   return useMemo(() => ({ start, suspend }), [start, suspend]);
 }
