@@ -100,6 +100,11 @@ func (s *Server) registerRoutes() {
 	} else {
 		s.opts.Log.Warn("no notify service configured: notification routes are not registered")
 	}
+	if s.opts.SolveFeed != nil {
+		s.registerSolveFeedStream()
+	} else {
+		s.opts.Log.Warn("no solve feed configured: the live solve stream is not registered")
+	}
 }
 
 // In teams mode the playing account is the team; in users mode TeamID stays nil. A teamless player
