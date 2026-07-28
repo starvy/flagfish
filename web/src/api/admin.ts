@@ -10,11 +10,26 @@ type Body<T> = Omit<T, "$schema">;
 // 401 rule as the public one — it is a path prefix, not a second auth story.
 const P = "/admin";
 
-export type AdminConfig = Schemas["AdminConfigOutputBody"];
-export type AdminConfigPatch = Body<Schemas["AdminConfigInputBody"]>;
+/**
+ * The fields the admin API sends and accepts but the committed OpenAPI document does not yet
+ * describe. Intersected onto the generated types rather than cast at each call site: when the
+ * document is regenerated these two interfaces are deleted and nothing else changes.
+ */
+interface ConfigExtras {
+  /** Which view of the challenge board the instance leads with. */
+  portal_view?: string;
+}
+
+interface AnnotationExtras {
+  /** Free-form operator metadata, keyed. The globe view reads `country` off it. */
+  annotations?: Record<string, string>;
+}
+
+export type AdminConfig = Schemas["AdminConfigOutputBody"] & ConfigExtras;
+export type AdminConfigPatch = Body<Schemas["AdminConfigInputBody"]> & ConfigExtras;
 export type AdminChallenge = Schemas["AdminChallengeBody"];
 export type AdminChallengeListItem = Schemas["AdminChallengeListItem"];
-export type AdminChallengeDetail = Schemas["AdminChallengeDetailOutputBody"];
+export type AdminChallengeDetail = Schemas["AdminChallengeDetailOutputBody"] & AnnotationExtras;
 export type AdminRequirements = Schemas["AdminRequirementsBody"];
 export type AdminSetRequirementsResult = Schemas["AdminSetRequirementsOutputBody"];
 export type AdminChallengeTag = Schemas["AdminChallengeTagBody"];
@@ -183,6 +198,22 @@ export const adminApi = {
   // A tag still attached to challenges is a 409 unless force says otherwise.
   deleteTag: (value: string, force = false) =>
     request<void>("DELETE", `${P}/tags/${encodeURIComponent(value)}${query({ force })}`),
+
+  // Annotations. Keyed operator metadata a player-facing view can place a challenge by; the
+  // well-known key is `country`, an ISO 3166-1 alpha-2 code. The write is an upsert, so setting
+  // a key that already has a value replaces it rather than conflicting.
+  //
+  // Neither response is read: what was written is what the caller already knows, and not
+  // depending on the body means a change to it cannot break this screen.
+  setAnnotation: (challengeId: number, key: string, value: string) =>
+    request<void>(
+      "PUT",
+      `${P}/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`,
+      { value },
+    ),
+
+  deleteAnnotation: (challengeId: number, key: string) =>
+    request<void>("DELETE", `${P}/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`),
 
   // Users
   listUsers: (params: SearchParams = {}) =>
