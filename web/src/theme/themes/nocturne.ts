@@ -8,7 +8,7 @@ const mono = '"JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Con
 // ends.
 export const nocturne: Theme = {
   name: "nocturne",
-  label: "Nocturne (ops)",
+  label: "Nocturne (dark)",
   colorScheme: "dark",
   tokens: {
     "color-bg": "#01050c",
@@ -25,7 +25,7 @@ export const nocturne: Theme = {
     "color-danger-contrast": "#14040a",
     "color-warn": "#ffb454",
     "color-info": "#4bc7ff",
-    "color-blood": "#ff2e63",
+    "color-blood": "#ff4d6d",
     "color-success": "#34d399",
     "color-diff-add": "#34d399",
     "color-diff-del": "#ff5a68",

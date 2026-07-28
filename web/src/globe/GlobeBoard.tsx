@@ -40,8 +40,7 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
     return names;
   }, [board.data]);
 
-  const live = webgl && board.isSuccess;
-  const pulses = usePulses(byChallenge, { enabled: live });
+  const pulses = usePulses(byChallenge, { enabled: board.isSuccess });
 
   const [open, setOpen] = useState<Open>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
@@ -124,7 +123,7 @@ export function GlobeBoard({ selectView }: PortalViewProps) {
         </div>
 
         <div className="globe-hud__ticker">
-          <SolveTicker names={nameById} enabled={live} />
+          <SolveTicker names={nameById} enabled={board.isSuccess} />
         </div>
       </div>
 
