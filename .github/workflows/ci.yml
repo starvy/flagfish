@@ -172,24 +172,6 @@ jobs:
     name: test (race, real postgres)
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: flagfish
-          POSTGRES_PASSWORD: flagfish
-          POSTGRES_DB: flagfish_test
-          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd "pg_isready -U flagfish -d flagfish_test -q"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-          --tmpfs /var/lib/postgresql/data
-          --cpus 2
-
     env:
       # Same DSN shape the Taskfile and .env.example use, so a failing CI run is
       # reproducible locally with `task up && task test-race` and nothing else.
@@ -238,16 +220,33 @@ jobs:
           done
           echo "minio never became healthy"; docker logs minio-test; exit 1
 
-      - name: Tune Postgres for the concurrency suite
+      # Not a `services:` container either: the concurrency suite runs N goroutines each
+      # holding a real connection, so max_connections must be raised — and that takes a
+      # server flag. A service container cannot pass a command, and `ALTER SYSTEM SET`
+      # only applies after a restart the container never gets (it silently left the
+      # server at the default 100 and the suite died with "too many clients").
+      - name: Start Postgres
         run: |
-          # The service-container `options:` cannot pass `-c` server flags, so
-          # raise max_connections at runtime. The concurrency cases run N goroutines each
-          # holding a real connection; the default 100 is not enough headroom.
-          psql "$TEST_DATABASE_URL" -c "ALTER SYSTEM SET max_connections = 200;" \
-                                    -c "ALTER SYSTEM SET fsync = off;" \
-                                    -c "ALTER SYSTEM SET synchronous_commit = off;" \
-                                    -c "ALTER SYSTEM SET log_lock_waits = on;" || true
-          psql "$TEST_DATABASE_URL" -c "SELECT version();"
+          docker run -d --name postgres-ci -p 5433:5432 \
+            -e POSTGRES_USER=flagfish \
+            -e POSTGRES_PASSWORD=flagfish \
+            -e POSTGRES_DB=flagfish_test \
+            -e POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale=C" \
+            --tmpfs /var/lib/postgresql/data \
+            --cpus 2 \
+            postgres:17-alpine \
+            -c max_connections=200 -c fsync=off -c synchronous_commit=off -c log_lock_waits=on
+          # Wait from the HOST: during initdb the server does a socket-only first start,
+          # so an in-container pg_isready can pass before the real (TCP) server is up.
+          for _ in $(seq 1 30); do
+            if pg_isready -h localhost -p 5433 -U flagfish -d flagfish_test -q; then
+              got="$(psql "$TEST_DATABASE_URL" -tAc 'SHOW max_connections')"
+              test "$got" = "200" || { echo "max_connections=$got, want 200"; exit 1; }
+              echo "postgres ready (max_connections=$got)"; exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres never became ready"; docker logs postgres-ci; exit 1
 
       - name: Migrate
         run: ${{ github.workspace }}/bin/task migrate-test
@@ -285,7 +284,7 @@ jobs:
 
       - name: Postgres logs on failure
         if: failure()
-        run: docker logs "$(docker ps -q --filter ancestor=postgres:17-alpine)" 2>&1 | tail -100 || true
+        run: docker logs postgres-ci 2>&1 | tail -100 || true
 
   # The image is the deliverable: one static binary, embedded SPA + migrations.
   # If it does not build, "one binary" is aspirational.
