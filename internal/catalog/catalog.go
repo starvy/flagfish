@@ -44,6 +44,9 @@ type Listing struct {
 	// Locked is set when this account has not met the challenge's prerequisites and the anonymize
 	// flag shows the row anyway. A locked row carries no solvable content and cannot be attempted.
 	Locked bool
+	// Annotations are the challenge's (key, value) pairs, never nil. A locked row carries none:
+	// where a challenge sits on the map is a hint about it, and a locked row hands out no hints.
+	Annotations map[string]string
 }
 
 // Challenge is the detail view of a single challenge.
@@ -95,10 +98,11 @@ type Hint struct {
 
 // Detail is one challenge plus the metadata a detail view renders.
 type Detail struct {
-	Challenge Challenge
-	Tags      []string
-	Files     []File
-	Hints     []Hint
+	Challenge   Challenge
+	Tags        []string
+	Annotations map[string]string
+	Files       []File
+	Hints       []Hint
 }
 
 // Solve is one entry in a challenge's solve list.
@@ -137,11 +141,21 @@ func (s *Service) List(ctx context.Context, userID int64, teamID *int64, cutoff 
 	if err != nil {
 		return nil, fmt.Errorf("catalog: list: %w", err)
 	}
+	// One query for the whole board, not one per row: the board is the page every player loads
+	// first, and an annotation lookup per challenge would scale the load with the challenge count.
+	annotations, err := s.listAnnotations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: list: %w", err)
+	}
 	out := make([]Listing, 0, len(rows))
 	for _, r := range rows {
 		item := Listing{
 			ID: r.ID, Name: r.Name, Category: r.Category, Value: r.Value,
 			Function: r.Function, SolveCount: r.SolveCount, Solved: r.Solved,
+			Annotations: annotations[r.ID],
+		}
+		if item.Annotations == nil {
+			item.Annotations = map[string]string{}
 		}
 		if !r.PrereqsMet {
 			reqs, perr := prereq.Parse(r.Requirements)
@@ -152,11 +166,32 @@ func (s *Service) List(ctx context.Context, userID int64, teamID *int64, cutoff 
 				continue // hidden until the prerequisites are solved
 			}
 			item.Locked = true
+			// Stripped, like the name under Masked: where a challenge sits on the map is a clue
+			// about what it is, and a locked row is one whose content is being withheld.
+			item.Annotations = map[string]string{}
 			if reqs.Visibility == prereq.Masked {
 				item.Name = lockedName
 			}
 		}
 		out = append(out, item)
+	}
+	return out, nil
+}
+
+// listAnnotations loads every visible challenge's annotations, keyed by challenge id.
+func (s *Service) listAnnotations(ctx context.Context) (map[int64]map[string]string, error) {
+	rows, err := s.q.ListVisibleAnnotations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("annotations: %w", err)
+	}
+	out := make(map[int64]map[string]string)
+	for _, r := range rows {
+		m, ok := out[r.ChallengeID]
+		if !ok {
+			m = map[string]string{}
+			out[r.ChallengeID] = m
+		}
+		m[r.Key] = r.Value
 	}
 	return out, nil
 }
@@ -200,15 +235,24 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 				Function: ch.Function, MaxAttempts: ch.MaxAttempts, State: ch.State,
 				SolveCount: ch.SolveCount, Solved: ch.Solved, Locked: true, FlagMode: mode,
 			},
-			Tags:  []string{},
-			Files: []File{},
-			Hints: []Hint{},
+			Tags:        []string{},
+			Annotations: map[string]string{},
+			Files:       []File{},
+			Hints:       []Hint{},
 		}, nil
 	}
 
 	tags, err := s.q.ListChallengeTags(ctx, challengeID)
 	if err != nil {
 		return Detail{}, fmt.Errorf("catalog: detail tags: %w", err)
+	}
+	annotationRows, err := s.q.ListChallengeAnnotations(ctx, challengeID)
+	if err != nil {
+		return Detail{}, fmt.Errorf("catalog: detail annotations: %w", err)
+	}
+	annotations := make(map[string]string, len(annotationRows))
+	for _, a := range annotationRows {
+		annotations[a.Key] = a.Value
 	}
 	files, err := s.q.ListChallengeFiles(ctx, &challengeID)
 	if err != nil {
@@ -228,9 +272,10 @@ func (s *Service) Detail(ctx context.Context, challengeID, userID int64, teamID 
 			Value: ch.Value, Function: ch.Function, MaxAttempts: ch.MaxAttempts, State: ch.State,
 			SolveCount: ch.SolveCount, Solved: ch.Solved, FlagMode: mode, NextID: ch.NextID,
 		},
-		Tags:  tags,
-		Files: make([]File, len(files)),
-		Hints: make([]Hint, len(hints)),
+		Tags:        tags,
+		Annotations: annotations,
+		Files:       make([]File, len(files)),
+		Hints:       make([]Hint, len(hints)),
 	}
 	for i, f := range files {
 		d.Files[i] = File{ID: f.ID, Name: f.Name, SizeBytes: f.SizeBytes}

@@ -65,6 +65,7 @@ func (s *Server) registerRoutes() {
 		s.registerAdminTeamRoster()
 		s.registerAdminBrackets()
 		s.registerAdminTags()
+		s.registerAdminAnnotations()
 		s.registerAdminAwards()
 		s.registerAdminFields()
 		s.registerAdminPages()

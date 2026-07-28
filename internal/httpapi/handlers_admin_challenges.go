@@ -79,6 +79,8 @@ func (s *Server) adminOpsError(ctx context.Context, err error, action string) er
 		return huma.Error409Conflict("tag is attached to challenges: pass force=true to remove it from all of them")
 	case errors.Is(err, adminops.ErrTagAlreadyAttached):
 		return huma.Error409Conflict("the challenge already carries this tag")
+	case errors.Is(err, adminops.ErrAnnotationNotFound):
+		return huma.Error404NotFound("annotation not found")
 	default:
 		s.opts.Log.ErrorContext(ctx, action+" failed", "error", err)
 		return huma.Error500InternalServerError("could not " + action)
@@ -152,7 +154,9 @@ type adminChallengeDetailOutput struct {
 		Flags     []adminFlagBody    `json:"flags"`
 		Hints     []adminHintBody    `json:"hints"`
 		Tags      []string           `json:"tags"`
-		Files     []challengeFile    `json:"files"`
+		// Annotations is always present, {} when the challenge carries none.
+		Annotations map[string]string `json:"annotations"`
+		Files       []challengeFile   `json:"files"`
 	}
 }
 
@@ -510,6 +514,7 @@ func (s *Server) adminGetChallenge(ctx context.Context, in *challengeIDInput) (*
 	if out.Body.Tags == nil {
 		out.Body.Tags = []string{}
 	}
+	out.Body.Annotations = adminAnnotationMap(d.Annotations)
 	out.Body.Files = make([]challengeFile, len(d.Files))
 	for i, f := range d.Files {
 		out.Body.Files[i] = challengeFile{ID: f.ID, Name: f.Name, SizeBytes: f.SizeBytes}

@@ -45,6 +45,9 @@ type challengeListItem struct {
 	SolveCount *int64 `json:"solve_count"`
 	Solved     bool   `json:"solved"`
 	Locked     bool   `json:"locked"`
+	// Annotations is the (key, value) metadata an alternate board view renders from — the globe
+	// reads "country". Always present, {} when there is none and on a locked row.
+	Annotations map[string]string `json:"annotations"`
 }
 
 type challengesOutput struct {
@@ -98,6 +101,7 @@ type challengeDetailOutput struct {
 		Locked         bool               `json:"locked"`
 		NextID         *int64             `json:"next_id,omitempty"`
 		Tags           []string           `json:"tags"`
+		Annotations    map[string]string  `json:"annotations"`
 		Files          []challengeFile    `json:"files"`
 		Hints          []challengeHint    `json:"hints"`
 		Instance       *challengeInstance `json:"instance,omitempty"`
@@ -146,6 +150,16 @@ func (s *Server) registerChallenges() {
 	}, s.challengeSolves)
 }
 
+// nonNilAnnotations keeps the field an object on the wire even when there is nothing in it. A client
+// that has to handle both null and {} will eventually handle one of them wrong, and the one it gets
+// wrong is the empty case, because that is the one nobody tests against.
+func nonNilAnnotations(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
+}
+
 // redactSolveCount nulls a challenge's solve count unless the caller may see both scores and accounts.
 // A redacted count is null on the wire, never 0.
 func redactSolveCount(red policy.Redactor, count int64) *int64 {
@@ -171,7 +185,7 @@ func (s *Server) listChallenges(ctx context.Context, _ *struct{}) (*challengesOu
 		out.Body.Challenges[i] = challengeListItem{
 			ID: r.ID, Name: r.Name, Category: r.Category, Value: r.Value,
 			Function: r.Function, SolveCount: redactSolveCount(red, r.SolveCount), Solved: r.Solved,
-			Locked: r.Locked,
+			Locked: r.Locked, Annotations: nonNilAnnotations(r.Annotations),
 		}
 	}
 	return out, nil
@@ -230,6 +244,7 @@ func (s *Server) challengeDetail(ctx context.Context, in *challengeIDInput) (*ch
 	if out.Body.Tags == nil {
 		out.Body.Tags = []string{}
 	}
+	out.Body.Annotations = nonNilAnnotations(d.Annotations)
 	out.Body.Files = make([]challengeFile, len(d.Files))
 	for i, f := range d.Files {
 		out.Body.Files[i] = challengeFile{ID: f.ID, Name: f.Name, SizeBytes: f.SizeBytes}
