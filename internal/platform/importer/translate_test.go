@@ -91,7 +91,7 @@ func TestTranslateUnknownFlagTypeFails(t *testing.T) {
 		"challenges": env(mustJSON(t, ctfdChallenge{ID: 1, Name: "c", Category: "misc", Type: "standard", Value: p32(100), State: "visible"})),
 		"flags":      env(mustJSON(t, map[string]any{"id": 1, "challenge_id": 1, "type": "hashy", "content": "x"})),
 	}}
-	_, _, err := Translate(a, Options{})
+	_, err := Translate(a, Options{}, newReport())
 	if err == nil || !strings.Contains(err.Error(), "unsupported type") {
 		t.Fatalf("want unsupported flag type error, got %v", err)
 	}
@@ -111,7 +111,7 @@ func TestTranslateDynamicMerge(t *testing.T) {
 			Function: ps("linear"), Value: p32(238),
 		})),
 	}}
-	plan, _, err := Translate(a, Options{})
+	plan, err := Translate(a, Options{}, newReport())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +135,10 @@ func TestTranslateUnknownChallengeType(t *testing.T) {
 			"challenges": env(mustJSON(t, ctfdChallenge{ID: 1, Name: "c", Category: "misc", Type: "code", Value: p32(50), State: "visible"})),
 		}}
 	}
-	if _, _, err := Translate(mk(), Options{}); err == nil {
+	if _, err := Translate(mk(), Options{}, newReport()); err == nil {
 		t.Fatal("want hard failure on unknown challenge type")
 	}
-	plan, _, err := Translate(mk(), Options{ForceUnknownChallengeType: "standard"})
+	plan, err := Translate(mk(), Options{ForceUnknownChallengeType: "standard"}, newReport())
 	if err != nil {
 		t.Fatalf("force override should succeed: %v", err)
 	}
