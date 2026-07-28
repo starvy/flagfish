@@ -102,16 +102,16 @@ func (s *Server) streamNotifications(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	recent, err := s.opts.Notify.Recent(ctx, replayLimit)
-	if err != nil {
+	if recent, err := s.opts.Notify.Recent(ctx, replayLimit); err != nil {
 		// The 200 is already on the wire, so this cannot become an error response. Log it and go
 		// live: a stream without replay still delivers, and the client can poll the list to backfill.
 		s.opts.Log.ErrorContext(ctx, "notification replay failed", "error", err)
-	}
-	// Recent is newest-first; replay oldest-first so ids arrive in order.
-	for i := len(recent) - 1; i >= 0; i-- {
-		if writeSSE(w, recent[i]) != nil {
-			return
+	} else {
+		// Recent is newest-first; replay oldest-first so ids arrive in order.
+		for i := len(recent) - 1; i >= 0; i-- {
+			if writeSSE(w, recent[i]) != nil {
+				return
+			}
 		}
 	}
 	flusher.Flush()
