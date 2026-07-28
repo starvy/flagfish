@@ -31,6 +31,10 @@ type adminConfigInput struct {
 		Theme       *string `json:"theme,omitempty"`
 		ThemeTokens *string `json:"theme_tokens,omitempty"`
 
+		// PortalView selects the player board. The enum is asserted against config's own list in
+		// this package's tests, so the documented values and the accepted ones cannot drift.
+		PortalView *string `json:"portal_view,omitempty" enum:"standard,globe"`
+
 		// Three-state: an omitted key keeps the current time, an explicit null clears it (the event
 		// loses its start/end/freeze), and a value sets it.
 		Start  Optional[time.Time] `json:"start,omitempty"`
@@ -81,6 +85,7 @@ type adminConfigOutput struct {
 
 		Theme       string `json:"theme"`
 		ThemeTokens string `json:"theme_tokens,omitempty"`
+		PortalView  string `json:"portal_view"`
 
 		Start  *time.Time `json:"start,omitempty"`
 		End    *time.Time `json:"end,omitempty"`
@@ -175,6 +180,7 @@ func (s *Server) adminUpdateConfig(ctx context.Context, in *adminConfigInput) (*
 	putString("ctf_description", in.Body.Description)
 	putString("ctf_theme", in.Body.Theme)
 	putString("theme_tokens", in.Body.ThemeTokens)
+	putString("ctf_portal_view", in.Body.PortalView)
 	putTime("start", in.Body.Start)
 	putTime("end", in.Body.End)
 	putTime("freeze", in.Body.Freeze)
@@ -223,6 +229,7 @@ func configOutput(cfg *config.Manager) *adminConfigOutput {
 	out.Body.Description = snap.CTFDescription
 	out.Body.Theme = snap.Theme
 	out.Body.ThemeTokens = snap.ThemeTokens
+	out.Body.PortalView = snap.PortalView.String()
 	out.Body.Start = snap.Start
 	out.Body.End = snap.End
 	out.Body.Freeze = snap.Freeze

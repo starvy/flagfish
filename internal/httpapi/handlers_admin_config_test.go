@@ -44,3 +44,40 @@ func TestAdminConfigOutputDisclosesNoSecret(t *testing.T) {
 		}
 	}
 }
+
+// The portal view is published as an OpenAPI enum on two endpoints and enforced by config's own
+// parser. Those are three copies of one list, and a Huma struct tag cannot be computed from a Go
+// slice — so nothing but this test stops a third view from being accepted by the server and rejected
+// by the schema the client was generated from.
+func TestPortalViewEnumsMatchConfig(t *testing.T) {
+	want := strings.Join(config.PortalViewNames(), ",")
+
+	for _, tc := range []struct {
+		what  string
+		body  reflect.Type
+		field string
+	}{
+		{what: "adminConfigInput", body: reflect.TypeOf(adminConfigInput{}.Body), field: "portal_view"},
+		{what: "instanceOutput", body: reflect.TypeOf(instanceOutput{}.Body), field: "portal_view"},
+	} {
+		f, ok := fieldByJSONName(tc.body, tc.field)
+		if !ok {
+			t.Errorf("%s has no %q field", tc.what, tc.field)
+			continue
+		}
+		if got := f.Tag.Get("enum"); got != want {
+			t.Errorf("%s.%s enum tag = %q, want %q — config.portalViews changed and this tag did not",
+				tc.what, tc.field, got, want)
+		}
+	}
+}
+
+func fieldByJSONName(t reflect.Type, name string) (reflect.StructField, bool) {
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if n, _, _ := strings.Cut(f.Tag.Get("json"), ","); n == name {
+			return f, true
+		}
+	}
+	return reflect.StructField{}, false
+}
