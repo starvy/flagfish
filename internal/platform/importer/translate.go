@@ -106,11 +106,11 @@ var deferredTables = map[string]bool{
 	"audiences": true, "audience_members": true, "modules": true, "module_audience_access": true,
 }
 
-// Translate maps an archive onto the schema. It returns a Plan and a Report; a hard failure (an
-// unsolvable flag, an unknown challenge scoring rule, corrupt solve provenance, or config that would
-// not survive a boot) is an error, not a silent drop.
-func Translate(a *Archive, opts Options) (*Plan, *Report, error) {
-	rep := newReport()
+// Translate maps an archive onto the schema, recording every mapping decision in rep. It returns
+// the Plan; a hard failure (an unsolvable flag, an unknown challenge scoring rule, corrupt solve
+// provenance, or config that would not survive a boot) is an error, not a silent drop. The caller
+// owns rep so a failed translation still has the findings that explain it.
+func Translate(a *Archive, opts Options, rep *Report) (*Plan, error) {
 	rep.SourceRevision = a.Revision
 	rep.SourceOrdinal = a.Ordinal
 	rep.SourceHint = a.CTFdHint
@@ -150,31 +150,32 @@ func Translate(a *Archive, opts Options) (*Plan, *Report, error) {
 	}
 	for _, stage := range stages {
 		if err := stage(); err != nil {
-			return nil, rep, err
+			return nil, err
 		}
 	}
-	return plan, rep, nil
+	return plan, nil
 }
 
 func classifyTables(a *Archive, rep *Report) {
 	names := make([]string, 0, len(a.tables))
-	for name := range a.tables {
+	rows := make(map[string]int, len(a.tables))
+	for name, env := range a.tables {
 		names = append(names, name)
+		rows[name] = len(env.Results)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		env := a.tables[name]
 		switch {
 		case mappedTables[name]:
 			// consumed by a translate* below
 		case name == "tokens":
-			rep.note(SeverityInfo, CodeTokensDropped, "tokens", len(env.Results),
+			rep.note(SeverityInfo, CodeTokensDropped, "tokens", rows[name],
 				"plaintext credentials are never imported")
 		case deferredTables[name]:
-			rep.note(SeverityInfo, CodeDeferredTable, name, len(env.Results),
+			rep.note(SeverityInfo, CodeDeferredTable, name, rows[name],
 				"subsystem not modelled in this version")
 		default:
-			rep.note(SeverityWarning, CodeUnmappedTable, name, len(env.Results),
+			rep.note(SeverityWarning, CodeUnmappedTable, name, rows[name],
 				"no counterpart in the schema; there is no plugin system")
 		}
 	}

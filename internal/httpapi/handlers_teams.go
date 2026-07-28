@@ -228,7 +228,7 @@ func (s *Server) createTeam(ctx context.Context, in *createTeamInput) (*teamOutp
 	case errors.Is(err, accounts.ErrTeamFull):
 		return nil, huma.Error403Forbidden("the team is full")
 	case errors.Is(err, accounts.ErrJoinSecretTooShort):
-		return nil, huma.Error422UnprocessableEntity(err.Error())
+		return nil, huma.Error422UnprocessableEntity(accounts.ErrJoinSecretTooShort.Error())
 	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "create team failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not create the team")
@@ -246,7 +246,7 @@ func (s *Server) setTeamJoinSecret(ctx context.Context, in *setJoinSecretInput) 
 	case errors.Is(err, accounts.ErrNotCaptain):
 		return nil, huma.Error403Forbidden("only the captain can change the join password")
 	case errors.Is(err, accounts.ErrJoinSecretTooShort):
-		return nil, huma.Error422UnprocessableEntity(err.Error())
+		return nil, huma.Error422UnprocessableEntity(accounts.ErrJoinSecretTooShort.Error())
 	case err != nil:
 		s.opts.Log.ErrorContext(ctx, "set team join password failed", "error", err)
 		return nil, huma.Error500InternalServerError("could not change the join password")

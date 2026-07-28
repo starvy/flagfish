@@ -30,14 +30,15 @@ func Run(ctx context.Context, pool *pgxpool.Pool, path string, opts Options) (*R
 		return nil, fmt.Errorf("import: stat archive: %w", err)
 	}
 
-	started := time.Now().UTC()
+	rep := newReport()
+	rep.StartedAt = time.Now().UTC()
+
 	a, err := openArchive(f, info.Size(), opts.Caps, opts.AssumeRevision)
 	if err != nil {
 		return nil, fmt.Errorf("import: %w", err)
 	}
 
-	plan, rep, err := Translate(a, opts)
-	rep.StartedAt = started
+	plan, err := Translate(a, opts, rep)
 	if err != nil {
 		rep.EndedAt = time.Now().UTC()
 		return rep, fmt.Errorf("import: translate: %w", err)
