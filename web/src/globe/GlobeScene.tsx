@@ -18,13 +18,23 @@ interface Pin {
   capture: CountryState["capture"];
 }
 
+/**
+ * Where the camera has been asked to look. `seq` makes a request distinct from the one before it,
+ * so asking for the same country twice — click a pin, pan away, click it again — flies there both
+ * times instead of the second ask looking like no change at all.
+ */
+export interface FocusRequest {
+  code: string;
+  seq: number;
+}
+
 export interface GlobeSceneProps {
   countries: readonly CountryState[];
   pulses: readonly Pulse[];
   /** Called with a country code when its pin is clicked. */
   onSelectCountry: (code: string) => void;
-  /** The country the camera should be looking at, or null to leave it where the player put it. */
-  focus: string | null;
+  /** Null leaves the camera where the player put it. */
+  focus: FocusRequest | null;
 }
 
 const IDLE_BEFORE_SPIN_MS = 5_000;
@@ -99,7 +109,7 @@ export function GlobeScene({ countries, pulses, onSelectCountry, focus }: GlobeS
 
   useEffect(() => {
     if (focus === null) return;
-    const at = anchorOf(focus);
+    const at = anchorOf(focus.code);
     if (at === null) return;
     spin.suspend();
     globe.current?.pointOfView({ lat: at.lat, lng: at.lng, altitude: FOCUS_ALTITUDE }, 900);
