@@ -113,7 +113,7 @@ func truncate(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 TRUNCATE TABLE
     hint_unlocks, awards, solves, submissions,
     flag_issues, challenge_instances,
-    hints, flags, tags, files, challenges,
+    hints, flags, tags, challenge_annotations, files, challenges,
     tracking, api_tokens, field_entries, fields,
     users, teams, brackets, config, instance,
     notifications, tasks, audit_log,

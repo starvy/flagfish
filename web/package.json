@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && tsc",
+    "build": "vite build && tsc && node scripts/compress-dist.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "generate:api": "npm run generate:api:public && npm run generate:api:admin",
@@ -18,7 +18,9 @@
     "@tanstack/react-router": "^1.0.0",
     "@tanstack/react-virtual": "^3.14.7",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-globe.gl": "^2.38.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
@@ -26,6 +28,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.185.1",
     "@vitejs/plugin-react": "^5.0.0",
     "openapi-typescript": "^7.0.0",
     "pg": "^8.22.0",

@@ -65,6 +65,7 @@ func (s *Server) registerRoutes() {
 		s.registerAdminTeamRoster()
 		s.registerAdminBrackets()
 		s.registerAdminTags()
+		s.registerAdminAnnotations()
 		s.registerAdminAwards()
 		s.registerAdminFields()
 		s.registerAdminPages()
@@ -98,6 +99,11 @@ func (s *Server) registerRoutes() {
 		}
 	} else {
 		s.opts.Log.Warn("no notify service configured: notification routes are not registered")
+	}
+	if s.opts.SolveFeed != nil {
+		s.registerSolveFeedStream()
+	} else {
+		s.opts.Log.Warn("no solve feed configured: the live solve stream is not registered")
 	}
 }
 

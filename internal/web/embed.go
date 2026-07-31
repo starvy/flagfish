@@ -9,6 +9,7 @@ package web
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"embed"
 	"encoding/base64"
@@ -17,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -26,6 +28,11 @@ var dist embed.FS
 
 const (
 	assetsDir = "assets/"
+
+	// The build gzips every compressible asset once and drops the raw copy, so the
+	// binary carries ~600 kB where the source tree has 2.7 MB. gzExt is how the
+	// handler finds the stored sibling of the name a browser asks for.
+	gzExt = ".gz"
 
 	// Vite fingerprints every filename under assets/, so a given URL's bytes can
 	// never change. Everything else must revalidate, or a deploy strands clients on
@@ -80,6 +87,9 @@ func (s *spa) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if name != "" && s.serveFile(w, r, name) {
 		return
 	}
+	if name != "" && s.serveCompressed(w, r, name) {
+		return
+	}
 	// A miss under assets/ is a stale deploy, not a client route. Falling back to
 	// index.html would hand the browser HTML where it asked for a module and the
 	// failure would surface as a syntax error three layers away.
@@ -109,6 +119,11 @@ func cleanPath(p string) string {
 }
 
 func (s *spa) serveFile(w http.ResponseWriter, r *http.Request, name string) bool {
+	// The stored .gz siblings are an encoding, not a resource: nothing links to them,
+	// and answering for them would give one set of bytes two cacheable names.
+	if strings.HasSuffix(name, gzExt) {
+		return false
+	}
 	f, err := s.root.Open(name)
 	if err != nil {
 		return false
@@ -140,6 +155,88 @@ func (s *spa) serveFile(w http.ResponseWriter, r *http.Request, name string) boo
 	// it still gives us HEAD, Range and conditional requests for free.
 	http.ServeContent(w, r, name, info.ModTime(), content)
 	return true
+}
+
+// serveCompressed answers for a name whose only stored form is its build-time gzip
+// sibling. A client that accepts gzip gets the stored bytes as-is; anyone else gets
+// them decompressed on the fly — a path effectively no browser takes, kept so that
+// curl without flags still works.
+func (s *spa) serveCompressed(w http.ResponseWriter, r *http.Request, name string) bool {
+	f, err := s.root.Open(name + gzExt)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		return false
+	}
+
+	if strings.HasPrefix(name, assetsDir) {
+		w.Header().Set("Cache-Control", cacheImmutable)
+	} else {
+		w.Header().Set("Cache-Control", cacheRevalidate)
+	}
+	setContentType(w, name)
+	// Two bodies live at this URL now; a shared cache must key on the encoding.
+	w.Header().Set("Vary", "Accept-Encoding")
+
+	if acceptsGzip(r) {
+		content, ok := f.(io.ReadSeeker)
+		if !ok {
+			b, readErr := io.ReadAll(f)
+			if readErr != nil {
+				s.log.WarnContext(r.Context(), "reading embedded asset failed", "path", name+gzExt, "error", readErr)
+				return false
+			}
+			content = bytes.NewReader(b)
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		http.ServeContent(w, r, name, info.ModTime(), content)
+		return true
+	}
+
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		// The build wrote this file; failing to read it back is a build bug, and a 404
+		// or the index shell here would bury it as a client-side mystery.
+		s.log.ErrorContext(r.Context(), "embedded asset is not valid gzip", "path", name+gzExt, "error", err)
+		http.Error(w, "asset unreadable", http.StatusInternalServerError)
+		return true
+	}
+	defer zr.Close()
+
+	if r.Method == http.MethodHead {
+		return true
+	}
+	if _, err := io.Copy(w, zr); err != nil {
+		s.log.WarnContext(r.Context(), "decompressing embedded asset failed", "path", name, "error", err)
+	}
+	return true
+}
+
+// acceptsGzip reports whether the request allows a gzip-encoded response: the
+// coding (or a wildcard) is listed with a non-zero q. No header at all means the
+// client stated no preference; identity is the only answer that cannot be wrong.
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		coding, params, hasQ := strings.Cut(strings.TrimSpace(part), ";")
+		c := strings.ToLower(strings.TrimSpace(coding))
+		if c != "gzip" && c != "*" {
+			continue
+		}
+		if !hasQ {
+			return true
+		}
+		q, ok := strings.CutPrefix(strings.ToLower(strings.ReplaceAll(params, " ", "")), "q=")
+		if !ok {
+			return true
+		}
+		weight, err := strconv.ParseFloat(q, 64)
+		return err == nil && weight > 0
+	}
+	return false
 }
 
 func (s *spa) serveIndex(w http.ResponseWriter, r *http.Request) {

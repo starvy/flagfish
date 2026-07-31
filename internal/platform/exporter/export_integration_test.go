@@ -249,6 +249,7 @@ var projectionTables = []struct{ name, order string }{
 	{"challenges", "id"},
 	{"files", "id"},
 	{"tags", "id"},
+	{"challenge_annotations", "id"},
 	{"flags", "id"},
 	{"hints", "id"},
 	{"challenge_instances", "id"},

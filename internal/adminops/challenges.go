@@ -82,11 +82,12 @@ func challengeType(function string) string {
 // state-blind and never redacts a flag — it exists behind the admin gate precisely so an operator
 // can read back what a player must not.
 type ChallengeDetail struct {
-	Challenge db.Challenge
-	Flags     []db.Flag
-	Hints     []db.Hint
-	Tags      []string
-	Files     []db.ListChallengeFilesRow
+	Challenge   db.Challenge
+	Flags       []db.Flag
+	Hints       []db.Hint
+	Tags        []string
+	Annotations []Annotation
+	Files       []db.ListChallengeFilesRow
 }
 
 // ListChallenges returns every challenge for the operator's board, hidden ones included. A plain
@@ -120,11 +121,18 @@ func (s *Service) ChallengeDetail(ctx context.Context, challengeID int64) (Chall
 	if err != nil {
 		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: tags: %w", challengeID, err)
 	}
+	annotations, err := s.ListAnnotations(ctx, challengeID)
+	if err != nil {
+		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: %w", challengeID, err)
+	}
 	files, err := s.q.ListChallengeFiles(ctx, &challengeID)
 	if err != nil {
 		return ChallengeDetail{}, fmt.Errorf("adminops: challenge detail %d: files: %w", challengeID, err)
 	}
-	return ChallengeDetail{Challenge: ch, Flags: flagRows, Hints: hints, Tags: tags, Files: files}, nil
+	return ChallengeDetail{
+		Challenge: ch, Flags: flagRows, Hints: hints,
+		Tags: tags, Annotations: annotations, Files: files,
+	}, nil
 }
 
 //nolint:gocritic // hugeParam: the create input is a value; a pointer here would invite a caller to mutate it mid-call.

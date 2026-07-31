@@ -754,3 +754,44 @@ func TestStoredMLCDoesNotBlockUnrelatedWrites(t *testing.T) {
 		t.Errorf("Repairs() = %v, want empty once a real value is chosen", m.Repairs())
 	}
 }
+
+// The portal view is a closed set because it names client code. An unrecognised value is not a
+// forward-compatible extension, it is a portal that renders nothing, so it must fail at the write
+// rather than be discovered by players.
+func TestPortalViewIsAClosedSet(t *testing.T) {
+	for _, name := range config.PortalViewNames() {
+		if _, err := config.ParsePortalView(name); err != nil {
+			t.Errorf("ParsePortalView(%q) rejected a value it publishes as valid: %v", name, err)
+		}
+	}
+	for _, bad := range []string{"", "Globe", "GLOBE", "parabola", "standard ", "globe,standard"} {
+		if _, err := config.ParsePortalView(bad); !errors.Is(err, config.ErrUnknownPortalView) {
+			t.Errorf("ParsePortalView(%q) error = %v, want ErrUnknownPortalView", bad, err)
+		}
+	}
+}
+
+func TestPortalViewDefaultsToStandard(t *testing.T) {
+	snap, err := config.Build(map[string]string{}, nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if snap.PortalView != config.PortalViewStandard {
+		t.Errorf("default portal view = %q, want %q", snap.PortalView, config.PortalViewStandard)
+	}
+}
+
+// A stored value this binary cannot honour is a refusal to boot, not a silent fallback to the
+// standard board: an operator who set a view has to find out that it is gone.
+func TestStoredPortalViewMustBeKnown(t *testing.T) {
+	if _, err := config.Build(map[string]string{"ctf_portal_view": "globe"}, nil); err != nil {
+		t.Fatalf("build with a known view: %v", err)
+	}
+	_, err := config.Build(map[string]string{"ctf_portal_view": "parabola"}, nil)
+	if err == nil {
+		t.Fatal("an unknown stored portal view booted; it must refuse")
+	}
+	if !strings.Contains(err.Error(), "ctf_portal_view") {
+		t.Errorf("error does not name the offending key: %v", err)
+	}
+}

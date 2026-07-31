@@ -137,6 +137,28 @@ export async function seedTag(page: Page, challengeId: number, value: string): P
   await call(page, "POST", `/admin/challenges/${challengeId}/tags`, { value });
 }
 
+/** Upserts one annotation. `country` is the well-known key the globe view places a challenge by. */
+export async function seedAnnotation(
+  page: Page,
+  challengeId: number,
+  key: string,
+  value: string,
+): Promise<void> {
+  await call(page, "PUT", `/admin/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`, {
+    value,
+  });
+}
+
+/**
+ * Removes one annotation, un-placing the challenge from any view that keys off it. This is the
+ * cleanup for globe specs: the database is shared across the suite, and a challenge cannot be
+ * deleted once it holds a solve, but its annotation can always go — which is all the
+ * one-challenge-per-country assertion needs from a rerun.
+ */
+export async function removeAnnotation(page: Page, challengeId: number, key: string): Promise<void> {
+  await call(page, "DELETE", `/admin/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`);
+}
+
 /** Flips the fleet-wide pause switch through the admin config API. */
 export async function setPaused(page: Page, paused: boolean): Promise<void> {
   await call(page, "PATCH", "/admin/config", { paused });

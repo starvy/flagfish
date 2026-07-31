@@ -2,6 +2,9 @@ import { createContext, use, useCallback, useEffect, useMemo, useState } from "r
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { instanceQuery } from "../queries";
+// The module, not the barrel: this provider is in the root chunk, and the barrel would drag the
+// view outlet into it for the login page's benefit.
+import { useResolvedPortalView } from "../views/usePortalView";
 import { applyTheme } from "./apply";
 import { readPreference, writePreference, prefersDark as systemPrefersDark } from "./preference";
 import { resolveTheme, SYSTEM } from "./resolve";
@@ -12,6 +15,8 @@ import type { Theme } from "./theme";
 
 interface ThemeContextValue {
   resolved: Resolved;
+  /** The active view's theme is what is on screen, and it is not what the player asked for. */
+  viewOverrides: boolean;
   // The saved preference: a theme name, SYSTEM, or null for "unset".
   preference: string | null;
   setPreference: (value: string | null) => void;
@@ -43,15 +48,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // A failure is not fatal: the resolver falls back to preference and system.
   const { data: instance } = useQuery(instanceQuery);
 
-  const resolved = useMemo(
-    () =>
-      resolveTheme({
-        preference,
-        instanceDefault: instance?.theme,
-        custom: sanitizeOverrides(instance?.theme_tokens),
-        prefersDark,
-      }),
+  // A view may carry a skin, and it is resolved here rather than inside the board so that the
+  // header, the scoreboard and every other page wear it too — half an app in another palette is
+  // not a look, it is a bug.
+  const view = useResolvedPortalView();
+  const viewTheme = view.view.theme ?? null;
+
+  const input = useMemo(
+    () => ({
+      preference,
+      instanceDefault: instance?.theme,
+      custom: sanitizeOverrides(instance?.theme_tokens),
+      prefersDark,
+    }),
     [preference, instance?.theme, instance?.theme_tokens, prefersDark],
+  );
+
+  // What the player's own settings come to, resolved whether or not a view is currently sitting
+  // on top of them: the picker in settings can only explain itself if it knows both answers.
+  const own = useMemo(() => resolveTheme(input), [input]);
+  const resolved = useMemo(
+    () => (viewTheme === null ? own : resolveTheme({ ...input, viewTheme })),
+    [input, own, viewTheme],
   );
 
   useEffect(() => applyTheme(resolved), [resolved]);
@@ -62,8 +80,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<ThemeContextValue>(
-    () => ({ resolved, preference, setPreference, themes: THEMES, system: SYSTEM }),
-    [resolved, preference, setPreference],
+    () => ({
+      resolved,
+      viewOverrides: resolved.theme !== own.theme,
+      preference,
+      setPreference,
+      themes: THEMES,
+      system: SYSTEM,
+    }),
+    [resolved, own, preference, setPreference],
   );
 
   return <ThemeContext value={value}>{children}</ThemeContext>;

@@ -57,6 +57,7 @@ const (
 	ClassTokens
 	ClassSSE
 	ClassNotifications
+	ClassSolveFeed
 
 	ClassAdmin
 	ClassAdminScoreboard
@@ -169,6 +170,15 @@ var classAttrs = map[RouteClass]attrs{
 	// the stream, an anonymous caller may not. No visibility gate — there is no per-account
 	// targeting, so there is nothing to hide, only a wall to be inside.
 	ClassNotifications: {requiresAuth: true},
+	// The live solve pulse. Time-gated like the solve list — before the start there is nothing to
+	// watch, and a feed that opened early would be a channel for pre-start activity nobody should
+	// see. Gated on challenge visibility but NOT on account visibility, unlike ClassChallengeSolves:
+	// the pulse names a challenge and nothing else, so there is no account for the account gate to
+	// protect. Freeze is not handled here — a class cannot express "hide some events and not
+	// others", so suppression is per event at delivery.
+	ClassSolveFeed: {
+		visGates: []VisKind{VisChallenge}, requiresAuth: true, requiresVerified: true, timeGated: true,
+	},
 
 	ClassAdmin:           {adminOnly: true},
 	ClassAdminScoreboard: {adminOnly: true},
@@ -219,7 +229,8 @@ var classNames = map[RouteClass]string{
 	ClassTeamEnrollment: "team-enrollment", ClassTeamSelf: "team-self",
 	ClassTeamCreate: "team-create", ClassTeamDetail: "team-detail",
 	ClassTokens: "tokens", ClassSSE: "sse", ClassNotifications: "notifications",
-	ClassAdmin: "admin", ClassAdminScoreboard: "admin-scoreboard",
+	ClassSolveFeed: "solve-feed",
+	ClassAdmin:     "admin", ClassAdminScoreboard: "admin-scoreboard",
 	ClassStatistics: "statistics", ClassExport: "export",
 }
 

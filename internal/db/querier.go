@@ -123,6 +123,7 @@ type Querier interface {
 	// (at, id) tiebreak keeps the order total when many rows share a timestamp, so pages never overlap.
 	// COUNT(*) OVER () rides along so the page and its total agree in one round trip.
 	AdminListAudit(ctx context.Context, arg AdminListAuditParams) ([]AdminListAuditRow, error)
+	AdminListChallengeAnnotations(ctx context.Context, challengeID int64) ([]AdminListChallengeAnnotationsRow, error)
 	// Every flag on a challenge, plaintext content included. This is the one read that returns a flag's
 	// content, and it is reachable only behind the admin gate — the player detail redacts flags entirely.
 	AdminListChallengeFlags(ctx context.Context, challengeID int64) ([]Flag, error)
@@ -179,11 +180,21 @@ type Querier interface {
 	// stay attributable to the instances they were assigned from.
 	// The generation a fresh upload lands in: one past the highest present, or 1 for an empty pool.
 	AdminNextPoolGeneration(ctx context.Context, challengeID int64) (int32, error)
+	AdminRemoveAnnotation(ctx context.Context, arg AdminRemoveAnnotationParams) (int64, error)
 	AdminRemoveTag(ctx context.Context, arg AdminRemoveTagParams) (int64, error)
 	AdminRenameTag(ctx context.Context, arg AdminRenameTagParams) (int64, error)
 	// Bulk position assignment in one statement: the two arrays are zipped by ordinality, so every
 	// challenge moves or none does. A row count below the input length means an id did not exist.
 	AdminReorderChallenges(ctx context.Context, arg AdminReorderChallengesParams) (int64, error)
+	// ── annotations ───────────────────────────────────────────────────────────────────
+	//
+	// An annotation is a (challenge_id, key, value) row: the keyed sibling of a tag. Unlike a tag it is
+	// managed per challenge, because the key is what a renderer asks for and the challenge is what
+	// answers.
+	// Upsert, with UNIQUE(challenge_id, key) as the arbiter: two admins setting the same key settle on
+	// one row instead of racing a SELECT-then-INSERT. The FK refuses a missing challenge, mapped by the
+	// caller — there is no pre-read here, because a pre-read is that same check with a race in it.
+	AdminSetAnnotation(ctx context.Context, arg AdminSetAnnotationParams) (ChallengeAnnotation, error)
 	// The one write path for challenges.flag_mode outside the importer. The switch guards live in the
 	// service, in the same transaction as this update: a mid-event switch would misfire the
 	// unissued-solve detector, so the service refuses it while any solve exists.
@@ -728,6 +739,7 @@ type Querier interface {
 	// All brackets, optionally scoped to one account kind. The public list passes the instance mode so
 	// a client only offers filters that can match; the admin list passes nothing and sees every row.
 	ListBrackets(ctx context.Context, appliesTo *string) ([]Bracket, error)
+	ListChallengeAnnotations(ctx context.Context, challengeID int64) ([]ListChallengeAnnotationsRow, error)
 	// The board shows the name and size; the download link is built from the id. location is the storage
 	// key and never leaves the server.
 	ListChallengeFiles(ctx context.Context, challengeID *int64) ([]ListChallengeFilesRow, error)
@@ -835,6 +847,13 @@ type Querier interface {
 	// of the history view, never the total. Without it a heavy solver's page is a slow query and a
 	// one-request scrape at a large event.
 	ListUserSolves(ctx context.Context, arg ListUserSolvesParams) ([]ListUserSolvesRow, error)
+	// Every annotation on the visible board, in one pass.
+	//
+	// One query for the whole board rather than one per challenge: a globe cannot draw anything until it
+	// knows where every challenge goes, so the N+1 version is not a slow path that occasionally hurts —
+	// it is the board load, every time, multiplied by the challenge count. The caller strips the rows
+	// belonging to challenges it decided to lock or hide.
+	ListVisibleAnnotations(ctx context.Context) ([]ListVisibleAnnotationsRow, error)
 	// Authentication: sessions, API tokens, and the one query that resolves a caller to a Principal.
 	// THE authentication query. Sessions and API tokens both converge here before any
 	// authorization runs, so a token cannot route around a wall a cookie hits.

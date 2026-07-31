@@ -24,6 +24,11 @@ type instanceOutput struct {
 		Theme       string            `json:"theme"`
 		ThemeTokens map[string]string `json:"theme_tokens,omitempty"`
 
+		// PortalView is which board the SPA renders. It belongs on this endpoint rather than
+		// behind auth because it decides what the client draws before anyone has logged in, and
+		// which board an instance shows is branding, not a secret.
+		PortalView string `json:"portal_view" enum:"standard,globe"`
+
 		Mode string `json:"mode" enum:"users,teams"`
 
 		Start  *time.Time `json:"start,omitempty"`
@@ -56,6 +61,7 @@ func (s *Server) instanceInfo(ctx context.Context, _ *struct{}) (*instanceOutput
 	out := &instanceOutput{}
 	out.Body.CTFName = snap.CTFName
 	out.Body.Theme = snap.Theme
+	out.Body.PortalView = snap.PortalView.String()
 	out.Body.Mode = snap.Mode.String()
 	out.Body.Start = snap.Start
 	out.Body.End = snap.End

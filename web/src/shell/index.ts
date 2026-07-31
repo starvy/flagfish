@@ -4,6 +4,7 @@ export { ClockBanners } from "./ClockBanners";
 export { UserMenu } from "./UserMenu";
 export { AnnouncerProvider, useAnnounce } from "./Announcer";
 export { NotFoundScreen, PendingScreen, RouteError } from "./ErrorScreen";
+export { useTopChromeHeight } from "./topChrome";
 export {
   useInstanceState,
   useCtfClock,

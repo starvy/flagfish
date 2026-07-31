@@ -18,7 +18,7 @@ const importLockKey int64 = 0x696d706f7274 // "import"
 // bookkeeping and River's own tables are deliberately excluded.
 var truncated = []string{
 	"instance", "config", "brackets", "teams", "users", "fields", "field_entries",
-	"api_tokens", "tracking", "challenges", "files", "tags", "flags", "hints",
+	"api_tokens", "tracking", "challenges", "files", "tags", "challenge_annotations", "flags", "hints",
 	"challenge_instances", "flag_issues", "submissions", "solves", "awards", "hint_unlocks",
 	"notifications", "audit_log", "sessions", "email_tokens", "rate_limits",
 }

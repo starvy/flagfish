@@ -137,6 +137,7 @@ var registry = []table{
 	{name: "challenges", orderBy: "id", hasSerialID: true},
 	{name: "files", orderBy: "id", hasSerialID: true},
 	{name: "tags", orderBy: "id", hasSerialID: true},
+	{name: "challenge_annotations", orderBy: "id", hasSerialID: true},
 	{name: "flags", orderBy: "id", hasSerialID: true, dropInSafe: []string{"content"}},
 	// A hint is bought with points. Handing a mirror or a sponsor an archive mid-event must not hand
 	// them the answers the players are paying for.

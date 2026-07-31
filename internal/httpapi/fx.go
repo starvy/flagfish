@@ -23,6 +23,7 @@ import (
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/solvefeed"
 	"github.com/starvy/flagfish/internal/stats"
 )
 
@@ -58,6 +59,7 @@ type serverParams struct {
 	AdminOps       *adminops.Service
 	Notify         *notify.Service
 	Broadcaster    *notify.Broadcaster
+	SolveFeed      *solvefeed.Broadcaster
 	Anticheat      *anticheat.Service
 	Stats          *stats.Service
 	Files          *files.Service
@@ -84,6 +86,7 @@ func newServer(p serverParams) *Server {
 		AdminOps:           p.AdminOps,
 		Notify:             p.Notify,
 		Broadcaster:        p.Broadcaster,
+		SolveFeed:          p.SolveFeed,
 		Anticheat:          p.Anticheat,
 		Stats:              p.Stats,
 		Files:              p.Files,

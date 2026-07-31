@@ -31,6 +31,7 @@ import (
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/solvefeed"
 	"github.com/starvy/flagfish/internal/stats"
 	"github.com/starvy/flagfish/internal/storage"
 )
@@ -106,7 +107,10 @@ func ServeOptions(ctx context.Context, env *config.Env, log *slog.Logger, sc Ser
 	// other way round, srv.Shutdown would wait on streams that never end until the shutdown budget
 	// ran out. Its LISTEN pump starting a moment after the listener binds is harmless — a fresh
 	// server has no connected clients to miss a notification.
-	opts = append(opts, httpapi.Module, notify.Module)
+	// solvefeed sits alongside notify, and after httpapi, for the same reason: it too closes
+	// long-lived SSE subscribers on shutdown, and those handlers have to return before the HTTP
+	// server drains rather than after the budget expires.
+	opts = append(opts, httpapi.Module, notify.Module, solvefeed.Module)
 	return opts
 }
 

@@ -5,6 +5,7 @@ import type { AdminConfig, AdminConfigPatch } from "../../../api/admin";
 import { adminConfigQuery, instanceQuery, useUpdateConfig } from "../../../queries";
 import { DEFAULT_THEME, THEMES, themeByName } from "../../../theme/registry";
 import { sanitizeOverrides, type TokenOverrides } from "../../../theme/tokens";
+import { DEFAULT_VIEW, VIEWS, viewById } from "../../../views";
 import {
   AdminPage,
   ErrorState,
@@ -129,6 +130,7 @@ interface Draft {
   description: string;
   theme: string;
   overrides: TokenOverrides;
+  portal_view: string;
   start: TriValue;
   end: TriValue;
   freeze: TriValue;
@@ -223,6 +225,8 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
   const toast = useToast();
   const update = useUpdateConfig();
   const stored = useMemo(() => readOverrides(config.theme_tokens), [config.theme_tokens]);
+  // A server that predates the setting sends nothing, which is the standard board.
+  const storedView = config.portal_view ?? DEFAULT_VIEW.id;
   const teamsMode = mode === "teams";
   const storedEvents = config.webhook_events ?? [];
   const storedFirstBlood = storedEvents.includes("first_blood");
@@ -233,6 +237,7 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     description: config.description,
     theme: config.theme,
     overrides: stored.overrides,
+    portal_view: storedView,
     start: triKeep(isoToLocalInput(config.start)),
     end: triKeep(isoToLocalInput(config.end)),
     freeze: triKeep(isoToLocalInput(config.freeze)),
@@ -274,6 +279,7 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     draft.name !== config.name ||
     draft.description !== config.description ||
     draft.theme !== config.theme ||
+    draft.portal_view !== storedView ||
     overridesChanged ||
     draft.challenge_visibility !== config.challenge_visibility ||
     draft.score_visibility !== config.score_visibility ||
@@ -339,6 +345,9 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
     if (draft.name !== config.name) patch.name = draft.name;
     if (draft.description !== config.description) patch.description = draft.description;
     if (draft.theme !== config.theme) patch.theme = draft.theme;
+    if (draft.portal_view !== storedView) {
+      patch.portal_view = draft.portal_view as AdminConfigPatch["portal_view"];
+    }
     if (overridesChanged) patch.theme_tokens = JSON.stringify(draft.overrides);
     if (draft.challenge_visibility !== config.challenge_visibility) {
       patch.challenge_visibility = draft.challenge_visibility as AdminConfigPatch["challenge_visibility"];
@@ -499,6 +508,21 @@ function ConfigForm({ config, mode, onSaved }: ConfigFormProps) {
             </div>
           )}
         </Field>
+      </Card>
+
+      <Card title="Board view">
+        <Field
+          name="portal_view"
+          label="Challenge board"
+          hint="How players see the board. A player can still switch back to the list view for their own browser; this is what everyone gets until they do. Unrelated to the theme, which is colour."
+        >
+          <Select
+            value={draft.portal_view}
+            onChange={(e) => set("portal_view", e.currentTarget.value)}
+            options={viewOptions(draft.portal_view)}
+          />
+        </Field>
+        <p className="ff-muted">{viewById(draft.portal_view)?.description}</p>
       </Card>
 
       <Card title="Visibility">
@@ -753,6 +777,14 @@ function SecretField({ name, label, isSet, state, onChange, hint }: SecretFieldP
       )}
     </Field>
   );
+}
+
+function viewOptions(current: string): SelectOption[] {
+  const known = VIEWS.map((v) => ({ value: v.id, label: v.label }));
+  if (VIEWS.some((v) => v.id === current)) return known;
+  // A view this build cannot render: players fall back to the standard board, and the operator
+  // should be told that rather than see their setting silently rewritten.
+  return [{ value: current, label: `${current} (not shipped in this build)` }, ...known];
 }
 
 function themeOptions(current: string): SelectOption[] {

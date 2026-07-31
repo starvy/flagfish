@@ -5,6 +5,7 @@ export { AdminPage, Def, DefList, Stat, StatGrid, type AdminPageProps, type Stat
 export { AsyncState, ErrorState, LoadingState, type AsyncStateProps, type ErrorStateProps } from "./states";
 export { AwardsPanel } from "./AwardsPanel";
 export { BackupRestore } from "./BackupRestore";
+export { CountryPicker, type CountryPickerProps } from "./CountryPicker";
 export { errorDetail, fieldErrorsOf, formErrorOf } from "./errors";
 export { RosterPanel } from "./RosterPanel";
 export { isoToLocalInput, localInputToIso, localZone } from "./datetime";

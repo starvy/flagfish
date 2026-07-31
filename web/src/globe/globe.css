@@ -1,0 +1,503 @@
+/* The globe view.
+
+   The scene itself is self-contained: a lit sphere over a starfield holds its own colours in
+   every theme, and palette.ts explains why. Everything laid over it — the panels, the ticker, the
+   pins, the drawer — is drawn from the token contract, so a colour theme still lands on the parts
+   of this view that are a document.
+
+   The layout assumes the immersive chrome the view asks for in the registry: the shell has given
+   this component the viewport and floats its header and clock banners over the top of it.
+   --sh-hud-top is the shell's measurement of how deep that chrome is; the fallback beside it only
+   covers the frame before the first measurement lands. */
+
+.globe-view {
+  height: 100%;
+  position: relative;
+  width: 100%;
+}
+
+/* WebGL is missing and the standard board is standing in. It is a document, so it gets a
+   document's column and its own scrollbar back out of the full-bleed shell. */
+.globe-fallback {
+  height: 100%;
+  margin: 0 auto;
+  max-width: 1200px;
+  overflow-y: auto;
+  padding: calc(var(--sh-hud-top, 4.5rem) + var(--space-4)) var(--space-5) var(--space-8);
+}
+
+/* ------------------------------------------------------------------ hud -- */
+
+.globe-hud {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  inset: 0;
+  padding: calc(var(--sh-hud-top, 4.5rem) + var(--space-3)) var(--space-5) var(--space-4);
+  /* The globe is dragged with the pointer, and the HUD covers it. Each panel opts back in. */
+  pointer-events: none;
+  position: absolute;
+}
+
+.globe-hud__controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  grid-area: 1 / 2;
+  justify-self: end;
+}
+
+/* Clamped to its grid row: expanded on a short screen, the body scrolls instead of climbing
+   under the chrome, which paints above it and would swallow the top of the list. */
+.globe-hud__unplaced {
+  align-self: end;
+  display: flex;
+  grid-area: 2 / 1;
+  justify-self: start;
+  max-height: 100%;
+  max-width: min(30rem, 100%);
+  min-height: 0;
+}
+
+.globe-unassigned {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.globe-hud__ticker {
+  grid-area: 3 / 1 / 3 / -1;
+}
+
+/* An ops console panel: barely there until you look at it, with brackets at two corners so it
+   reads as instrumentation rather than as a card that lost its page.
+
+   The backdrop is darkened as well as blurred. Blur alone keeps the luminance it started with, so
+   a captured country drifting under a panel would take muted text down to about 2:1 — the panel
+   has to own its contrast whatever the globe puts behind it. */
+.globe-panel {
+  backdrop-filter: blur(8px) brightness(0.3);
+  background: color-mix(in srgb, var(--color-surface) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  pointer-events: auto;
+  position: relative;
+}
+
+/* Without a backdrop filter there is nothing to darken the scene with, so the panel stops being
+   translucent rather than stops being readable. */
+@supports not (backdrop-filter: blur(1px)) {
+  .globe-panel {
+    background: var(--color-surface);
+  }
+}
+
+.globe-panel::before,
+.globe-panel::after {
+  border-color: var(--color-accent);
+  border-style: solid;
+  content: "";
+  height: 0.6rem;
+  position: absolute;
+  width: 0.6rem;
+}
+
+.globe-panel::before {
+  border-width: 1px 0 0 1px;
+  left: -1px;
+  top: -1px;
+}
+
+.globe-panel::after {
+  border-width: 0 1px 1px 0;
+  bottom: -1px;
+  right: -1px;
+}
+
+.globe-panel__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.globe-legend {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.globe-legend li {
+  align-items: center;
+  display: flex;
+  gap: var(--space-1);
+}
+
+.globe-legend__swatch {
+  border-radius: 2px;
+  display: inline-block;
+  height: 0.6rem;
+  width: 0.6rem;
+}
+
+/* The three scene colours, repeated here so the legend cannot drift from the map. */
+.globe-legend__swatch--open {
+  background: #1d7d9c;
+}
+
+.globe-legend__swatch--partial {
+  background: #22d3ee;
+}
+
+.globe-legend__swatch--captured {
+  background: #34d399;
+}
+
+/* ---------------------------------------------------------------- scene -- */
+
+.globe-scene {
+  contain: strict;
+  inset: 0;
+  overflow: hidden;
+  position: absolute;
+}
+
+/* The starfield. Generated, not fetched: a handful of gradients cost nothing, and the one thing
+   this view must not do is reach for an asset off-origin. */
+.globe-scene__sky {
+  background-color: #01050c;
+  background-image:
+    radial-gradient(circle at 22% 18%, rgba(75, 199, 255, 0.14), transparent 42%),
+    radial-gradient(circle at 78% 74%, rgba(52, 211, 153, 0.1), transparent 46%),
+    radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 27% 61%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.2px 1.2px at 41% 13%, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 55% 44%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.6px 1.6px at 63% 82%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 71% 27%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1.2px 1.2px at 84% 55%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 92% 12%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 8% 78%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.3px 1.3px at 34% 91%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 48% 68%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.1px 1.1px at 66% 6%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 88% 88%, rgba(255, 255, 255, 0.6), transparent);
+  inset: 0;
+  position: absolute;
+}
+
+/* Whatever stands in for the scene — loading, or the board's error. Centred over the sky, because
+   in this layout there is no column for it to sit at the top of. */
+.globe-standin {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+  left: 50%;
+  max-width: min(34rem, calc(100% - var(--space-8)));
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+}
+
+/* ----------------------------------------------------------------- pins -- */
+
+/* globe.gl's HTML layer is inert to the pointer by default so a drag over a marker still spins
+   the globe; a pin has to opt back in. */
+.globe-pin {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: #e6f7ff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 0;
+  pointer-events: auto;
+  transform: translate(-50%, -100%);
+}
+
+.globe-pin__body {
+  align-items: center;
+  backdrop-filter: blur(2px);
+  background: rgba(3, 12, 22, 0.82);
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  display: flex;
+  gap: 0.35rem;
+  line-height: 1;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.globe-pin__stem {
+  background: currentcolor;
+  height: 0.75rem;
+  order: 2;
+  width: 1px;
+}
+
+.globe-pin__label {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.globe-pin__count {
+  background: currentcolor;
+  border-radius: 999px;
+  color: #02121c;
+  font-weight: 600;
+  min-width: 1.1rem;
+  padding: 0.1rem 0.3rem;
+  text-align: center;
+}
+
+.globe-pin:hover .globe-pin__body,
+.globe-pin:focus-visible .globe-pin__body {
+  background: rgba(6, 28, 44, 0.95);
+  box-shadow: 0 0 0 2px currentcolor;
+}
+
+.globe-pin--open {
+  color: #6fd3ea;
+}
+
+.globe-pin--partial {
+  color: #22d3ee;
+}
+
+.globe-pin--captured {
+  color: #34d399;
+}
+
+/* --------------------------------------------------------------- drawer -- */
+
+.globe-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.globe-list__row {
+  align-items: center;
+  background: var(--color-inset);
+  border: var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  font: inherit;
+  gap: var(--space-3);
+  justify-content: space-between;
+  padding: var(--space-3);
+  text-align: left;
+  width: 100%;
+}
+
+.globe-list__row:hover {
+  border-color: var(--color-border-strong);
+}
+
+.globe-list__row:focus-visible {
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+.globe-list__meta {
+  align-items: center;
+  display: flex;
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+}
+
+.globe-list__value {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+}
+
+/* ----------------------------------------------------------- unassigned -- */
+
+/* Everything a button has to give back; the rest of the look is globe-panel__label, which this
+   shares with the heading on the other panel so the two read as the same kind of label. */
+.globe-unassigned__head {
+  align-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  gap: var(--space-2);
+  padding: 0;
+  width: 100%;
+}
+
+.globe-unassigned__head:focus-visible {
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+.globe-unassigned__caret {
+  color: var(--color-text-muted);
+}
+
+/* Opened, this is a list of challenge cards over a scene. It gets a bounded height and its own
+   scrollbar rather than growing until it covers the globe it belongs to. */
+.globe-unassigned__body {
+  margin-top: var(--space-3);
+  max-height: min(24rem, 45vh);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+/* --------------------------------------------------------------- ticker -- */
+
+.globe-ticker {
+  align-items: center;
+  backdrop-filter: blur(8px) brightness(0.3);
+  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  pointer-events: auto;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .globe-ticker {
+    background: var(--color-bg);
+  }
+}
+
+.globe-ticker__tag {
+  color: var(--color-accent);
+  flex: none;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.globe-ticker__list {
+  display: flex;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* Each entry arrives once and then holds still. A strip that scrolls by itself is a strip nobody
+   can read, and there is no motion here that a player has to keep up with. */
+.globe-ticker__row {
+  align-items: center;
+  animation: globe-ticker-in var(--duration) var(--ease);
+  color: var(--color-text);
+  display: flex;
+  gap: var(--space-2);
+  /* A flex item refuses to shrink below its content, which is what keeps the ellipsis below from
+     ever being reached. */
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.globe-ticker__row--blood,
+.globe-ticker__row--blood .globe-ticker__name {
+  color: var(--color-blood);
+  font-weight: 700;
+}
+
+.globe-ticker__kind {
+  color: var(--color-text-muted);
+  flex: none;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.globe-ticker__row--blood .globe-ticker__kind {
+  color: var(--color-blood);
+}
+
+.globe-ticker__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.globe-ticker__idle,
+.globe-ticker__offline {
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.globe-ticker__idle {
+  color: var(--color-text-muted);
+}
+
+/* The feed is not coming back on its own timetable — say so rather than sit on "awaiting solves"
+   while nothing is listening. */
+.globe-ticker__offline {
+  color: var(--color-warn);
+}
+
+@keyframes globe-ticker-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem);
+  }
+}
+
+/* One column, and the controls move to the bottom of the stack. The clock banners own the top of
+   a narrow screen, and the way back to the list view is the one control that must never end up
+   underneath one. */
+@media (max-width: 720px) {
+  .globe-hud {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .globe-hud__unplaced {
+    grid-area: 1 / 1;
+    max-width: 100%;
+  }
+
+  .globe-hud__controls {
+    align-self: end;
+    grid-area: 2 / 1;
+    justify-self: start;
+  }
+
+  .globe-hud__ticker {
+    grid-area: 3 / 1;
+  }
+}
+
+/* Nothing scrolls in this layout, so on a short viewport the panels have to give ground rather
+   than grow into each other. */
+@media (max-height: 34rem) {
+  .globe-unassigned__body {
+    max-height: 30vh;
+  }
+}

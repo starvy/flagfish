@@ -55,6 +55,7 @@ var foreignKeys = []fk{
 	{"field_entries", "team_id", "teams", "id"},
 	{"files", "challenge_id", "challenges", "id"},
 	{"tags", "challenge_id", "challenges", "id"},
+	{"challenge_annotations", "challenge_id", "challenges", "id"},
 	{"flags", "challenge_id", "challenges", "id"},
 	{"hints", "challenge_id", "challenges", "id"},
 	{"challenge_instances", "challenge_id", "challenges", "id"},

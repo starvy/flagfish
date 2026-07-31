@@ -65,6 +65,10 @@ var (
 	ErrTagInUse = errors.New("adminops: tag is in use")
 	// ErrTagAlreadyAttached is the UNIQUE(challenge_id, value) refusal of a duplicate attach.
 	ErrTagAlreadyAttached = errors.New("adminops: tag already attached")
+
+	// ErrAnnotationNotFound refuses removing a key a challenge does not carry. There is no
+	// already-set counterpart: setting an annotation is an upsert, so a repeat is a success.
+	ErrAnnotationNotFound = errors.New("adminops: annotation not found")
 )
 
 // A ValidationError is operator input this service refused. Its Reason is written for the

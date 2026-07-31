@@ -184,6 +184,22 @@ export const adminApi = {
   deleteTag: (value: string, force = false) =>
     request<void>("DELETE", `${P}/tags/${encodeURIComponent(value)}${query({ force })}`),
 
+  // Annotations. Keyed operator metadata a player-facing view can place a challenge by; the
+  // well-known key is `country`, an ISO 3166-1 alpha-2 code. The write is an upsert, so setting
+  // a key that already has a value replaces it rather than conflicting.
+  //
+  // Neither response is read: what was written is what the caller already knows, and not
+  // depending on the body means a change to it cannot break this screen.
+  setAnnotation: (challengeId: number, key: string, value: string) =>
+    request<void>(
+      "PUT",
+      `${P}/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`,
+      { value },
+    ),
+
+  deleteAnnotation: (challengeId: number, key: string) =>
+    request<void>("DELETE", `${P}/challenges/${challengeId}/annotations/${encodeURIComponent(key)}`),
+
   // Users
   listUsers: (params: SearchParams = {}) =>
     request<Schemas["AdminListUsersOutputBody"]>("GET", `${P}/users${query({ ...params })}`),

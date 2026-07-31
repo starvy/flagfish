@@ -419,3 +419,24 @@ UPDATE tags SET value = @to_value WHERE value = @from_value;
 
 -- name: AdminDeleteTag :execrows
 DELETE FROM tags WHERE value = @value;
+
+-- ── annotations ───────────────────────────────────────────────────────────────────
+--
+-- An annotation is a (challenge_id, key, value) row: the keyed sibling of a tag. Unlike a tag it is
+-- managed per challenge, because the key is what a renderer asks for and the challenge is what
+-- answers.
+
+-- name: AdminSetAnnotation :one
+-- Upsert, with UNIQUE(challenge_id, key) as the arbiter: two admins setting the same key settle on
+-- one row instead of racing a SELECT-then-INSERT. The FK refuses a missing challenge, mapped by the
+-- caller — there is no pre-read here, because a pre-read is that same check with a race in it.
+INSERT INTO challenge_annotations (challenge_id, key, value)
+VALUES (@challenge_id, @key, @value)
+ON CONFLICT (challenge_id, key) DO UPDATE SET value = EXCLUDED.value
+RETURNING *;
+
+-- name: AdminRemoveAnnotation :execrows
+DELETE FROM challenge_annotations WHERE challenge_id = @challenge_id AND key = @key;
+
+-- name: AdminListChallengeAnnotations :many
+SELECT key, value FROM challenge_annotations WHERE challenge_id = @challenge_id ORDER BY key;

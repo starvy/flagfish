@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"compress/gzip"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -223,5 +225,147 @@ func TestNonReadMethodIsRejected(t *testing.T) {
 	}
 	if got := res.Header.Get("Allow"); got != "GET, HEAD" {
 		t.Errorf("Allow = %q, want %q", got, "GET, HEAD")
+	}
+}
+
+func gz(t *testing.T, data string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+const script = "console.log('flagfish')"
+
+// stagedCompressed mirrors what the build actually ships: the compressible assets
+// exist only as their .gz siblings; the shell and root files stay raw.
+func stagedCompressed(t *testing.T) fstest.MapFS {
+	t.Helper()
+	return fstest.MapFS{
+		"index.html":                {Data: []byte(shell)},
+		"assets/index-abc123.js.gz": {Data: gz(t, script)},
+		"favicon.svg":               {Data: []byte("<svg/>")},
+		".gitkeep":                  {Data: []byte{}},
+	}
+}
+
+// The compressed staging is the real contract: one URL, two bodies, and the encoding
+// negotiated per request — while the .gz name itself stays unaddressable.
+func TestCompressedAssets(t *testing.T) {
+	h := testHandler(t, stagedCompressed(t))
+	const asset = "/assets/index-abc123.js"
+
+	t.Run("gzip-accepting client gets the stored bytes", func(t *testing.T) {
+		res := do(t, h, http.MethodGet, asset, http.Header{"Accept-Encoding": {"gzip, deflate, br"}})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", res.StatusCode)
+		}
+		if got := res.Header.Get("Content-Encoding"); got != "gzip" {
+			t.Errorf("Content-Encoding = %q, want gzip", got)
+		}
+		if got := res.Header.Get("Vary"); got != "Accept-Encoding" {
+			t.Errorf("Vary = %q, want Accept-Encoding", got)
+		}
+		if got := res.Header.Get("Cache-Control"); got != cacheImmutable {
+			t.Errorf("Cache-Control = %q, want %q", got, cacheImmutable)
+		}
+		if got := res.Header.Get("Content-Type"); got != "text/javascript; charset=utf-8" {
+			t.Errorf("Content-Type = %q", got)
+		}
+		zr, err := gzip.NewReader(strings.NewReader(body(t, res)))
+		if err != nil {
+			t.Fatalf("body is not gzip: %v", err)
+		}
+		plain, err := io.ReadAll(zr)
+		if err != nil {
+			t.Fatalf("decompressing body: %v", err)
+		}
+		if string(plain) != script {
+			t.Errorf("body decompresses to %q, want %q", plain, script)
+		}
+	})
+
+	t.Run("client without gzip gets identity", func(t *testing.T) {
+		res := do(t, h, http.MethodGet, asset, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", res.StatusCode)
+		}
+		if got := res.Header.Get("Content-Encoding"); got != "" {
+			t.Errorf("Content-Encoding = %q, want none", got)
+		}
+		if got := res.Header.Get("Vary"); got != "Accept-Encoding" {
+			t.Errorf("Vary = %q, want Accept-Encoding", got)
+		}
+		if got := body(t, res); got != script {
+			t.Errorf("body = %q, want the decompressed script", got)
+		}
+	})
+
+	t.Run("gzip refused with q=0 gets identity", func(t *testing.T) {
+		res := do(t, h, http.MethodGet, asset, http.Header{"Accept-Encoding": {"gzip;q=0, identity"}})
+		if got := res.Header.Get("Content-Encoding"); got != "" {
+			t.Errorf("Content-Encoding = %q, want none", got)
+		}
+		if got := body(t, res); got != script {
+			t.Errorf("body = %q, want the decompressed script", got)
+		}
+	})
+
+	t.Run("the .gz sibling is not addressable", func(t *testing.T) {
+		res := do(t, h, http.MethodGet, asset+".gz", nil)
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404 — an encoding must not become a second URL", res.StatusCode)
+		}
+	})
+
+	t.Run("a missing asset is still a 404, not the shell", func(t *testing.T) {
+		res := do(t, h, http.MethodGet, "/assets/gone-def456.js", nil)
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", res.StatusCode)
+		}
+	})
+
+	t.Run("HEAD answers with headers for both encodings", func(t *testing.T) {
+		res := do(t, h, http.MethodHead, asset, http.Header{"Accept-Encoding": {"gzip"}})
+		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Encoding") != "gzip" {
+			t.Fatalf("gzip HEAD: status = %d, Content-Encoding = %q", res.StatusCode, res.Header.Get("Content-Encoding"))
+		}
+		res = do(t, h, http.MethodHead, asset, nil)
+		if res.StatusCode != http.StatusOK || body(t, res) != "" {
+			t.Fatalf("identity HEAD: status = %d, body = %q, want empty", res.StatusCode, body(t, res))
+		}
+	})
+}
+
+func TestAcceptsGzip(t *testing.T) {
+	tests := []struct {
+		header string
+		want   bool
+	}{
+		{"", false},
+		{"gzip", true},
+		{"gzip, deflate, br", true},
+		{"br;q=1.0, gzip;q=0.8, *;q=0.1", true},
+		{"gzip;q=0", false},
+		{"gzip;q=0.000", false},
+		{"identity", false},
+		{"*", true},
+		{"*;q=0", false},
+		{"GZIP", true},
+	}
+	for _, tc := range tests {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		if tc.header != "" {
+			r.Header.Set("Accept-Encoding", tc.header)
+		}
+		if got := acceptsGzip(r); got != tc.want {
+			t.Errorf("acceptsGzip(%q) = %v, want %v", tc.header, got, tc.want)
+		}
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/starvy/flagfish/internal/metrics"
 	"github.com/starvy/flagfish/internal/notify"
 	"github.com/starvy/flagfish/internal/opsjob"
+	"github.com/starvy/flagfish/internal/solvefeed"
 	"github.com/starvy/flagfish/internal/stats"
 	"github.com/starvy/flagfish/internal/web"
 )
@@ -74,6 +75,10 @@ type Options struct {
 	// the notifications endpoints, and either being nil disables them (the router warns at boot).
 	Notify      *notify.Service
 	Broadcaster *notify.Broadcaster
+
+	// SolveFeed is the live solve pulse's fan-out. Nil leaves the stream unregistered (the router
+	// warns at boot); nothing else depends on it, so the rest of the API is unaffected.
+	SolveFeed *solvefeed.Broadcaster
 
 	// Jobs enqueues background jobs. Today only the deduplicated pool-exhaustion alert uses it, off
 	// the 503 path; nil disables that alert (the 503 itself is unaffected).

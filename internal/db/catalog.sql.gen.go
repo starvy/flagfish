@@ -140,6 +140,35 @@ func (q *Queries) GetChallengeForView(ctx context.Context, arg GetChallengeForVi
 	return i, err
 }
 
+const listChallengeAnnotations = `-- name: ListChallengeAnnotations :many
+SELECT key, value FROM challenge_annotations WHERE challenge_id = $1 ORDER BY key
+`
+
+type ListChallengeAnnotationsRow struct {
+	Key   string
+	Value string
+}
+
+func (q *Queries) ListChallengeAnnotations(ctx context.Context, challengeID int64) ([]ListChallengeAnnotationsRow, error) {
+	rows, err := q.db.Query(ctx, listChallengeAnnotations, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListChallengeAnnotationsRow{}
+	for rows.Next() {
+		var i ListChallengeAnnotationsRow
+		if err := rows.Scan(&i.Key, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChallengeFiles = `-- name: ListChallengeFiles :many
 SELECT id, name, size_bytes FROM files WHERE challenge_id = $1 ORDER BY id
 `
@@ -504,6 +533,46 @@ func (q *Queries) ListChallenges(ctx context.Context, arg ListChallengesParams) 
 			&i.Solved,
 			&i.PrereqsMet,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVisibleAnnotations = `-- name: ListVisibleAnnotations :many
+SELECT a.challenge_id, a.key, a.value
+  FROM challenge_annotations a
+  JOIN challenges c ON c.id = a.challenge_id
+ WHERE c.state = 'visible'
+ ORDER BY a.challenge_id, a.key
+`
+
+type ListVisibleAnnotationsRow struct {
+	ChallengeID int64
+	Key         string
+	Value       string
+}
+
+// Every annotation on the visible board, in one pass.
+//
+// One query for the whole board rather than one per challenge: a globe cannot draw anything until it
+// knows where every challenge goes, so the N+1 version is not a slow path that occasionally hurts —
+// it is the board load, every time, multiplied by the challenge count. The caller strips the rows
+// belonging to challenges it decided to lock or hide.
+func (q *Queries) ListVisibleAnnotations(ctx context.Context) ([]ListVisibleAnnotationsRow, error) {
+	rows, err := q.db.Query(ctx, listVisibleAnnotations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVisibleAnnotationsRow{}
+	for rows.Next() {
+		var i ListVisibleAnnotationsRow
+		if err := rows.Scan(&i.ChallengeID, &i.Key, &i.Value); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

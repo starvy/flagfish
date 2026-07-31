@@ -100,31 +100,33 @@ func TestColumnInventory(t *testing.T) {
 	}
 }
 
-var colinvTables = []string{"challenges", "tags", "hints", "teams", "users", "challenge_instances"}
+var colinvTables = []string{"challenges", "tags", "challenge_annotations", "hints", "teams", "users", "challenge_instances"}
 
 var colinvModelStruct = map[string]string{
-	"challenges":          "Challenge",
-	"tags":                "Tag",
-	"hints":               "Hint",
-	"teams":               "Team",
-	"users":               "User",
-	"challenge_instances": "ChallengeInstance",
+	"challenges":            "Challenge",
+	"tags":                  "Tag",
+	"challenge_annotations": "ChallengeAnnotation",
+	"hints":                 "Hint",
+	"teams":                 "Team",
+	"users":                 "User",
+	"challenge_instances":   "ChallengeInstance",
 }
 
 // Columns that are by design not admin-managed data: table.column → one-line reason.
 var colinvExempt = map[string]string{
-	"challenges.id":          "surrogate key, assigned by bigserial",
-	"tags.id":                "surrogate key, assigned by bigserial",
-	"hints.id":               "surrogate key, assigned by bigserial",
-	"teams.id":               "surrogate key, assigned by bigserial",
-	"users.id":               "surrogate key, assigned by bigserial",
-	"challenge_instances.id": "surrogate key, assigned by bigserial",
-	"challenges.created_at":  "DB-stamped on insert (DEFAULT now())",
-	"challenges.updated_at":  "DB-stamped alongside every write (SET updated_at = now())",
-	"teams.created_at":       "DB-stamped on insert (DEFAULT now())",
-	"users.created_at":       "DB-stamped on insert (DEFAULT now())",
-	"users.secret":           "reserved: CTFd-parity import fidelity — carried by import/export; vestigial even upstream (no reader in CTFd master, invite codes use password); never surfaced by the app",
-	"teams.secret":           "reserved: CTFd-parity import fidelity — see users.secret",
+	"challenges.id":            "surrogate key, assigned by bigserial",
+	"tags.id":                  "surrogate key, assigned by bigserial",
+	"challenge_annotations.id": "surrogate key, assigned by bigserial",
+	"hints.id":                 "surrogate key, assigned by bigserial",
+	"teams.id":                 "surrogate key, assigned by bigserial",
+	"users.id":                 "surrogate key, assigned by bigserial",
+	"challenge_instances.id":   "surrogate key, assigned by bigserial",
+	"challenges.created_at":    "DB-stamped on insert (DEFAULT now())",
+	"challenges.updated_at":    "DB-stamped alongside every write (SET updated_at = now())",
+	"teams.created_at":         "DB-stamped on insert (DEFAULT now())",
+	"users.created_at":         "DB-stamped on insert (DEFAULT now())",
+	"users.secret":             "reserved: CTFd-parity import fidelity — carried by import/export; vestigial even upstream (no reader in CTFd master, invite codes use password); never surfaced by the app",
+	"teams.secret":             "reserved: CTFd-parity import fidelity — see users.secret",
 }
 
 // colinvSchemaColumns enumerates the live columns of the six tables in ordinal order, and

@@ -48,6 +48,9 @@ type Snapshot struct {
 	// and applies it. Empty means no override.
 	ThemeTokens string
 
+	// PortalView is which board the player portal renders.
+	PortalView PortalView
+
 	// Mode is the account model, and its one home is the instance singleton — the
 	// same row the gameplay SQL keys on — read once at load. The config table is not
 	// its source; a config user_mode key is legacy and only tolerated when it agrees.
@@ -118,6 +121,58 @@ func (s *Snapshot) Repairs() []string { return s.repairs }
 func (s *Snapshot) Raw(key string) (string, bool) {
 	v, ok := s.raw[key]
 	return v, ok
+}
+
+// A PortalView is which board the player portal renders: the standard grid, or one of the
+// alternates that arrange the same challenges some other way.
+//
+// The set is closed, and it has to be: a view is a value the CLIENT has code for, so a spelling this
+// binary has never heard of is not a forward-compatible extension, it is a portal that renders
+// nothing. Refusing it at the write is what keeps that from being discovered by players.
+type PortalView string
+
+const (
+	PortalViewStandard PortalView = "standard"
+	PortalViewGlobe    PortalView = "globe"
+)
+
+// portalViews is the whole set, declared once. Adding a view is this line plus the client that
+// draws it — the setter, the operator-facing rejection and the API's schema enum all read from here,
+// so none of them can be the one that was forgotten.
+var portalViews = []PortalView{PortalViewStandard, PortalViewGlobe}
+
+// ErrUnknownPortalView rejects a spelling that is not a known view.
+var ErrUnknownPortalView = errors.New("unknown portal view")
+
+// PortalViewNames is every known view, in declaration order. The HTTP layer publishes it as the
+// enum on the config endpoints, so the documented contract and the accepted values are one list.
+func PortalViewNames() []string {
+	out := make([]string, len(portalViews))
+	for i, v := range portalViews {
+		out[i] = string(v)
+	}
+	return out
+}
+
+// ParsePortalView accepts only a known view.
+func ParsePortalView(s string) (PortalView, error) {
+	for _, v := range portalViews {
+		if PortalView(s) == v {
+			return v, nil
+		}
+	}
+	return "", fmt.Errorf("%w %q (want one of %s)", ErrUnknownPortalView, s, strings.Join(PortalViewNames(), ", "))
+}
+
+func (v PortalView) String() string { return string(v) }
+
+func portalViewSetter(s *Snapshot, v string) error {
+	pv, err := ParsePortalView(v)
+	if err != nil {
+		return err
+	}
+	s.PortalView = pv
+	return nil
 }
 
 // WebhookEvent is a kind of event the announcement feed can be told to deliver.
@@ -195,6 +250,7 @@ func (s *Snapshot) Event(now time.Time) policy.Event {
 func defaults() Snapshot {
 	return Snapshot{
 		Theme:           "core",
+		PortalView:      PortalViewStandard,
 		Mode:            account.ModeUsers,
 		ChallengeVis:    policy.VisPrivate,
 		ScoreVis:        policy.VisPublic,
@@ -242,6 +298,7 @@ var registry = map[string]keyDef{
 	"ctf_description": public(func(s *Snapshot, v string) error { s.CTFDescription = v; return nil }),
 	"ctf_theme":       public(func(s *Snapshot, v string) error { s.Theme = v; return nil }),
 	"theme_tokens":    public(themeTokensSetter),
+	"ctf_portal_view": public(portalViewSetter),
 
 	// user_mode has no setter: the account model lives in the instance singleton, not
 	// here. A stray config user_mode key is preserved verbatim in raw and checked for

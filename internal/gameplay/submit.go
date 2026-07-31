@@ -11,6 +11,7 @@ import (
 	"github.com/starvy/flagfish/internal/domain/flags"
 	"github.com/starvy/flagfish/internal/domain/prereq"
 	"github.com/starvy/flagfish/internal/jobs"
+	"github.com/starvy/flagfish/internal/solvefeed"
 )
 
 // SubmitInput is one flag submission.
@@ -222,6 +223,19 @@ func (s *Service) Submit(ctx context.Context, in SubmitInput) (Result, error) {
 		}, nil); err != nil {
 			return Result{}, fmt.Errorf("gameplay: submit: enqueue first-blood announcement: %w", err)
 		}
+	}
+
+	// The live pulse, signalled on our transaction so a rolled-back solve announces nothing. This
+	// is below every early return above, so the wrong-answer path — most of the traffic — never
+	// reaches it. The facts travel in the payload because first_blood was decided under the lock a
+	// few lines up and is not a column anything could read it back from.
+	if err := solvefeed.Publish(ctx, tx, solvefeed.Event{
+		SolveID:     solve.ID,
+		ChallengeID: locked.ID,
+		FirstBlood:  firstBlood,
+		SolvedAt:    solve.Date.Time,
+	}); err != nil {
+		return Result{}, fmt.Errorf("gameplay: submit: %w", err)
 	}
 
 	// One statement, exact because we hold the lock. Never a read-modify-write.
