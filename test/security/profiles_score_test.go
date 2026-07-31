@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,6 +56,13 @@ func (f *fixture) solveAtTeam(challengeID, userID, teamID int64, value int, at t
 		challengeID, userID, teamID, value, at); err != nil {
 		f.t.Fatalf("seed team solve: %v", err)
 	}
+}
+
+// containsJSONNumber reports whether n appears as a JSON number value — ":" then the digits
+// then no further digit. A bare substring search flakes: a timestamp's microseconds can spell
+// the figure (".659002" contains "900"), which is exactly how this suite once went red on main.
+func containsJSONNumber(body, n string) bool {
+	return regexp.MustCompile(":" + n + "([^0-9]|$)").MatchString(body)
 }
 
 func decodeUserProfile(t *testing.T, body string) userProfileWire {
@@ -316,7 +324,7 @@ func TestS53_TeamProfileRedactsScoresNotRoster(t *testing.T) {
 					}
 				}
 				// Belt and braces: the 500-point figure must not reach the body through any field.
-				if strings.Contains(res.Body, "500") {
+				if containsJSONNumber(res.Body, "500") {
 					t.Errorf("a withheld score figure leaked in the body: %s", res.Body)
 				}
 			}
@@ -409,7 +417,7 @@ func TestS55_UserProfileChartIsOwnSeriesNotForeignTeam(t *testing.T) {
 		t.Errorf("headline score = %s, want 100 — the chart and the headline must agree", showScore(prof.Score))
 	}
 	// The foreign total must not surface anywhere in Ada's profile document.
-	if strings.Contains(res.Body, "900") {
+	if containsJSONNumber(res.Body, "900") {
 		t.Errorf("a foreign team's figure leaked into the profile body: %s", res.Body)
 	}
 
