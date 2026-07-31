@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && tsc",
+    "build": "vite build && tsc && node scripts/compress-dist.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "generate:api": "npm run generate:api:public && npm run generate:api:admin",
