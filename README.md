@@ -11,7 +11,7 @@ Provable anti-cheat, a scoreboard you can rewind to any moment, and correctness 
 [![Postgres](https://img.shields.io/badge/postgres-17-336791.svg)](docs/adr/0003-postgres-only-no-redis.md)
 [![Status](https://img.shields.io/badge/status-pre--1.0-orange.svg)](#status)
 
-![Submitting a flag; the challenge value decays the instant it lands](docs/assets/submit-flag.gif)
+![The globe board: challenges placed in countries, a captured one lit green, a rival's solve pulsing in live](docs/assets/globe-tour.gif)
 
 </div>
 
@@ -38,6 +38,12 @@ wrong answers (≈99% of submissions)    →  zero challenge locks taken
 ```
 
 A mutex fixes one process; a constraint fixes all of them, forever. [The 24 races we test →](docs/why-flagfish.md#concurrency)
+
+<div align="center"><img src="docs/assets/submit-flag.gif" width="88%" alt="Submitting a flag; the challenge value decays the instant it lands"></div>
+
+## 🌍 A board worth putting on the projector
+
+**The challenge board is a view the organizer picks — and the built-in alternate is a WebGL globe.** Challenges live in countries; solve everything in one and your team captures it. Rival solves and first bloods pulse on the map live, and the globe brings its own dark ops-center skin to the whole portal while it leads. The plain list stays one click away for every player, and a browser without WebGL falls back to it automatically. [The design →](docs/adr/0009-annotations-and-portal-views.md)
 
 ## 🛠️ Everything an organizer needs, already built
 
