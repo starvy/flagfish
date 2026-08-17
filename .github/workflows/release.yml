@@ -7,12 +7,11 @@ on:
   push:
     tags: ["v*"]
 
-# GITHUB_TOKEN needs packages:write to push to ghcr.io; nothing else is required,
-# so no Docker Hub account and no extra repository secret. contents:read is the
-# floor for checkout.
+# Floor for every job; the two that need more widen it themselves — the image job
+# to push to ghcr.io, the release job to create the release. No Docker Hub account
+# and no extra repository secret either way.
 permissions:
   contents: read
-  packages: write
 
 # One release per tag. A re-pushed tag supersedes an in-flight run rather than
 # racing it to the same image reference.
@@ -30,6 +29,9 @@ jobs:
   image:
     name: build and push image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v5
 
@@ -80,3 +82,45 @@ jobs:
           # manifests that show as a stray unknown/unknown entry in the GHCR UI and
           # trip older compose/podman pulls. Add them once multi-arch is in.
           provenance: false
+
+  # Left as a DRAFT on purpose: publishing is a human act. The notes are generated
+  # but nobody has read them yet, and a draft is the last point where a bad tag can
+  # be walked back without an announcement going out. `needs: image` means the draft
+  # only ever appears once the image it advertises is actually pullable.
+  release:
+    name: draft github release
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+
+          # Semver spells a prerelease with a hyphen: v0.1.0-rc.1 is one, v0.1.0 is
+          # not. This mirrors metadata-action's latest=auto, so the release and the
+          # `latest` image tag agree on what counts as a real release.
+          flags=()
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+
+          # Ask the API for the notes rather than gh's --generate-notes so the body
+          # is composed here: pull instructions first, changelog under them.
+          notes="$(gh api "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body)"
+          {
+            printf '## Container image\n\n```\ndocker pull %s:%s\n```\n\n' "$IMAGE" "${TAG#v}"
+            printf '%s\n' "$notes"
+          } > notes.md
+
+          # Re-pushing a tag re-runs this job; keep it idempotent instead of failing
+          # on an existing draft.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --draft --notes-file notes.md "${flags[@]}"
+          else
+            gh release create "$TAG" --repo "$REPO" --draft --title "$TAG" --notes-file notes.md "${flags[@]}"
+          fi
